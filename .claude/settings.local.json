@@ -17,7 +17,10 @@
       "Bash(xargs cat:*)",
       "Bash(find /d/wms/warehouse-service/src/main/resources/db/migration -type f -name *.sql)",
       "Bash(grep:*)",
-      "Bash(find /d/wms/do-an-full/src/components -type f -name *.tsx)"
+      "Bash(find /d/wms/do-an-full/src/components -type f -name *.tsx)",
+      "Bash(/tmp/report_summary.txt:*)",
+      "Read(//tmp/**)",
+      "Bash(find \"D:\\\\wms\\\\do-an-full\\\\src\" -type f -name \"*.{ts,tsx,js,jsx}\")"
     ]
   }
 }
