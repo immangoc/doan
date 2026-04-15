@@ -1,0 +1,1 @@
+Check all usages of PageResponse.of(...) in the codebase, determine the exact required signature, then implement the correct static of(...) method inside PageResponse to match those usages without changing caller code unless absolutely necessary

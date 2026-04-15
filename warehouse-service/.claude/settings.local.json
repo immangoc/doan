@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python:*)",
+      "Bash(find D:TUANANHwarehouse-servicesrcmainjavacomanhnhtwarehouseserviceinfrastructure -type f -name *.java)"
+    ]
+  }
+}

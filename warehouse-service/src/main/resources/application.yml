@@ -1,0 +1,64 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /api/v1
+
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/portdb?options=-c%20TimeZone=Asia/Ho_Chi_Minh}
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD:postgres}
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    ignore-migration-patterns: "*:Missing"
+
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 5s
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:29092}
+
+  mail:
+    host: ${MAIL_HOST:localhost}
+    port: ${MAIL_PORT:1025}
+    username: ${MAIL_USERNAME:}
+    password: ${MAIL_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
+
+app:
+  kafka:
+    enabled: ${APP_KAFKA_ENABLED:false}
+    topic:
+      yard-events: ${APP_KAFKA_TOPIC_YARD_EVENTS:yard-events}
+
+jwt:
+  secret: ${JWT_SECRET:change-me-secret-change-me-secret}
+  issuer: ${JWT_ISSUER:anhnht-backend}
+  expiration-seconds: ${JWT_EXPIRATION_SECONDS:36000}
+
+springdoc:
+  api-docs:
+    enabled: true
+    path: /v3/api-docs
+  swagger-ui:
+    enabled: true
+    path: /swagger-ui.html

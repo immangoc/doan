@@ -1,0 +1,184 @@
+📦 DANH SÁCH CHỨC NĂNG HỆ THỐNG HT PORT LOGISTICS
+1. KHÁCH HÀNG (CUSTOMER)
+   1.1 Quản lý tài khoản
+   Đăng ký / Đăng nhập / Đổi mật khẩu / Quên mật khẩu / Đăng xuất
+   Quản lý hồ sơ doanh nghiệp
+   Quản lý thông báo
+   Nhật ký hoạt động
+   1.2 Quản lý đơn hàng (Booking)
+   Đăng ký booking (Tạo mới)
+   → Nhập form gồm:
+   Tên hàng
+   Loại hàng
+   Ngày nhập
+   Ngày xuất / lưu kho
+   Thanh toán
+   Danh sách booking / Lịch sử booking
+   → Theo dõi trạng thái:
+   Chờ duyệt
+   Đã duyệt
+   Bị từ chối
+   Xem chi tiết đơn hàng
+   Lọc danh sách theo tiêu chí
+   → Theo:
+   Nhập / Xuất
+   Ngày tháng
+   Trạng thái
+   Tìm kiếm đơn hàng
+   Hủy đơn hàng
+   → Nếu:
+   Chưa duyệt → hủy trực tiếp
+   Đã duyệt → gửi yêu cầu hủy
+   Gửi yêu cầu chỉnh sửa đơn hàng
+   1.3 Tra cứu & Tiện ích
+   Tra cứu Container
+   Tra cứu cước phí tạm tính
+   Biểu cước
+   → Xem bảng giá công khai:
+   Giá nâng hạ
+   Giá lưu kho theo ngày
+   1.4 Dashboard
+   Thống kê tổng số Container trong bãi
+   Thống kê số booking chờ duyệt
+   Thống kê Container sắp quá hạn lưu kho
+   Trung tâm thông báo
+   Hỗ trợ khách hàng (chatbox)
+2. ĐIỀU ĐỘ BÃI & TỐI ƯU HÓA
+   Xem sơ đồ kho bãi trực quan
+   → Hiển thị dạng grid:
+   Bay – Row – Tier
+   Xem chi tiết block (khối)
+   Xem nhanh thông tin Container (popup)
+   → Khi hover:
+   Loại hàng
+   Ngày nhập/xuất
+   Mã số
+   Chạy tối ưu hóa sắp xếp
+   Điều chỉnh vị trí thủ công
+   → Override thuật toán
+   Gợi ý đảo chuyển
+   → Hệ thống tự list container cần đảo
+   Tạo lệnh đảo chuyển
+   Khóa / Mở vị trí
+3. KIỂM SOÁT & SỰ CỐ
+   Kiểm kê kho
+   Xử lý Container tồn đọng
+   → Bao gồm:
+   Quá hạn
+   Vô chủ
+   Hỏng hóc
+   Rỗng
+   Cảnh báo
+   Quản lý sự cố / Hư hỏng
+4. QUẢN LÝ KHO BÃI (YARD MANAGEMENT)
+   4.1 Hạ bãi
+   Duyệt / Từ chối yêu cầu chỉnh sửa đơn hàng
+   Duyệt / Từ chối đơn booking
+   Thuật toán gợi ý vị trí
+   Điều chỉnh vị trí thủ công
+   Xuất phiếu
+   Lịch sử hạ bãi
+   4.2 Xuất bãi
+   Duyệt / Từ chối yêu cầu xuất bãi
+   Tra cứu & kiểm tra điều kiện xuất
+   Chạy thuật toán nâng hạ để xuất
+   Tính cước và xác nhận thanh toán
+   → Cho:
+   Đơn đã thanh toán
+   Đơn chưa thanh toán
+   Lịch sử xuất bãi
+   Xuất phiếu
+5. DASHBOARD (HỆ THỐNG)
+   Tỷ lệ đầy kho
+   Các đơn hàng chờ duyệt
+   Tổng Nhập / Xuất / Đảo chuyển theo ngày
+   Cơ cấu Container
+   → Số lượng theo loại
+   Quản lý Container lưu kho
+   → Danh sách / danh mục
+   Cảnh báo sự cố
+   Tìm kiếm Container toàn hệ thống
+   Lịch tàu / lịch nhập xuất
+   Trung tâm thông báo
+   Chatbox
+6. NHÂN VIÊN KHO BÃI (WAREHOUSE STAFF)
+   6.1 Quản lý tài khoản & xác thực
+   Đăng nhập / Đổi mật khẩu / Quên mật khẩu / Đăng xuất
+   Quản lý thông báo
+   Nhật ký hoạt động
+   Sao lưu dữ liệu
+   6.2 Dashboard (Tổng quan công việc)
+   Nhập / xuất theo ngày
+   Hỗ trợ khách hàng (Chatbox)
+   Cảnh báo & trung tâm thông báo
+   Xuất báo cáo
+   6.3 Check-in
+   Lịch sử check-in
+   Check-in điểm danh
+   Check-in container vào bãi
+   → Ghi nhận:
+   Xe vào
+   In phiếu vị trí (EIR)
+   Danh sách công việc cần làm
+   Trung tâm thông báo
+   Nhận lệnh & xác nhận:
+   Đảo chuyển
+   Hạ bãi
+   Xuất bãi
+   Báo cáo sự cố / hư hỏng
+   6.4 Hạ bãi
+   Check-in Container
+   → Xác nhận container đã hạ
+   Xem chỉ dẫn vị trí
+   Xác nhận hạ bãi
+   Lịch sử hạ bãi
+   6.5 Xuất bãi
+   Xem chỉ dẫn nâng hạ Container
+   Xác nhận nâng hàng
+   Lịch sử xuất bãi
+7. QUẢN TRỊ VIÊN (ADMIN)
+   7.1 Quản lý tài khoản & xác thực
+   Đăng nhập / Đổi mật khẩu / Quên mật khẩu / Đăng xuất
+   Quản lý thông báo
+   Nhật ký hoạt động
+   Sao lưu dữ liệu
+   7.2 Dashboard
+   Nhập / xuất theo ngày
+   Hỗ trợ khách hàng (Chatbox)
+   Cảnh báo & trung tâm thông báo
+   7.3 Báo cáo & thống kê
+   Xuất báo cáo
+   Báo cáo thống kê doanh thu, lợi nhuận
+   Biểu đồ hiệu suất tối ưu
+   Báo cáo đơn hàng
+   Báo cáo khách hàng
+   Báo cáo tồn kho
+   7.4 Quản lý danh mục
+   Quản lý loại Container (CRUD)
+   Quản lý loại hàng (CRUD)
+   → Ví dụ:
+   Hàng khô
+   Hàng lạnh
+   Hàng dễ vỡ
+   Quản lý lịch & hãng tàu
+   Quản lý khách hàng (tạm ngưng hoạt động)
+   Quản lý cước phí / cấu hình biểu cước
+   7.5 Quản trị hệ thống
+   Quản lý người dùng (CRUD)
+   Duyệt tài khoản khách hàng
+   Quản lý phân quyền
+   🔥 Nhận xét quan trọng (giúp bạn làm đồ án)
+
+Hệ thống này thực tế đang có:
+
+4 core module lớn
+Booking System
+Yard Operation (Hạ/Xuất)
+Optimization Engine (AI/Rule/GA)
+Monitoring & Alert
+3 role chính
+Customer
+Operator (Warehouse Staff)
+Admin
+1 core AI module
+→ Container Placement Optimization (cái bạn đã thiết kế)

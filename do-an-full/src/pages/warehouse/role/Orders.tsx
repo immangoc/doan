@@ -1,0 +1,437 @@
+import { useEffect, useMemo, useState } from 'react';
+import { AlertCircle, FileText, Plus, RefreshCw, Search, XCircle } from 'lucide-react';
+import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
+import { Input } from '../../../components/ui/input';
+import { Button } from '../../../components/ui/button';
+import { Badge } from '../../../components/ui/badge';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../../components/ui/dialog';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../../components/ui/table';
+import WarehouseLayout from '../../../components/warehouse/WarehouseLayout';
+import { useWarehouseAuth, API_BASE } from '../../../contexts/WarehouseAuthContext';
+
+type OrderItem = {
+  orderId: number;
+  customerId?: number;
+  customerName: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  statusName: string;
+  note?: string;
+  createdAt?: string;
+  containerIds?: string[];
+  cancellation?: { cancellationId: number; reason?: string; createdAt?: string } | null;
+};
+
+type BillItem = {
+  billId: number;
+  orderId: number;
+  billNumber: string;
+  createdDate?: string;
+  statusName: string;
+  note?: string;
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  PENDING:          'Chờ duyệt',
+  APPROVED:         'Đã duyệt',
+  REJECTED:         'Từ chối',
+  CANCEL_REQUESTED: 'Yêu cầu hủy',
+  CANCELLED:        'Đã hủy',
+};
+
+const STATUS_CLASS: Record<string, string> = {
+  PENDING:          'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200',
+  APPROVED:         'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200',
+  REJECTED:         'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200',
+  CANCEL_REQUESTED: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-200',
+  CANCELLED:        'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+};
+
+export default function Orders() {
+  const { accessToken, user } = useWarehouseAuth();
+  const apiUrl = API_BASE;
+  const headers = useMemo(
+    () => ({
+      'Content-Type': 'application/json',
+      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+    }),
+    [accessToken],
+  );
+
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [orders, setOrders] = useState<OrderItem[]>([]);
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [keyword, setKeyword] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
+
+  // Create order
+  const [openCreate, setOpenCreate] = useState(false);
+  const [createForm, setCreateForm] = useState({ customerName: '', phone: '', email: '', address: '', note: '' });
+
+  // Cancel order
+  const [openCancel, setOpenCancel] = useState(false);
+  const [cancelTarget, setCancelTarget] = useState<OrderItem | null>(null);
+  const [cancelReason, setCancelReason] = useState('');
+
+  // View bill
+  const [openBill, setOpenBill] = useState(false);
+  const [billData, setBillData] = useState<BillItem | null>(null);
+  const [billLoading, setBillLoading] = useState(false);
+
+  const fetchOrders = async (p = 0) => {
+    setLoading(true);
+    setError('');
+    try {
+      const res = await fetch(
+        `${apiUrl}/orders/my?page=${p}&size=20&sortBy=createdAt&direction=desc`,
+        { headers },
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Lỗi lấy danh sách đơn hàng');
+      setOrders(data.data?.content || []);
+      setTotalPages(data.data?.totalPages || 1);
+    } catch (e: any) {
+      setError(e.message || 'Lỗi không xác định');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOrders(page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
+
+  const filtered = useMemo(() => {
+    let list = orders;
+    if (statusFilter) list = list.filter((o) => o.statusName === statusFilter);
+    const k = keyword.trim().toLowerCase();
+    if (k) list = list.filter((o) => `${o.orderId} ${o.customerName} ${o.email ?? ''}`.toLowerCase().includes(k));
+    return list;
+  }, [orders, statusFilter, keyword]);
+
+  const counts = useMemo(() => ({
+    total:    orders.length,
+    pending:  orders.filter((o) => o.statusName === 'PENDING').length,
+    approved: orders.filter((o) => o.statusName === 'APPROVED').length,
+    cancelled: orders.filter((o) => o.statusName === 'CANCELLED' || o.statusName === 'CANCEL_REQUESTED').length,
+  }), [orders]);
+
+  const resetCreateForm = () =>
+    setCreateForm({
+      customerName: user?.name || '',
+      phone: '', email: user?.email || '', address: '', note: '',
+    });
+
+  const submitCreate = async () => {
+    try {
+      if (!createForm.customerName.trim()) return alert('Tên khách hàng không được để trống');
+      const res = await fetch(`${apiUrl}/orders`, {
+        method: 'POST', headers,
+        body: JSON.stringify(createForm),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Lỗi tạo đơn hàng');
+      setOpenCreate(false);
+      resetCreateForm();
+      await fetchOrders(page);
+    } catch (e: any) {
+      alert(e.message || 'Lỗi không xác định');
+    }
+  };
+
+  const openCancelDialog = (order: OrderItem) => {
+    setCancelTarget(order);
+    setCancelReason('');
+    setOpenCancel(true);
+  };
+
+  const submitCancel = async () => {
+    if (!cancelTarget) return;
+    try {
+      const res = await fetch(`${apiUrl}/orders/${cancelTarget.orderId}/cancel`, {
+        method: 'PUT', headers,
+        body: JSON.stringify({ reason: cancelReason }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Lỗi hủy đơn hàng');
+      setOpenCancel(false);
+      setCancelTarget(null);
+      await fetchOrders(page);
+    } catch (e: any) {
+      alert(e.message || 'Lỗi không xác định');
+    }
+  };
+
+  const viewBill = async (order: OrderItem) => {
+    setOpenBill(true);
+    setBillData(null);
+    setBillLoading(true);
+    try {
+      const res = await fetch(`${apiUrl}/orders/${order.orderId}/bill`, { headers });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Chưa có vận đơn cho đơn hàng này');
+      setBillData(data.data);
+    } catch (e: any) {
+      setBillData(null);
+      alert(e.message || 'Lỗi lấy vận đơn');
+      setOpenBill(false);
+    } finally {
+      setBillLoading(false);
+    }
+  };
+
+  const canCancel = (o: OrderItem) => o.statusName === 'PENDING' || o.statusName === 'APPROVED';
+
+  return (
+    <WarehouseLayout>
+      <div className="space-y-6">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Quản lý đơn hàng</h1>
+            <p className="text-gray-600 dark:text-gray-400 mt-1">Theo dõi và quản lý đơn hàng của bạn.</p>
+          </div>
+          <Button
+            className="bg-blue-900 hover:bg-blue-800 text-white"
+            onClick={() => { resetCreateForm(); setOpenCreate(true); }}
+          >
+            <Plus className="w-4 h-4 mr-2" />Tạo đơn hàng
+          </Button>
+        </div>
+
+        {error && (
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 rounded-lg p-4 flex items-center gap-2 text-red-700 dark:text-red-300">
+            <AlertCircle className="w-5 h-5" />
+            <span className="flex-1">{error}</span>
+            <Button size="sm" variant="outline" onClick={() => fetchOrders(page)} disabled={loading}>Thử lại</Button>
+          </div>
+        )}
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Card><CardContent className="pt-5">
+            <p className="text-sm text-gray-500">Tổng đơn</p>
+            <p className="mt-1 text-3xl font-semibold text-blue-600">{counts.total}</p>
+          </CardContent></Card>
+          <Card><CardContent className="pt-5">
+            <p className="text-sm text-gray-500">Chờ duyệt</p>
+            <p className="mt-1 text-3xl font-semibold text-amber-600">{counts.pending}</p>
+          </CardContent></Card>
+          <Card><CardContent className="pt-5">
+            <p className="text-sm text-gray-500">Đã duyệt</p>
+            <p className="mt-1 text-3xl font-semibold text-green-600">{counts.approved}</p>
+          </CardContent></Card>
+          <Card><CardContent className="pt-5">
+            <p className="text-sm text-gray-500">Hủy / Yêu cầu hủy</p>
+            <p className="mt-1 text-3xl font-semibold text-gray-500">{counts.cancelled}</p>
+          </CardContent></Card>
+        </div>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Danh sách đơn hàng ({filtered.length})</CardTitle>
+            <div className="mt-3 flex flex-col sm:flex-row gap-3 sm:items-center">
+              <div className="relative sm:flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <Input
+                  value={keyword}
+                  onChange={(e) => setKeyword(e.target.value)}
+                  placeholder="Tìm theo mã đơn, tên khách hàng..."
+                  className="pl-9"
+                />
+              </div>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="h-10 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-200 outline-none focus:border-blue-500"
+              >
+                <option value="">Tất cả trạng thái</option>
+                {Object.entries(STATUS_LABELS).map(([k, v]) => (
+                  <option key={k} value={k}>{v}</option>
+                ))}
+              </select>
+              <Button variant="outline" onClick={() => fetchOrders(page)} disabled={loading}>
+                <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />Làm mới
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            {loading ? (
+              <div className="py-10 text-gray-500">Đang tải...</div>
+            ) : (
+              <>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead className="w-[70px]">Mã đơn</TableHead>
+                      <TableHead>Khách hàng</TableHead>
+                      <TableHead>Liên hệ</TableHead>
+                      <TableHead>Trạng thái</TableHead>
+                      <TableHead>Ngày tạo</TableHead>
+                      <TableHead>Ghi chú</TableHead>
+                      <TableHead className="text-right">Thao tác</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filtered.map((o) => (
+                      <TableRow key={o.orderId}>
+                        <TableCell className="font-mono text-xs font-semibold">#{o.orderId}</TableCell>
+                        <TableCell>
+                          <div className="font-semibold">{o.customerName}</div>
+                          {o.address && <div className="text-xs text-gray-500">{o.address}</div>}
+                        </TableCell>
+                        <TableCell className="text-sm text-gray-600">
+                          <div>{o.phone || '—'}</div>
+                          <div className="text-xs">{o.email || ''}</div>
+                        </TableCell>
+                        <TableCell>
+                          <Badge className={STATUS_CLASS[o.statusName] || 'bg-gray-100 text-gray-600'}>
+                            {STATUS_LABELS[o.statusName] || o.statusName}
+                          </Badge>
+                          {o.cancellation?.reason && (
+                            <div className="text-xs text-red-500 mt-1">{o.cancellation.reason}</div>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-sm text-gray-500 whitespace-nowrap">
+                          {o.createdAt ? new Date(o.createdAt).toLocaleDateString('vi-VN') : '—'}
+                        </TableCell>
+                        <TableCell className="text-sm text-gray-500 max-w-[140px] truncate">{o.note || '—'}</TableCell>
+                        <TableCell className="text-right">
+                          <div className="inline-flex gap-1">
+                            <Button
+                              variant="ghost" size="sm"
+                              className="text-blue-700 hover:bg-blue-50"
+                              onClick={() => viewBill(o)}
+                              title="Xem vận đơn"
+                            >
+                              <FileText className="w-4 h-4" />
+                            </Button>
+                            {canCancel(o) && (
+                              <Button
+                                variant="ghost" size="sm"
+                                className="text-red-600 hover:bg-red-50"
+                                onClick={() => openCancelDialog(o)}
+                                title="Hủy đơn"
+                              >
+                                <XCircle className="w-4 h-4" />
+                              </Button>
+                            )}
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                    {filtered.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={7} className="text-center text-gray-500 py-10">
+                          Không có đơn hàng phù hợp.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-center gap-2 mt-4">
+                    <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>Trước</Button>
+                    <span className="text-sm text-gray-500">Trang {page + 1} / {totalPages}</span>
+                    <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)}>Sau</Button>
+                  </div>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Create order dialog */}
+        <Dialog open={openCreate} onOpenChange={(o) => { setOpenCreate(o); if (!o) resetCreateForm(); }}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Tạo đơn hàng mới</DialogTitle>
+              <DialogDescription>Điền thông tin để đặt đơn hàng lưu kho.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="space-y-1">
+                <div className="text-sm font-medium text-gray-700">Tên khách hàng <span className="text-red-500">*</span></div>
+                <Input value={createForm.customerName} onChange={(e) => setCreateForm((f) => ({ ...f, customerName: e.target.value }))} placeholder="Nguyễn Văn A" />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-gray-700">Số điện thoại</div>
+                  <Input value={createForm.phone} onChange={(e) => setCreateForm((f) => ({ ...f, phone: e.target.value }))} placeholder="0901234567" />
+                </div>
+                <div className="space-y-1">
+                  <div className="text-sm font-medium text-gray-700">Email</div>
+                  <Input type="email" value={createForm.email} onChange={(e) => setCreateForm((f) => ({ ...f, email: e.target.value }))} placeholder="user@example.com" />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-sm font-medium text-gray-700">Địa chỉ</div>
+                <Input value={createForm.address} onChange={(e) => setCreateForm((f) => ({ ...f, address: e.target.value }))} placeholder="123 Đường ABC, TP.HCM" />
+              </div>
+              <div className="space-y-1">
+                <div className="text-sm font-medium text-gray-700">Ghi chú</div>
+                <Input value={createForm.note} onChange={(e) => setCreateForm((f) => ({ ...f, note: e.target.value }))} placeholder="Yêu cầu đặc biệt..." />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setOpenCreate(false)}>Hủy</Button>
+              <Button className="bg-blue-900 hover:bg-blue-800 text-white" onClick={submitCreate}>Tạo đơn</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Cancel order dialog */}
+        <Dialog open={openCancel} onOpenChange={(o) => { setOpenCancel(o); if (!o) setCancelTarget(null); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Hủy đơn hàng #{cancelTarget?.orderId}</DialogTitle>
+              <DialogDescription>Đơn sẽ chuyển sang trạng thái yêu cầu hủy.</DialogDescription>
+            </DialogHeader>
+            <div className="space-y-1">
+              <div className="text-sm font-medium text-gray-700">Lý do hủy</div>
+              <Input
+                value={cancelReason}
+                onChange={(e) => setCancelReason(e.target.value)}
+                placeholder="Nhập lý do (tuỳ chọn)"
+              />
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setOpenCancel(false)}>Đóng</Button>
+              <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={submitCancel}>Xác nhận hủy</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* View bill dialog */}
+        <Dialog open={openBill} onOpenChange={(o) => { setOpenBill(o); if (!o) setBillData(null); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Vận đơn (Bill of Lading)</DialogTitle>
+            </DialogHeader>
+            {billLoading ? (
+              <div className="py-6 text-center text-gray-500">Đang tải vận đơn...</div>
+            ) : billData ? (
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between"><span className="text-gray-500">Số vận đơn:</span> <span className="font-semibold font-mono">{billData.billNumber}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Mã đơn hàng:</span> <span>#{billData.orderId}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Ngày cấp:</span> <span>{billData.createdDate || '—'}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">Trạng thái:</span>
+                  <Badge className={billData.statusName === 'ISSUED' ? 'bg-green-100 text-green-800' : billData.statusName === 'CANCELLED' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-600'}>
+                    {billData.statusName}
+                  </Badge>
+                </div>
+                {billData.note && <div className="flex justify-between"><span className="text-gray-500">Ghi chú:</span> <span>{billData.note}</span></div>}
+              </div>
+            ) : (
+              <div className="py-6 text-center text-gray-500">Đơn hàng này chưa có vận đơn.</div>
+            )}
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setOpenBill(false)}>Đóng</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </div>
+    </WarehouseLayout>
+  );
+}

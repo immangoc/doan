@@ -1,0 +1,311 @@
+Kiến trúc nên chọn
+
+Module-first + layered architecture
+
+Tức là:
+
+chia theo nghiệp vụ/module
+trong mỗi module tách rõ:
+controller
+service
+repository
+entity
+dto
+mapper
+
+Cách này tốt hơn kiểu gom hết controller/service/repository toàn project vào 1 chỗ vì:
+
+dễ đọc
+dễ mở rộng
+dễ giao cho AI code tiếp
+vẫn rất hợp với monolith
+1. Cây thư mục chuẩn đề xuất
+
+├── common
+│   ├── base
+│   │   ├── BaseEntity.java
+│   │   └── BaseController.java
+│   │
+│   ├── config
+│   │   ├── OpenApiConfig.java
+│   │   ├── SecurityConfig.java
+│   │   ├── RedisConfig.java
+│   │   ├── KafkaConfig.java
+│   │   └── AuditingConfig.java
+│   │
+│   ├── constant
+│   │   ├── AppConstant.java
+│   │   ├── RoleCode.java
+│   │   ├── BookingStatus.java
+│   │   ├── ContainerStatus.java
+│   │   └── ErrorCode.java
+│   │
+│   ├── dto
+│   │   ├── response
+│   │   │   ├── ApiResponse.java
+│   │   │   ├── PageResponse.java
+│   │   │   └── ErrorResponse.java
+│   │   └── pagination
+│   │       └── PageRequestDto.java
+│   │
+│   ├── exception
+│   │   ├── BusinessException.java
+│   │   ├── ResourceNotFoundException.java
+│   │   ├── UnauthorizedException.java
+│   │   ├── ForbiddenException.java
+│   │   └── GlobalExceptionHandler.java
+│   │
+│   ├── mapper
+│   │   └── CommonMapperConfig.java
+│   │
+│   ├── security
+│   │   ├── jwt
+│   │   │   ├── JwtTokenProvider.java
+│   │   │   ├── JwtAuthenticationFilter.java
+│   │   │   └── JwtAuthenticationEntryPoint.java
+│   │   ├── CustomUserDetails.java
+│   │   └── CustomUserDetailsService.java
+│   │
+│   └── util
+│       ├── DateTimeUtils.java
+│       ├── SecurityUtils.java
+│       └── PageableUtils.java
+│
+├── infrastructure
+│   ├── mail
+│   │   ├── MailService.java
+│   │   └── MailServiceImpl.java
+│   ├── redis
+│   │   └── RedisCacheService.java
+│   └── kafka
+│       ├── KafkaProducerService.java
+│       └── KafkaConsumerService.java
+│
+├── modules
+│   ├── auth
+│   │   ├── controller
+│   │   │   └── AuthController.java
+│   │   ├── dto
+│   │   │   ├── request
+│   │   │   │   ├── LoginRequest.java
+│   │   │   │   ├── RegisterRequest.java
+│   │   │   │   ├── ForgotPasswordRequest.java
+│   │   │   │   └── ResetPasswordRequest.java
+│   │   │   └── response
+│   │   │       ├── LoginResponse.java
+│   │   │       └── TokenResponse.java
+│   │   ├── service
+│   │   │   ├── AuthService.java
+│   │   │   └── impl
+│   │   │       └── AuthServiceImpl.java
+│   │   └── facade
+│   │       └── AuthFacade.java
+│   │
+│   ├── user
+│   │   ├── controller
+│   │   │   ├── UserController.java
+│   │   │   ├── RoleController.java
+│   │   │   └── PermissionController.java
+│   │   ├── dto
+│   │   │   ├── request
+│   │   │   └── response
+│   │   ├── entity
+│   │   │   ├── User.java
+│   │   │   ├── Role.java
+│   │   │   ├── Permission.java
+│   │   │   ├── UserProfile.java
+│   │   │   ├── UserAddress.java
+│   │   │   └── PasswordResetToken.java
+│   │   ├── repository
+│   │   │   ├── UserRepository.java
+│   │   │   ├── RoleRepository.java
+│   │   │   ├── PermissionRepository.java
+│   │   │   └── PasswordResetTokenRepository.java
+│   │   ├── mapper
+│   │   │   └── UserMapper.java
+│   │   ├── service
+│   │   │   ├── UserService.java
+│   │   │   ├── RoleService.java
+│   │   │   ├── PermissionService.java
+│   │   │   └── impl
+│   │   └── facade
+│   │       └── UserFacade.java
+│   │
+│   ├── booking
+│   │   ├── controller
+│   │   │   └── BookingController.java
+│   │   ├── dto
+│   │   │   ├── request
+│   │   │   └── response
+│   │   ├── entity
+│   │   │   ├── Booking.java
+│   │   │   ├── BookingContainer.java
+│   │   │   └── BookingCancellation.java
+│   │   ├── repository
+│   │   │   ├── BookingRepository.java
+│   │   │   └── BookingContainerRepository.java
+│   │   ├── mapper
+│   │   │   └── BookingMapper.java
+│   │   ├── service
+│   │   │   ├── BookingService.java
+│   │   │   └── impl
+│   │   └── facade
+│   │       └── BookingFacade.java
+│   │
+│   ├── container
+│   │   ├── controller
+│   │   │   └── ContainerController.java
+│   │   ├── dto
+│   │   ├── entity
+│   │   │   ├── Container.java
+│   │   │   ├── ContainerType.java
+│   │   │   ├── ContainerStatusHistory.java
+│   │   │   ├── CargoType.java
+│   │   │   ├── CargoAttribute.java
+│   │   │   └── ExportPriority.java
+│   │   ├── repository
+│   │   ├── mapper
+│   │   ├── service
+│   │   └── facade
+│   │
+│   ├── vessel
+│   │   ├── controller
+│   │   ├── dto
+│   │   ├── entity
+│   │   │   ├── Vessel.java
+│   │   │   ├── Voyage.java
+│   │   │   └── Manifest.java
+│   │   ├── repository
+│   │   ├── mapper
+│   │   ├── service
+│   │   └── facade
+│   │
+│   ├── yard
+│   │   ├── controller
+│   │   │   ├── YardController.java
+│   │   │   ├── SlotAllocationController.java
+│   │   │   └── RelocationController.java
+│   │   ├── dto
+│   │   ├── entity
+│   │   │   ├── Yard.java
+│   │   │   ├── YardZone.java
+│   │   │   ├── Block.java
+│   │   │   ├── Slot.java
+│   │   │   ├── ContainerPosition.java
+│   │   │   └── YardStorage.java
+│   │   ├── repository
+│   │   ├── mapper
+│   │   ├── service
+│   │   │   ├── YardService.java
+│   │   │   ├── SlotAllocationService.java
+│   │   │   ├── RelocationService.java
+│   │   │   └── impl
+│   │   └── facade
+│   │       └── YardFacade.java
+│   │
+│   ├── gate
+│   │   ├── controller
+│   │   │   ├── GateInController.java
+│   │   │   └── GateOutController.java
+│   │   ├── dto
+│   │   ├── entity
+│   │   │   ├── GateInReceipt.java
+│   │   │   └── GateOutReceipt.java
+│   │   ├── repository
+│   │   ├── mapper
+│   │   ├── service
+│   │   └── facade
+│   │
+│   ├── alert
+│   │   ├── controller
+│   │   ├── dto
+│   │   ├── entity
+│   │   │   ├── Alert.java
+│   │   │   ├── AlertLevel.java
+│   │   │   ├── Notification.java
+│   │   │   └── UserNotification.java
+│   │   ├── repository
+│   │   ├── mapper
+│   │   ├── service
+│   │   └── facade
+│   │
+│   ├── billing
+│   │   ├── controller
+│   │   ├── dto
+│   │   ├── entity
+│   │   │   ├── FeeConfig.java
+│   │   │   ├── Invoice.java
+│   │   │   └── Payment.java
+│   │   ├── repository
+│   │   ├── mapper
+│   │   ├── service
+│   │   └── facade
+│   │
+│   ├── dashboard
+│   │   ├── controller
+│   │   │   └── DashboardController.java
+│   │   ├── dto
+│   │   ├── service
+│   │   └── facade
+│   │
+│   └── lookup
+│       ├── controller
+│       │   └── LookupController.java
+│       ├── dto
+│       └── service
+│
+└── resources
+    ├── application.yml
+    ├── application-local.yml
+    ├── application-dev.yml
+    ├── application-prod.yml
+    └── db/migration
+        ├── V1__init_schema.sql
+        ├── V2__seed_roles.sql
+        └── ...
+2. Kiến trúc này “chuẩn” ở điểm nào
+Tách biệt rõ 4 lớp chính
+Controller
+chỉ nhận request
+validate cơ bản
+trả response
+không viết business logic nặng
+Service
+xử lý business logic
+transaction
+gọi repository
+check rule nghiệp vụ
+Repository
+chỉ truy cập DB
+không viết business logic
+DTO / Mapper
+request/response tách riêng
+không expose entity ra API
+mapper để map entity <-> dto
+Có Facade để orchestration
+
+Đây là điểm mình khuyên nên có.
+
+Ví dụ:
+
+tạo booking có thể cần:
+validate user
+validate container
+tính phí
+tạo booking
+gửi notification
+
+Nếu nhét hết vào controller hoặc 1 service thì rất bẩn.
+
+Facade sẽ đứng giữa:
+
+điều phối nhiều service
+giúp controller gọn
+logic tổng hợp dễ đọc
+3. Response chung chuẩn
+
+Bạn yêu cầu response chung gồm:
+
+message
+status
+data
