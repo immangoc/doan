@@ -18,10 +18,6 @@ public interface StorageInvoiceRepository extends JpaRepository<StorageInvoice, 
 
     boolean existsByContainerContainerId(String containerId);
 
-    @EntityGraph(attributePaths = {"container", "gateOutReceipt"})
-    @Query("SELECT i FROM StorageInvoice i WHERE i.container.containerId = :containerId")
-    Optional<StorageInvoice> findByContainerId(@Param("containerId") String containerId);
-
     @Query("SELECT COUNT(i), COALESCE(SUM(i.totalFee), 0) " +
            "FROM StorageInvoice i WHERE i.createdAt BETWEEN :from AND :to")
     List<Object[]> aggregateByDateRange(@Param("from") LocalDateTime from,

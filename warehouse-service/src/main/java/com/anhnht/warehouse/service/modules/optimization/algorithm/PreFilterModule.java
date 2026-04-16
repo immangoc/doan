@@ -59,7 +59,7 @@ public class PreFilterModule {
      * @param newGrossWeight gross weight of the new container (for weight check)
      * @return list of candidate slots passing all hard constraints
      */
-    public List<SlotCandidate> filter(String yardTypeName, BigDecimal newGrossWeight, String containerType) {
+    public List<SlotCandidate> filter(String yardTypeName, BigDecimal newGrossWeight) {
         List<Slot> slots = slotRepository.findByYardTypeName(yardTypeName);
 
         if (slots.isEmpty()) {
@@ -69,26 +69,7 @@ public class PreFilterModule {
 
         List<SlotCandidate> candidates = new ArrayList<>();
 
-        final boolean is40ft = containerType != null && containerType.toUpperCase().contains("40");
-
         for (Slot slot : slots) {
-            if (Boolean.TRUE.equals(slot.getLocked())) continue;
-
-            // 40ft area rule (Model A — row-pair):
-            // - only allow the dedicated 40ft half (bayNo >= 5, 1-based)
-            // - only consider anchor rows (odd rowNo, 1-based) that have a paired row (rowNo+1) at same bay.
-            if (is40ft) {
-                int bayNo = slot.getBayNo();
-                if (bayNo <= 4) continue;
-                int rowNo = slot.getRowNo();
-                if (rowNo % 2 == 0) continue; // anchor row only
-                Slot paired = slotRepository.findByBlockBlockIdAndRowNoAndBayNo(
-                        slot.getBlock().getBlockId(), rowNo + 1, bayNo
-                ).orElse(null);
-                if (paired == null) continue;
-                if (Boolean.TRUE.equals(paired.getLocked())) continue;
-            }
-
             int occupied = slotRepository.countOccupiedTiers(slot.getSlotId());
 
             // Hard constraint 1: slot must have room

@@ -4,7 +4,6 @@ import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
-import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "slots")
@@ -31,12 +30,9 @@ public class Slot {
     @Column(name = "max_tier")
     private Integer maxTier = 5;
 
-    @Column(name = "is_locked", nullable = false)
-    private Boolean locked = false;
+    @Column(name = "is_locked")
+    private Boolean isLocked = false;
 
-    @Column(name = "lock_reason")
+    @Column(name = "lock_reason", length = 255)
     private String lockReason;
-
-    @Column(name = "locked_at")
-    private LocalDateTime lockedAt;
 }

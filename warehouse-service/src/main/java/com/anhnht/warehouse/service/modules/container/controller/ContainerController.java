@@ -6,13 +6,11 @@ import com.anhnht.warehouse.service.common.util.PageableUtils;
 import com.anhnht.warehouse.service.common.util.SecurityUtils;
 import com.anhnht.warehouse.service.modules.container.dto.request.ContainerRequest;
 import com.anhnht.warehouse.service.modules.container.dto.request.ExportPriorityRequest;
-import com.anhnht.warehouse.service.modules.container.dto.request.ExpectedExitDateRequest;
 import com.anhnht.warehouse.service.modules.container.dto.response.ContainerResponse;
 import com.anhnht.warehouse.service.modules.container.dto.response.ContainerStatusHistoryResponse;
 import com.anhnht.warehouse.service.modules.container.dto.response.ExportPriorityResponse;
 import com.anhnht.warehouse.service.modules.container.mapper.ContainerMapper;
 import com.anhnht.warehouse.service.modules.container.service.ContainerService;
-import com.anhnht.warehouse.service.modules.container.service.DamageWorkflowService;
 import com.anhnht.warehouse.service.modules.gatein.entity.ContainerPosition;
 import com.anhnht.warehouse.service.modules.gatein.repository.ContainerPositionRepository;
 import jakarta.validation.Valid;
@@ -35,7 +33,6 @@ public class ContainerController {
     private final ContainerService             containerService;
     private final ContainerMapper              containerMapper;
     private final ContainerPositionRepository  positionRepository;
-    private final DamageWorkflowService        damageWorkflowService;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
@@ -131,52 +128,9 @@ public class ContainerController {
     @GetMapping("/{id}/status-history")
     @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<List<ContainerStatusHistoryResponse>>> getStatusHistory(
-            @PathVariable String id) {
+            @PathVariable Integer id) {
         return ResponseEntity.ok(ApiResponse.success(
-                containerMapper.toHistoryResponses(containerService.getStatusHistory(id))));
-    }
-
-    @PostMapping("/{id}/damage")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
-    public ResponseEntity<ApiResponse<ContainerResponse>> reportDamage(@PathVariable String id) {
-        return ResponseEntity.ok(ApiResponse.success(
-                containerMapper.toContainerResponse(
-                        containerService.changeStatus(id, "DAMAGED", "Báo hỏng qua giao diện 3D/2D"))));
-    }
-
-    /**
-     * POST /admin/containers/{id}/move-to-damaged-yard
-     * Auto-relocate a container into the "damaged" yard area (Kho hỏng) at tier 1.
-     * Also marks repairStatus = REPAIRING and updates current yard storage record.
-     */
-    @PostMapping("/{id}/move-to-damaged-yard")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
-    public ResponseEntity<ApiResponse<ContainerResponse>> moveToDamagedYard(@PathVariable String id) {
-        return ResponseEntity.ok(ApiResponse.success(
-                containerMapper.toContainerResponse(damageWorkflowService.moveToDamagedYard(id))));
-    }
-
-    /**
-     * PUT /admin/containers/{id}/expected-exit-date
-     * Updates the expected exit date (planned export date) for billing/alerts.
-     */
-    @PutMapping("/{id}/expected-exit-date")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
-    public ResponseEntity<ApiResponse<Void>> setExpectedExitDate(
-            @PathVariable String id,
-            @Valid @RequestBody ExpectedExitDateRequest request) {
-        damageWorkflowService.setExpectedExitDate(id, request.getExpectedExitDate());
-        return ResponseEntity.ok(ApiResponse.success(null));
-    }
-
-
-    @PutMapping("/{id}/damage-details")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
-    public ResponseEntity<ApiResponse<ContainerResponse>> updateDamageDetails(
-            @PathVariable String id,
-            @Valid @RequestBody com.anhnht.warehouse.service.modules.container.dto.request.DamageDetailsRequest request) {
-        return ResponseEntity.ok(ApiResponse.success(
-                containerMapper.toContainerResponse(containerService.updateDamageDetails(id, request))));
+                containerMapper.toHistoryResponses(containerService.getStatusHistory(String.valueOf(id)))));
     }
 
     @PutMapping("/{id}/export-priority")
@@ -200,6 +154,17 @@ public class ContainerController {
     public ResponseEntity<ApiResponse<Void>> deleteContainer(@PathVariable String id) {
         containerService.delete(id);
         return ResponseEntity.ok(ApiResponse.success(null));
+    }
+
+    /**
+     * PUT /admin/containers/{id}/repair
+     * Marks a DAMAGED container as AVAILABLE (repaired).
+     */
+    @PutMapping("/{id}/repair")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    public ResponseEntity<ApiResponse<ContainerResponse>> markRepaired(@PathVariable String id) {
+        return ResponseEntity.ok(ApiResponse.success(
+                containerMapper.toContainerResponse(containerService.markRepaired(id))));
     }
 
     @GetMapping("/my")

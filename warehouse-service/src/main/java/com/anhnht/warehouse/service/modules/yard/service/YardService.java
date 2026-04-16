@@ -39,7 +39,4 @@ public interface YardService {
     int batchCreateSlots(Integer blockId, SlotBatchRequest request);
     Slot updateSlot(Integer slotId, SlotRequest request);
     void deleteSlot(Integer slotId);
-
-    Slot lockSlot(Integer slotId, String reason);
-    Slot unlockSlot(Integer slotId);
 }

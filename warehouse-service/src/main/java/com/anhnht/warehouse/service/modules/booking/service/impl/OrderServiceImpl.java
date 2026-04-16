@@ -26,16 +26,24 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.List;
+
 @Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class OrderServiceImpl implements OrderService {
 
-    private static final String STATUS_PENDING    = "PENDING";
-    private static final String STATUS_APPROVED   = "APPROVED";
-    private static final String STATUS_REJECTED   = "REJECTED";
-    private static final String STATUS_CANCELLED  = "CANCELLED";
+    private static final String STATUS_PENDING           = "PENDING";
+    private static final String STATUS_APPROVED          = "APPROVED";
+    private static final String STATUS_REJECTED          = "REJECTED";
+    private static final String STATUS_CANCELLED         = "CANCELLED";
+    private static final String STATUS_CANCEL_REQUESTED  = "CANCEL_REQUESTED";
+    private static final String STATUS_WAITING_CHECKIN   = "WAITING_CHECKIN";
+    private static final String STATUS_LATE_CHECKIN      = "LATE_CHECKIN";
+    private static final String STATUS_IMPORTED          = "IMPORTED";
+    private static final String STATUS_STORED            = "STORED";
+    private static final String STATUS_EXPORTED          = "EXPORTED";
 
     private final OrderRepository            orderRepository;
     private final OrderStatusRepository      orderStatusRepository;
@@ -73,6 +81,8 @@ public class OrderServiceImpl implements OrderService {
         order.setEmail(request.getEmail());
         order.setAddress(request.getAddress());
         order.setNote(request.getNote());
+        order.setImportDate(request.getImportDate());
+        order.setExportDate(request.getExportDate());
         order.setStatus(pending);
 
         if (customerId != null) {
@@ -92,7 +102,18 @@ public class OrderServiceImpl implements OrderService {
             }
         }
 
-        return orderRepository.save(order);
+        Order saved = orderRepository.save(order);
+
+        // Notify ADMIN and OPERATOR users about new order
+        List<Integer> staffIds = userRepository.findUserIdsByRoleNames(List.of("ADMIN", "OPERATOR"));
+        if (!staffIds.isEmpty()) {
+            notificationService.notify(
+                    "Đơn hàng mới #" + saved.getOrderId(),
+                    "Khách hàng " + saved.getCustomerName() + " vừa tạo đơn hàng mới chờ duyệt.",
+                    staffIds.toArray(new Integer[0]));
+        }
+
+        return saved;
     }
 
     @Override
@@ -109,6 +130,19 @@ public class OrderServiceImpl implements OrderService {
         order.setEmail(request.getEmail());
         order.setAddress(request.getAddress());
         order.setNote(request.getNote());
+        if (request.getImportDate() != null) order.setImportDate(request.getImportDate());
+        if (request.getExportDate() != null) order.setExportDate(request.getExportDate());
+
+        if (request.getContainerIds() != null) {
+            order.getContainers().clear();
+            for (String cid : request.getContainerIds()) {
+                Container container = containerRepository.findById(cid)
+                        .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CONTAINER_NOT_FOUND,
+                                "Container not found: " + cid));
+                order.getContainers().add(container);
+            }
+        }
+
         return orderRepository.save(order);
     }
 
@@ -127,25 +161,45 @@ public class OrderServiceImpl implements OrderService {
         Order order = findById(orderId);
 
         String currentStatus = order.getStatus().getStatusName();
-        if (STATUS_CANCELLED.equalsIgnoreCase(currentStatus)) {
+        if (STATUS_CANCELLED.equalsIgnoreCase(currentStatus)
+                || STATUS_CANCEL_REQUESTED.equalsIgnoreCase(currentStatus)) {
             throw new BusinessException(ErrorCode.BOOKING_CANNOT_CANCEL,
-                    "Order is already cancelled");
+                    "Order is already cancelled or cancellation is pending review");
         }
-        // Only PENDING orders can be cancelled by customer; admin can cancel any non-completed
-        if ("COMPLETED".equalsIgnoreCase(currentStatus)) {
+        if ("COMPLETED".equalsIgnoreCase(currentStatus)
+                || STATUS_EXPORTED.equalsIgnoreCase(currentStatus)
+                || STATUS_REJECTED.equalsIgnoreCase(currentStatus)) {
             throw new BusinessException(ErrorCode.BOOKING_CANNOT_CANCEL,
-                    "Completed orders cannot be cancelled");
+                    "Order in status " + currentStatus + " cannot be cancelled");
         }
 
-        OrderStatus cancelled = resolveStatus(STATUS_CANCELLED);
-        order.setStatus(cancelled);
+        // PENDING → direct cancel (no stock committed, no admin review needed)
+        // Any later status → CANCEL_REQUESTED so admin can review and process refund
+        String targetStatus = STATUS_PENDING.equalsIgnoreCase(currentStatus)
+                ? STATUS_CANCELLED
+                : STATUS_CANCEL_REQUESTED;
+
+        order.setStatus(resolveStatus(targetStatus));
 
         OrderCancellation cancellation = new OrderCancellation();
         cancellation.setOrder(order);
         cancellation.setReason(request.getReason());
         cancellationRepository.save(cancellation);
 
-        return orderRepository.save(order);
+        orderRepository.save(order);
+
+        if (STATUS_CANCEL_REQUESTED.equals(targetStatus)) {
+            // Notify admin/operator that customer wants to cancel
+            List<Integer> staffIds = userRepository.findUserIdsByRoleNames(List.of("ADMIN", "OPERATOR"));
+            if (!staffIds.isEmpty()) {
+                notificationService.notify(
+                        "Yêu cầu hủy đơn #" + orderId,
+                        "Khách hàng " + order.getCustomerName() + " yêu cầu hủy đơn hàng. Vui lòng xem xét và xử lý.",
+                        staffIds.toArray(new Integer[0]));
+            }
+        }
+
+        return order;
     }
 
     @Override
@@ -176,19 +230,76 @@ public class OrderServiceImpl implements OrderService {
             throw new BusinessException(ErrorCode.BOOKING_ALREADY_PROCESSED,
                     "Only PENDING orders can be approved. Current status: " + current);
         }
-        order.setStatus(resolveStatus(STATUS_APPROVED));
+        // Approval transitions directly to "waiting for check-in"
+        order.setStatus(resolveStatus(STATUS_WAITING_CHECKIN));
         orderRepository.save(order);
         if (order.getCustomer() != null) {
             log.info("[Notification] Sending approval notification for order #{} to userId={}",
                     orderId, order.getCustomer().getUserId());
             notificationService.notify(
                     "Đơn hàng #" + orderId + " đã được duyệt",
-                    "Đơn hàng của bạn đã được xem xét và chấp thuận.",
+                    "Đơn hàng của bạn đã được xét duyệt. Vui lòng mang container đến cổng để làm thủ tục nhập kho.",
                     order.getCustomer().getUserId());
         } else {
             log.warn("[Notification] Order #{} has no customer — notification skipped", orderId);
         }
         return order;
+    }
+
+    /** Called by gate-in service when a container belonging to this order is physically received. */
+    @Override
+    @Transactional
+    public void markImported(String containerId) {
+        orderRepository.findActiveOrderByContainerId(containerId,
+                List.of(STATUS_WAITING_CHECKIN, STATUS_LATE_CHECKIN, STATUS_APPROVED))
+                .ifPresent(order -> {
+                    order.setStatus(resolveStatus(STATUS_IMPORTED));
+                    orderRepository.save(order);
+                    log.info("[Order] Container {} gate-in → Order #{} → IMPORTED", containerId, order.getOrderId());
+                    if (order.getCustomer() != null) {
+                        notificationService.notify(
+                                "Container đã nhập kho — Đơn #" + order.getOrderId(),
+                                "Container của bạn đã được tiếp nhận và đang chờ sắp xếp vị trí trong bãi.",
+                                order.getCustomer().getUserId());
+                    }
+                });
+    }
+
+    /** Called by gate-in service when a container is assigned a yard position. */
+    @Override
+    @Transactional
+    public void markStored(String containerId) {
+        orderRepository.findActiveOrderByContainerId(containerId, List.of(STATUS_IMPORTED))
+                .ifPresent(order -> {
+                    order.setStatus(resolveStatus(STATUS_STORED));
+                    orderRepository.save(order);
+                    log.info("[Order] Container {} positioned → Order #{} → STORED", containerId, order.getOrderId());
+                    if (order.getCustomer() != null) {
+                        notificationService.notify(
+                                "Container đã vào vị trí — Đơn #" + order.getOrderId(),
+                                "Container của bạn đã được sắp xếp vào vị trí trong kho.",
+                                order.getCustomer().getUserId());
+                    }
+                });
+    }
+
+    /** Called by gate-out service when a container leaves the yard. */
+    @Override
+    @Transactional
+    public void markExported(String containerId) {
+        orderRepository.findActiveOrderByContainerId(containerId,
+                List.of(STATUS_STORED, STATUS_IMPORTED, STATUS_WAITING_CHECKIN))
+                .ifPresent(order -> {
+                    order.setStatus(resolveStatus(STATUS_EXPORTED));
+                    orderRepository.save(order);
+                    log.info("[Order] Container {} gate-out → Order #{} → EXPORTED", containerId, order.getOrderId());
+                    if (order.getCustomer() != null) {
+                        notificationService.notify(
+                                "Container đã xuất kho — Đơn #" + order.getOrderId(),
+                                "Container của bạn đã được xuất kho thành công.",
+                                order.getCustomer().getUserId());
+                    }
+                });
     }
 
     @Override
@@ -223,6 +334,51 @@ public class OrderServiceImpl implements OrderService {
             log.warn("[Notification] Order #{} has no customer — notification skipped", orderId);
         }
 
+        return order;
+    }
+
+    @Override
+    @Transactional
+    public Order approveCancellation(Integer orderId) {
+        Order order = findById(orderId);
+        String current = order.getStatus().getStatusName();
+        if (!STATUS_CANCEL_REQUESTED.equalsIgnoreCase(current)) {
+            throw new BusinessException(ErrorCode.BOOKING_ALREADY_PROCESSED,
+                    "Only CANCEL_REQUESTED orders can have cancellation approved. Current: " + current);
+        }
+        order.setStatus(resolveStatus(STATUS_CANCELLED));
+        orderRepository.save(order);
+        if (order.getCustomer() != null) {
+            notificationService.notify(
+                    "Yêu cầu hủy đơn #" + orderId + " được chấp thuận",
+                    "Yêu cầu hủy đơn hàng của bạn đã được xử lý và xác nhận.",
+                    order.getCustomer().getUserId());
+        }
+        return order;
+    }
+
+    @Override
+    @Transactional
+    public Order adminCancel(Integer orderId, String reason) {
+        Order order = findById(orderId);
+        String current = order.getStatus().getStatusName();
+        if (STATUS_CANCELLED.equalsIgnoreCase(current)) {
+            throw new BusinessException(ErrorCode.BOOKING_CANNOT_CANCEL, "Order is already cancelled");
+        }
+        order.setStatus(resolveStatus(STATUS_CANCELLED));
+        if (reason != null && !reason.isBlank()) {
+            OrderCancellation record = new OrderCancellation();
+            record.setOrder(order);
+            record.setReason(reason);
+            cancellationRepository.save(record);
+        }
+        orderRepository.save(order);
+        if (order.getCustomer() != null) {
+            notificationService.notify(
+                    "Đơn hàng #" + orderId + " đã bị hủy",
+                    "Đơn hàng của bạn đã bị hủy bởi nhân viên." + (reason != null ? " Lý do: " + reason : ""),
+                    order.getCustomer().getUserId());
+        }
         return order;
     }
 

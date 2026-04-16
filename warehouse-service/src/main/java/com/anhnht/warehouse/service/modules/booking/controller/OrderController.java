@@ -139,6 +139,31 @@ public class OrderController {
                 bookingMapper.toOrderResponse(orderService.reject(id, reason))));
     }
 
+    /**
+     * PUT /admin/orders/{id}/approve-cancel
+     * Approves a customer's CANCEL_REQUESTED → CANCELLED.
+     */
+    @PutMapping("/admin/orders/{id}/approve-cancel")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    public ResponseEntity<ApiResponse<OrderResponse>> approveCancellation(@PathVariable Integer id) {
+        return ResponseEntity.ok(ApiResponse.success(
+                bookingMapper.toOrderResponse(orderService.approveCancellation(id))));
+    }
+
+    /**
+     * PUT /admin/orders/{id}/cancel
+     * Admin force-cancels any non-cancelled order.
+     */
+    @PutMapping("/admin/orders/{id}/cancel")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    public ResponseEntity<ApiResponse<OrderResponse>> adminCancelOrder(
+            @PathVariable Integer id,
+            @RequestBody(required = false) OrderCancelRequest request) {
+        String reason = (request != null) ? request.getReason() : null;
+        return ResponseEntity.ok(ApiResponse.success(
+                bookingMapper.toOrderResponse(orderService.adminCancel(id, reason))));
+    }
+
     @PostMapping("/admin/orders/{orderId}/containers/{containerId}")
     @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<OrderResponse>> addContainer(

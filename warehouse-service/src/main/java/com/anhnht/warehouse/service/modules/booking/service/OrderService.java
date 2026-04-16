@@ -49,4 +49,19 @@ public interface OrderService {
      * @param reason optional rejection reason stored in a cancellation record
      */
     Order reject(Integer orderId, String reason);
+
+    /** Admin/Operator approves a customer's cancellation request → CANCELLED. */
+    Order approveCancellation(Integer orderId);
+
+    /** Admin/Operator force-cancels any non-cancelled order → CANCELLED. */
+    Order adminCancel(Integer orderId, String reason);
+
+    /** Called by gate-in service after container passes gate — order → IMPORTED. */
+    void markImported(String containerId);
+
+    /** Called by gate-in service after container assigned to slot — order → STORED. */
+    void markStored(String containerId);
+
+    /** Called by gate-out service after container passes gate — order → EXPORTED. */
+    void markExported(String containerId);
 }

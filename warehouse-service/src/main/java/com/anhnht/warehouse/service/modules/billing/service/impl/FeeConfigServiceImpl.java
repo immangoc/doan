@@ -53,6 +53,17 @@ public class FeeConfigServiceImpl implements FeeConfigService {
             }
         }
 
+        if (request.getLiftingFeePerMove()    != null) config.setLiftingFeePerMove(request.getLiftingFeePerMove());
+        if (request.getOverduePenaltyRate()   != null) config.setOverduePenaltyRate(request.getOverduePenaltyRate());
+        if (request.getColdStorageSurcharge() != null) config.setColdStorageSurcharge(request.getColdStorageSurcharge());
+        if (request.getHazmatSurcharge()      != null) config.setHazmatSurcharge(request.getHazmatSurcharge());
+        if (request.getFreeStorageDays()      != null) config.setFreeStorageDays(request.getFreeStorageDays());
+        if (request.getStorageMultiplier()    != null) config.setStorageMultiplier(request.getStorageMultiplier());
+        if (request.getWeightMultiplier()     != null) config.setWeightMultiplier(request.getWeightMultiplier());
+        if (request.getContainerRate20ft()    != null) config.setContainerRate20ft(request.getContainerRate20ft());
+        if (request.getContainerRate40ft()    != null) config.setContainerRate40ft(request.getContainerRate40ft());
+        if (request.getEarlyPickupFee()       != null) config.setEarlyPickupFee(request.getEarlyPickupFee());
+
         config.setUpdatedAt(LocalDateTime.now());
         return repository.save(config);
     }

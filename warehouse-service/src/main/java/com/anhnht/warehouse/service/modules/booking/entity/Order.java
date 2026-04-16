@@ -8,6 +8,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -45,6 +46,12 @@ public class Order extends BaseEntity {
 
     @Column(name = "note", length = 255)
     private String note;
+
+    @Column(name = "import_date")
+    private LocalDate importDate;
+
+    @Column(name = "export_date")
+    private LocalDate exportDate;
 
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(

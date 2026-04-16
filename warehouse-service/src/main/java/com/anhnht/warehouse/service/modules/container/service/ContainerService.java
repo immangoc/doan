@@ -23,10 +23,11 @@ public interface ContainerService {
     /** Internal: update container status and record history entry. */
     Container changeStatus(String containerId, String statusName, String description);
 
-    Container updateDamageDetails(String containerId, com.anhnht.warehouse.service.modules.container.dto.request.DamageDetailsRequest request);
-
     List<ContainerStatusHistory> getStatusHistory(String containerId);
 
     ExportPriority setExportPriority(String containerId, ExportPriorityRequest request);
     ExportPriority getExportPriority(String containerId);
+
+    /** Marks a DAMAGED container as AVAILABLE (repaired). */
+    Container markRepaired(String containerId);
 }

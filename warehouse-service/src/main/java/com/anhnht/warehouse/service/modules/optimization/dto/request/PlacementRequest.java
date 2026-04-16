@@ -28,10 +28,4 @@ public class PlacementRequest {
 
     @DecimalMin("0.0")
     private BigDecimal grossWeight;
-
-    /**
-     * Optional: container size/type hint from UI (e.g. '20ft', '40ft').
-     * When provided, the algorithm will apply area + footprint constraints accordingly.
-     */
-    private String containerType;
 }

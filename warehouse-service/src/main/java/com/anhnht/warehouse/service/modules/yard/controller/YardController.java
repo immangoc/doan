@@ -222,31 +222,4 @@ public class YardController {
         yardService.deleteSlot(id);
         return ResponseEntity.ok(ApiResponse.noContent("Slot deleted"));
     }
-
-    // ============================================================
-    // Slot locking (Khóa / Mở vị trí)
-    // ============================================================
-
-    @PostMapping("/slots/{id}/lock")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
-    public ResponseEntity<ApiResponse<SlotResponse>> lockSlot(
-            @PathVariable Integer id,
-            @RequestBody(required = false) Map<String, Object> body
-    ) {
-        String reason = null;
-        if (body != null && body.get("reason") != null) {
-            reason = String.valueOf(body.get("reason"));
-        }
-        return ResponseEntity.ok(ApiResponse.success(
-                yardMapper.toSlotResponse(yardService.lockSlot(id, reason))
-        ));
-    }
-
-    @PostMapping("/slots/{id}/unlock")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
-    public ResponseEntity<ApiResponse<SlotResponse>> unlockSlot(@PathVariable Integer id) {
-        return ResponseEntity.ok(ApiResponse.success(
-                yardMapper.toSlotResponse(yardService.unlockSlot(id))
-        ));
-    }
 }

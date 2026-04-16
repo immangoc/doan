@@ -13,5 +13,7 @@ public class ShippingCompanyResponse {
     private String        phone;
     private String        email;
     private String        address;
+    private String        code;
+    private String        country;
     private LocalDateTime createdAt;
 }

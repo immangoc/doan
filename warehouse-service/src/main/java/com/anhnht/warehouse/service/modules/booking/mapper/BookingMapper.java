@@ -10,10 +10,13 @@ import com.anhnht.warehouse.service.modules.booking.entity.BillOfLadingHistory;
 import com.anhnht.warehouse.service.modules.booking.entity.Order;
 import com.anhnht.warehouse.service.modules.booking.entity.OrderCancellation;
 import com.anhnht.warehouse.service.modules.container.entity.Container;
+import org.mapstruct.AfterMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+import org.mapstruct.MappingTarget;
 import org.mapstruct.Named;
 
+import java.math.BigDecimal;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -45,5 +48,15 @@ public interface BookingMapper {
         return containers.stream()
                 .map(Container::getContainerId)
                 .collect(Collectors.toSet());
+    }
+
+    @AfterMapping
+    default void fillTotalWeight(Order order, @MappingTarget OrderResponse response) {
+        if (order.getContainers() == null) return;
+        BigDecimal total = order.getContainers().stream()
+                .filter(c -> c.getGrossWeight() != null)
+                .map(Container::getGrossWeight)
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        response.setTotalGrossWeight(total.compareTo(BigDecimal.ZERO) == 0 ? null : total);
     }
 }

@@ -46,13 +46,12 @@ public class StackingAlgorithm {
      */
     public PlacementRecommendation recommend(String containerId,
                                              String cargoTypeName,
-                                             BigDecimal grossWeight,
-                                             String containerType) {
+                                             BigDecimal grossWeight) {
         long start = System.currentTimeMillis();
 
         // Module 0 — Pre-filter
         String yardTypeName = preFilter.resolveYardType(cargoTypeName);
-        List<SlotCandidate> candidates = preFilter.filter(yardTypeName, grossWeight, containerType);
+        List<SlotCandidate> candidates = preFilter.filter(yardTypeName, grossWeight);
         log.debug("[Algorithm] Pre-filter passed: {} candidates", candidates.size());
 
         // Module A — Heuristic scoring

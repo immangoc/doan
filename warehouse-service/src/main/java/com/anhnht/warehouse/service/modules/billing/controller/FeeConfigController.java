@@ -40,6 +40,16 @@ public class FeeConfigController {
         r.setCostRate(entity.getCostRate());
         r.setRatePerKgDefault(entity.getRatePerKgDefault());
         r.setRatePerKgByCargoType(feeConfigServiceImpl.parseRates(entity.getRatePerKgByType()));
+        r.setLiftingFeePerMove(entity.getLiftingFeePerMove());
+        r.setOverduePenaltyRate(entity.getOverduePenaltyRate());
+        r.setColdStorageSurcharge(entity.getColdStorageSurcharge());
+        r.setHazmatSurcharge(entity.getHazmatSurcharge());
+        r.setFreeStorageDays(entity.getFreeStorageDays());
+        r.setStorageMultiplier(entity.getStorageMultiplier());
+        r.setWeightMultiplier(entity.getWeightMultiplier());
+        r.setContainerRate20ft(entity.getContainerRate20ft());
+        r.setContainerRate40ft(entity.getContainerRate40ft());
+        r.setEarlyPickupFee(entity.getEarlyPickupFee());
         r.setUpdatedAt(entity.getUpdatedAt());
         return r;
     }

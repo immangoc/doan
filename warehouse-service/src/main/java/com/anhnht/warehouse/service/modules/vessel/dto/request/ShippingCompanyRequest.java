@@ -21,4 +21,10 @@ public class ShippingCompanyRequest {
 
     @Size(max = 255)
     private String address;
+
+    @Size(max = 20)
+    private String code;
+
+    @Size(max = 100)
+    private String country;
 }

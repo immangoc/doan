@@ -22,13 +22,6 @@ public interface ContainerPositionRepository extends JpaRepository<ContainerPosi
     @Query("SELECT COUNT(cp) FROM ContainerPosition cp WHERE cp.slot.slotId = :slotId AND cp.tier = :tier")
     int countBySlotAndTier(@Param("slotId") Integer slotId, @Param("tier") Integer tier);
 
-    /** Fetch one position with container + containerType for rule checks (20ft/40ft footprint). */
-    @Query("SELECT cp FROM ContainerPosition cp " +
-           "JOIN FETCH cp.container c " +
-           "LEFT JOIN FETCH c.containerType ct " +
-           "WHERE cp.slot.slotId = :slotId AND cp.tier = :tier")
-    Optional<ContainerPosition> findBySlotAndTierWithContainer(@Param("slotId") Integer slotId, @Param("tier") Integer tier);
-
     boolean existsByContainerContainerId(String containerId);
 
     /** Algorithm: all containers in a slot ordered tier DESC (top first, for BFS). */

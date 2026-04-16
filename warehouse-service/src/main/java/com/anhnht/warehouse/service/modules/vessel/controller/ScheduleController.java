@@ -69,6 +69,7 @@ public class ScheduleController {
         r.setLocation(entity.getLocation());
         r.setContainers(entity.getContainers());
         r.setStatus(entity.getStatus());
+        r.setShipType(entity.getShipType());
         r.setCreatedAt(entity.getCreatedAt());
         r.setUpdatedAt(entity.getUpdatedAt());
         return r;

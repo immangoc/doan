@@ -28,7 +28,6 @@ public class OptimizationServiceImpl implements OptimizationService {
         String     containerId   = null;
         String     cargoTypeName;
         BigDecimal grossWeight;
-        String     containerType = request.getContainerType();
 
         if (StringUtils.hasText(request.getContainerId())) {
             // Resolve from registered container
@@ -38,9 +37,6 @@ public class OptimizationServiceImpl implements OptimizationService {
                     ? container.getCargoType().getCargoTypeName()
                     : null;
             grossWeight   = container.getGrossWeight();
-            if (containerType == null && container.getContainerType() != null) {
-                containerType = container.getContainerType().getContainerTypeName();
-            }
 
             if (cargoTypeName == null) {
                 throw new BusinessException(ErrorCode.BAD_REQUEST,
@@ -56,6 +52,6 @@ public class OptimizationServiceImpl implements OptimizationService {
             grossWeight   = request.getGrossWeight();
         }
 
-        return algorithm.recommend(containerId, cargoTypeName, grossWeight, containerType);
+        return algorithm.recommend(containerId, cargoTypeName, grossWeight);
     }
 }

@@ -29,4 +29,7 @@ public class ScheduleRequest {
 
     @Size(max = 30)
     private String status;
+
+    @Size(max = 50)
+    private String shipType;
 }

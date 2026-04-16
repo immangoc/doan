@@ -8,6 +8,8 @@ import com.anhnht.warehouse.service.modules.container.dto.request.ExportPriority
 import com.anhnht.warehouse.service.modules.container.entity.*;
 import com.anhnht.warehouse.service.modules.container.repository.*;
 import com.anhnht.warehouse.service.modules.container.service.ContainerService;
+import com.anhnht.warehouse.service.modules.alert.service.NotificationService;
+import com.anhnht.warehouse.service.modules.user.repository.UserRepository;
 import com.anhnht.warehouse.service.modules.vessel.entity.Manifest;
 import com.anhnht.warehouse.service.modules.vessel.repository.ManifestRepository;
 import lombok.RequiredArgsConstructor;
@@ -31,6 +33,8 @@ public class ContainerServiceImpl implements ContainerService {
     private final ContainerTypeRepository          containerTypeRepository;
     private final CargoTypeRepository              cargoTypeRepository;
     private final CargoAttributeRepository         cargoAttributeRepository;
+    private final NotificationService              notificationService;
+    private final UserRepository                   userRepository;
 
     @Override
     public Page<Container> findAll(String keyword, String statusName, Pageable pageable) {
@@ -63,6 +67,7 @@ public class ContainerServiceImpl implements ContainerService {
         container.setContainerId(request.getContainerId());
         container.setSealNumber(request.getSealNumber());
         container.setGrossWeight(request.getGrossWeight());
+        container.setDeclaredValue(request.getDeclaredValue());
         container.setNote(request.getNote());
 
         applyLookups(container, request);
@@ -82,6 +87,7 @@ public class ContainerServiceImpl implements ContainerService {
         Container container = findById(containerId);
         container.setSealNumber(request.getSealNumber());
         container.setGrossWeight(request.getGrossWeight());
+        container.setDeclaredValue(request.getDeclaredValue());
         container.setNote(request.getNote());
         applyLookups(container, request);
         return containerRepository.save(container);
@@ -102,23 +108,20 @@ public class ContainerServiceImpl implements ContainerService {
         container.setStatus(newStatus);
         Container saved = containerRepository.save(container);
         recordHistory(saved, newStatus, description);
-        return saved;
-    }
 
-    @Override
-    @Transactional
-    public Container updateDamageDetails(String containerId, com.anhnht.warehouse.service.modules.container.dto.request.DamageDetailsRequest request) {
-        Container container = findById(containerId);
-        if (request.getRepairStatus() != null) {
-            container.setRepairStatus(request.getRepairStatus());
+        // Notify staff when a container is marked as DAMAGED
+        if ("DAMAGED".equalsIgnoreCase(newStatus.getStatusName())) {
+            List<Integer> staffIds = userRepository.findUserIdsByRoleNames(List.of("ADMIN", "OPERATOR"));
+            if (!staffIds.isEmpty()) {
+                notificationService.notify(
+                        "Container hỏng: " + containerId,
+                        "Container " + containerId + " đã được đánh dấu là DAMAGED. " +
+                        (description != null && !description.isBlank() ? "Ghi chú: " + description : ""),
+                        staffIds.toArray(new Integer[0]));
+            }
         }
-        if (request.getRepairDate() != null) {
-            container.setRepairDate(request.getRepairDate());
-        }
-        if (request.getCompensationCost() != null) {
-            container.setCompensationCost(request.getCompensationCost());
-        }
-        return containerRepository.save(container);
+
+        return saved;
     }
 
     @Override
@@ -176,6 +179,21 @@ public class ContainerServiceImpl implements ContainerService {
         return statusRepository.findByStatusNameIgnoreCase(name)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.NOT_FOUND,
                         "Container status not found: " + name));
+    }
+
+    @Override
+    @Transactional
+    public Container markRepaired(String containerId) {
+        Container container = findById(containerId);
+        if (!"DAMAGED".equalsIgnoreCase(container.getStatus().getStatusName())) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST,
+                    "Only DAMAGED containers can be marked as repaired. Current: "
+                    + container.getStatus().getStatusName());
+        }
+        ContainerStatus available = resolveStatus("AVAILABLE");
+        container.setStatus(available);
+        recordHistory(container, available, "Container marked as repaired");
+        return containerRepository.save(container);
     }
 
     private void recordHistory(Container container, ContainerStatus status, String description) {

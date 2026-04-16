@@ -49,12 +49,6 @@ public class Container extends BaseEntity {
     @Column(name = "note", length = 255)
     private String note;
 
-    @Column(name = "repair_status", length = 50)
-    private String repairStatus;
-
-    @Column(name = "repair_date")
-    private java.time.LocalDateTime repairDate;
-
-    @Column(name = "compensation_cost", precision = 15, scale = 2)
-    private BigDecimal compensationCost;
+    @Column(name = "declared_value", precision = 15, scale = 2)
+    private BigDecimal declaredValue;
 }

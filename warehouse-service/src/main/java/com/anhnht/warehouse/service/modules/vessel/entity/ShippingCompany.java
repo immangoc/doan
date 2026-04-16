@@ -31,6 +31,12 @@ public class ShippingCompany {
     @Column(name = "address", length = 255)
     private String address;
 
+    @Column(name = "code", length = 20)
+    private String code;
+
+    @Column(name = "country", length = 100)
+    private String country;
+
     @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 }

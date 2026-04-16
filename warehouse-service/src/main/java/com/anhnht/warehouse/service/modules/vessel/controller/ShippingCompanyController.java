@@ -38,7 +38,7 @@ public class ShippingCompanyController {
     public ResponseEntity<ApiResponse<ShippingCompanyResponse>> create(
             @Valid @RequestBody ShippingCompanyRequest request) {
         return ResponseEntity.status(201).body(ApiResponse.created(
-                toResponse(service.create(request.getName()))));
+                toResponse(service.create(request))));
     }
 
     @PutMapping("/{id}")
@@ -47,7 +47,7 @@ public class ShippingCompanyController {
             @PathVariable Integer id,
             @Valid @RequestBody ShippingCompanyRequest request) {
         return ResponseEntity.ok(ApiResponse.success(
-                toResponse(service.update(id, request.getName()))));
+                toResponse(service.update(id, request))));
     }
 
     @DeleteMapping("/{id}")
@@ -66,6 +66,8 @@ public class ShippingCompanyController {
         r.setPhone(entity.getPhone());
         r.setEmail(entity.getEmail());
         r.setAddress(entity.getAddress());
+        r.setCode(entity.getCode());
+        r.setCountry(entity.getCountry());
         r.setCreatedAt(entity.getCreatedAt());
         return r;
     }

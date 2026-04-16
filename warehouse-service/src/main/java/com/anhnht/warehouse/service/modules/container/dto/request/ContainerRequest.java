@@ -21,6 +21,7 @@ public class ContainerRequest {
     private Integer attributeId;
 
     private BigDecimal grossWeight;
+    private BigDecimal declaredValue;
 
     @Size(max = 50)
     private String sealNumber;

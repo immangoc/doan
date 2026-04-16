@@ -3,6 +3,10 @@ package com.anhnht.warehouse.service.modules.alert.scheduler;
 import com.anhnht.warehouse.service.common.constant.AppConstant;
 import com.anhnht.warehouse.service.modules.alert.service.AlertService;
 import com.anhnht.warehouse.service.modules.alert.service.NotificationService;
+import com.anhnht.warehouse.service.modules.booking.entity.Order;
+import com.anhnht.warehouse.service.modules.booking.entity.OrderStatus;
+import com.anhnht.warehouse.service.modules.booking.repository.OrderRepository;
+import com.anhnht.warehouse.service.modules.booking.repository.OrderStatusRepository;
 import com.anhnht.warehouse.service.modules.gatein.entity.YardStorage;
 import com.anhnht.warehouse.service.modules.gatein.repository.ContainerPositionRepository;
 import com.anhnht.warehouse.service.modules.gatein.repository.YardStorageRepository;
@@ -23,12 +27,16 @@ import java.util.List;
 @RequiredArgsConstructor
 public class AlertScheduler {
 
-    private final YardStorageRepository     yardStorageRepository;
-    private final YardZoneRepository        yardZoneRepository;
+    private static final int LATE_CHECKIN_AUTO_CANCEL_DAYS = 3;
+
+    private final YardStorageRepository       yardStorageRepository;
+    private final YardZoneRepository          yardZoneRepository;
     private final ContainerPositionRepository containerPositionRepository;
-    private final AlertService              alertService;
-    private final NotificationService       notificationService;
-    private final UserRepository            userRepository;
+    private final AlertService                alertService;
+    private final NotificationService         notificationService;
+    private final UserRepository              userRepository;
+    private final OrderRepository             orderRepository;
+    private final OrderStatusRepository       orderStatusRepository;
 
     /**
      * Daily at 08:00 — check exit deadlines and overdue containers.
@@ -131,6 +139,65 @@ public class AlertScheduler {
         }
 
         log.info("[AlertScheduler] Zone occupancy check completed for {} zones.", zones.size());
+    }
+
+    /**
+     * Daily at 08:05 — detect late check-ins and auto-cancel expired ones.
+     *
+     * Flow:
+     * 1. WAITING_CHECKIN orders whose importDate < today → transition to LATE_CHECKIN + notify customer
+     * 2. LATE_CHECKIN orders whose importDate < today - 3 days → auto-cancel (no refund) + notify customer
+     */
+    @Scheduled(cron = "0 5 8 * * *")
+    @Transactional
+    public void checkLateCheckIn() {
+        log.info("[AlertScheduler] Running late check-in detection...");
+
+        LocalDate today  = LocalDate.now();
+        LocalDate cutoff = today.minusDays(LATE_CHECKIN_AUTO_CANCEL_DAYS);
+
+        OrderStatus lateStatus      = orderStatusRepository.findByStatusNameIgnoreCase("LATE_CHECKIN").orElse(null);
+        OrderStatus cancelledStatus = orderStatusRepository.findByStatusNameIgnoreCase("CANCELLED").orElse(null);
+
+        if (lateStatus == null || cancelledStatus == null) {
+            log.warn("[AlertScheduler] LATE_CHECKIN or CANCELLED order status not found — skipping late check-in task");
+            return;
+        }
+
+        // Step 1: WAITING_CHECKIN overdue → LATE_CHECKIN
+        List<Order> waitingOrders = orderRepository.findByStatusNameAndImportDateBefore("WAITING_CHECKIN", today);
+        for (Order order : waitingOrders) {
+            order.setStatus(lateStatus);
+            orderRepository.save(order);
+            log.info("[AlertScheduler] Order #{} overdue check-in — status → LATE_CHECKIN", order.getOrderId());
+            if (order.getCustomer() != null) {
+                notificationService.notify(
+                        "Đơn hàng #" + order.getOrderId() + " chưa nhận hàng đúng hạn",
+                        "Container chưa được giao đến cổng đúng ngày dự kiến. " +
+                        "Vui lòng liên hệ hoặc hủy đơn trong vòng " + LATE_CHECKIN_AUTO_CANCEL_DAYS +
+                        " ngày để được hoàn tiền.",
+                        order.getCustomer().getUserId());
+            }
+        }
+
+        // Step 2: LATE_CHECKIN still not resolved after 3 days → auto-cancel (no refund)
+        List<Order> expiredOrders = orderRepository.findByStatusNameAndImportDateBefore("LATE_CHECKIN", cutoff);
+        for (Order order : expiredOrders) {
+            order.setStatus(cancelledStatus);
+            orderRepository.save(order);
+            log.info("[AlertScheduler] Order #{} auto-cancelled after {} days of late check-in (no refund)",
+                    order.getOrderId(), LATE_CHECKIN_AUTO_CANCEL_DAYS);
+            if (order.getCustomer() != null) {
+                notificationService.notify(
+                        "Đơn hàng #" + order.getOrderId() + " đã bị hủy tự động",
+                        "Đơn hàng đã bị hủy do không hoàn thành check-in trong " +
+                        LATE_CHECKIN_AUTO_CANCEL_DAYS + " ngày sau ngày nhập kho dự kiến. Không hoàn tiền.",
+                        order.getCustomer().getUserId());
+            }
+        }
+
+        log.info("[AlertScheduler] Late check-in check done. Late: {}, Auto-cancelled: {}",
+                waitingOrders.size(), expiredOrders.size());
     }
 
     // ── helpers ─────────────────────────────────────────────────────────────

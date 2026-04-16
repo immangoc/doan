@@ -2,6 +2,8 @@ package com.anhnht.warehouse.service.modules.lookup.controller;
 
 import com.anhnht.warehouse.service.common.constant.AppConstant;
 import com.anhnht.warehouse.service.common.dto.response.ApiResponse;
+import com.anhnht.warehouse.service.modules.billing.entity.FeeConfig;
+import com.anhnht.warehouse.service.modules.billing.repository.FeeConfigRepository;
 import com.anhnht.warehouse.service.modules.container.dto.response.CargoTypeResponse;
 import com.anhnht.warehouse.service.modules.container.dto.response.ContainerTypeResponse;
 import com.anhnht.warehouse.service.modules.container.mapper.ContainerCatalogMapper;
@@ -35,6 +37,7 @@ public class LookupController {
     private final VesselMapper            vesselMapper;
     private final YardService             yardService;
     private final YardMapper              yardMapper;
+    private final FeeConfigRepository     feeConfigRepository;
 
     @GetMapping("/container-types")
     public ResponseEntity<ApiResponse<List<ContainerTypeResponse>>> getContainerTypes() {
@@ -62,10 +65,14 @@ public class LookupController {
 
     @GetMapping("/fee-config")
     public ResponseEntity<ApiResponse<FeeConfigResponse>> getFeeConfig() {
+        FeeConfig db = feeConfigRepository.findAll().stream().findFirst().orElseGet(FeeConfig::new);
         FeeConfigResponse config = FeeConfigResponse.builder()
-                .dailyStorageRate(AppConstant.STORAGE_DAILY_RATE)
-                .overdueStorageRate(AppConstant.STORAGE_OVERDUE_RATE)
-                .freeStorageDays(AppConstant.STORAGE_FREE_DAYS)
+                .dailyStorageRate(db.getRatePerKgDefault() != null
+                        ? db.getRatePerKgDefault().doubleValue() : AppConstant.STORAGE_DAILY_RATE)
+                .overdueStorageRate(db.getOverduePenaltyRate() != null
+                        ? db.getOverduePenaltyRate().doubleValue() : AppConstant.STORAGE_OVERDUE_RATE)
+                .freeStorageDays(db.getFreeStorageDays() != null
+                        ? db.getFreeStorageDays() : AppConstant.STORAGE_FREE_DAYS)
                 .deadlineWarnDays(AppConstant.DEADLINE_WARN_DAYS)
                 .deadlineUrgentDays(AppConstant.DEADLINE_URGENT_DAYS)
                 .zoneOccupancyWarnThreshold(AppConstant.OCC_WARN_THRESHOLD)

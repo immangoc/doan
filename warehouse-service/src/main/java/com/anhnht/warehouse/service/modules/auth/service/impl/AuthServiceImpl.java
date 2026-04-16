@@ -81,6 +81,24 @@ public class AuthServiceImpl implements AuthService {
         userRepository.save(user);
     }
 
+    private static final String REG_OTP_PREFIX = "reg_otp:";
+
+    @Override
+    public void sendRegistrationOtp(String email) {
+        String otp = generateOtp();
+        redisCache.saveOtp(REG_OTP_PREFIX + email, otp, AppConstant.OTP_TTL_SECONDS);
+        mailService.sendOtp(email, otp);
+    }
+
+    @Override
+    public void verifyRegistrationOtp(String email, String otp) {
+        String stored = redisCache.getOtp(REG_OTP_PREFIX + email);
+        if (stored == null || !stored.equals(otp)) {
+            throw new BusinessException(ErrorCode.INVALID_OTP);
+        }
+        redisCache.deleteOtp(REG_OTP_PREFIX + email);
+    }
+
     // ---- Private helpers ----
 
     private String generateOtp() {

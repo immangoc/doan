@@ -3,6 +3,8 @@ package com.anhnht.warehouse.service.modules.auth.controller;
 import com.anhnht.warehouse.service.common.dto.response.ApiResponse;
 import com.anhnht.warehouse.service.common.util.SecurityUtils;
 import com.anhnht.warehouse.service.modules.auth.dto.request.*;
+import com.anhnht.warehouse.service.modules.auth.dto.request.SendOtpRequest;
+import com.anhnht.warehouse.service.modules.auth.dto.request.VerifyOtpRequest;
 import com.anhnht.warehouse.service.modules.auth.dto.response.LoginResponse;
 import com.anhnht.warehouse.service.modules.auth.facade.AuthFacade;
 import jakarta.validation.Valid;
@@ -54,6 +56,20 @@ public class AuthController {
             @Valid @RequestBody ResetPasswordRequest request) {
         authFacade.resetPassword(request);
         return ResponseEntity.ok(ApiResponse.noContent("Password reset successfully"));
+    }
+
+    @PostMapping("/send-registration-otp")
+    public ResponseEntity<ApiResponse<Void>> sendRegistrationOtp(
+            @Valid @RequestBody SendOtpRequest request) {
+        authFacade.sendRegistrationOtp(request.getEmail());
+        return ResponseEntity.ok(ApiResponse.noContent("OTP sent to email"));
+    }
+
+    @PostMapping("/verify-registration-otp")
+    public ResponseEntity<ApiResponse<Void>> verifyRegistrationOtp(
+            @Valid @RequestBody VerifyOtpRequest request) {
+        authFacade.verifyRegistrationOtp(request.getEmail(), request.getOtp());
+        return ResponseEntity.ok(ApiResponse.noContent("OTP verified successfully"));
     }
 
     @PutMapping("/change-password")

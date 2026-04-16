@@ -17,14 +17,10 @@ public class ContainerResponse {
     private String        cargoTypeName;
     private String        attributeName;
     private BigDecimal    grossWeight;
+    private BigDecimal    declaredValue;
     private String        sealNumber;
     private String        note;
     private LocalDateTime createdAt;
-
-    // Damage tracking fields
-    private String        repairStatus;
-    private LocalDateTime repairDate;
-    private BigDecimal    compensationCost;
 
     // Position fields (populated when container has an assigned slot)
     private String  yardName;

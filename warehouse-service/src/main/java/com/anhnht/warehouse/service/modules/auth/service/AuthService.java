@@ -15,4 +15,10 @@ public interface AuthService {
 
     /** Validates old password and updates to new password. */
     void changePassword(Integer userId, String oldPassword, String newPassword);
+
+    /** Generates and stores a registration OTP for the given email, then sends it via email. */
+    void sendRegistrationOtp(String email);
+
+    /** Validates the registration OTP for the given email. Throws on failure. */
+    void verifyRegistrationOtp(String email, String otp);
 }

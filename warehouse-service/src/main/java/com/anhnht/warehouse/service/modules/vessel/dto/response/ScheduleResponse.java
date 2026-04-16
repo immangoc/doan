@@ -17,6 +17,7 @@ public class ScheduleResponse {
     private String        location;
     private Integer       containers;
     private String        status;
+    private String        shipType;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

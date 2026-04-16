@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -51,4 +52,16 @@ public interface OrderRepository extends JpaRepository<Order, Integer> {
 
     @EntityGraph(attributePaths = {"status", "containers"})
     Page<Order> findByCustomerUserId(Integer customerId, Pageable pageable);
+
+    /** Scheduler: find orders with a given status whose importDate is before a cutoff date. */
+    @EntityGraph(attributePaths = {"customer", "status"})
+    @Query("SELECT o FROM Order o WHERE o.status.statusName = :statusName AND o.importDate < :cutoff")
+    List<Order> findByStatusNameAndImportDateBefore(@Param("statusName") String statusName,
+                                                    @Param("cutoff") LocalDate cutoff);
+
+    /** Gate-in/Gate-out: find the active order that contains a specific container. */
+    @Query("SELECT o FROM Order o JOIN o.containers c WHERE c.containerId = :containerId " +
+           "AND o.status.statusName IN :activeStatuses")
+    Optional<Order> findActiveOrderByContainerId(@Param("containerId") String containerId,
+                                                  @Param("activeStatuses") List<String> activeStatuses);
 }

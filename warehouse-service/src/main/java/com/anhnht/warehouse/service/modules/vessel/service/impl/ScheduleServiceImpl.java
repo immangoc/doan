@@ -66,5 +66,6 @@ public class ScheduleServiceImpl implements ScheduleService {
         if (request.getTimeStart()  != null) entity.setTimeStart(request.getTimeStart());
         if (request.getTimeEnd()    != null) entity.setTimeEnd(request.getTimeEnd());
         if (request.getContainers() != null) entity.setContainers(request.getContainers());
+        if (StringUtils.hasText(request.getShipType())) entity.setShipType(request.getShipType());
     }
 }

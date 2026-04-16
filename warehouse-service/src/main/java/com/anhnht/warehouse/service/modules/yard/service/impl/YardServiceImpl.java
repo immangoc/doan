@@ -13,7 +13,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.time.LocalDateTime;
 
 @Service
 @RequiredArgsConstructor
@@ -235,25 +234,5 @@ public class YardServiceImpl implements YardService {
     @Transactional
     public void deleteSlot(Integer slotId) {
         slotRepository.delete(findSlotById(slotId));
-    }
-
-    @Override
-    @Transactional
-    public Slot lockSlot(Integer slotId, String reason) {
-        Slot slot = findSlotById(slotId);
-        slot.setLocked(true);
-        slot.setLockReason(reason);
-        slot.setLockedAt(LocalDateTime.now());
-        return slotRepository.save(slot);
-    }
-
-    @Override
-    @Transactional
-    public Slot unlockSlot(Integer slotId) {
-        Slot slot = findSlotById(slotId);
-        slot.setLocked(false);
-        slot.setLockReason(null);
-        slot.setLockedAt(null);
-        return slotRepository.save(slot);
     }
 }

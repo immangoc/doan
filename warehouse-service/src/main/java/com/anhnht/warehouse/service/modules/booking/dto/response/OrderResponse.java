@@ -3,6 +3,8 @@ package com.anhnht.warehouse.service.modules.booking.dto.response;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Set;
 
@@ -19,6 +21,12 @@ public class OrderResponse {
     private String        statusName;
     private String        note;
     private LocalDateTime createdAt;
+
+    private LocalDate importDate;
+    private LocalDate exportDate;
+
+    /** Total gross weight aggregated from linked containers. */
+    private BigDecimal totalGrossWeight;
 
     /** Container IDs linked to this order. */
     private Set<String>   containerIds;
