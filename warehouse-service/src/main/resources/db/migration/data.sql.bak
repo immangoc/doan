@@ -1,0 +1,702 @@
+DROP TABLE IF EXISTS container_attributes CASCADE;
+DROP TABLE IF EXISTS container CASCADE;SET client_encoding = 'UTF8';
+do $$ declare
+    r record;
+begin
+    for r in (select tablename from pg_tables where schemaname = 'public') loop
+        execute 'drop table if exists ' || quote_ident(r.tablename) || ' cascade';
+    end loop;
+end $$;
+-- =========================
+-- 0. DROP ALL TABLES (SAFE RE-RUN)
+-- =========================
+DROP TABLE IF EXISTS invoice_details CASCADE;
+DROP TABLE IF EXISTS invoices CASCADE;
+DROP TABLE IF EXISTS tariffs CASCADE;
+DROP TABLE IF EXISTS message CASCADE;
+DROP TABLE IF EXISTS chat_room_member CASCADE;
+DROP TABLE IF EXISTS chat_room CASCADE;
+DROP TABLE IF EXISTS chat_room_type CASCADE;
+
+
+DROP TABLE IF EXISTS user_notification CASCADE;
+DROP TABLE IF EXISTS notification CASCADE;
+
+
+DROP TABLE IF EXISTS alert CASCADE;
+DROP TABLE IF EXISTS alert_level CASCADE;
+DROP TABLE IF EXISTS alert_type CASCADE;
+
+
+DROP TABLE IF EXISTS equipment_types CASCADE;
+DROP TABLE IF EXISTS equipments CASCADE;
+
+
+DROP TABLE IF EXISTS storage_end_date CASCADE;
+DROP TABLE IF EXISTS yard_storage CASCADE;
+DROP TABLE IF EXISTS gate_in_receipt CASCADE;
+
+
+DROP TABLE IF EXISTS order_cancellation CASCADE;
+DROP TABLE IF EXISTS order_container CASCADE;
+DROP TABLE IF EXISTS orders CASCADE;
+DROP TABLE IF EXISTS order_types CASCADE;
+DROP TABLE IF EXISTS order_status CASCADE;
+
+
+DROP TABLE IF EXISTS export_priority CASCADE;
+
+
+DROP TABLE IF EXISTS container_position_history CASCADE;
+DROP TABLE IF EXISTS container_positions CASCADE;
+DROP TABLE IF EXISTS slots CASCADE;
+DROP TABLE IF EXISTS blocks CASCADE;
+DROP TABLE IF EXISTS block_types CASCADE;
+DROP TABLE IF EXISTS yard_zones CASCADE;
+DROP TABLE IF EXISTS yards CASCADE;
+DROP TABLE IF EXISTS yard_types CASCADE;
+
+
+DROP TABLE IF EXISTS container_status_history CASCADE;
+
+
+DROP TABLE IF EXISTS cargo_attributes CASCADE;
+DROP TABLE IF EXISTS cargo_types CASCADE;
+DROP TABLE IF EXISTS container_statuses CASCADE;
+DROP TABLE IF EXISTS container_types CASCADE;
+
+
+DROP TABLE IF EXISTS manifest CASCADE;
+DROP TABLE IF EXISTS voyages CASCADE;
+DROP TABLE IF EXISTS vessels CASCADE;
+
+
+DROP TABLE IF EXISTS system_logs CASCADE;
+
+
+DROP TABLE IF EXISTS user_addresses CASCADE;
+DROP TABLE IF EXISTS user_profiles CASCADE;
+DROP TABLE IF EXISTS user_roles CASCADE;
+DROP TABLE IF EXISTS users CASCADE;
+DROP TABLE IF EXISTS role_permissions CASCADE;
+DROP TABLE IF EXISTS permissions CASCADE;
+DROP TABLE IF EXISTS roles CASCADE;
+
+
+-- =========================
+-- 1. PHÂN QUYỀN - NGƯỜI DÙNG
+-- =========================
+CREATE TABLE roles (
+    role_id SERIAL PRIMARY KEY,
+    role_name VARCHAR(50) NOT NULL UNIQUE
+);
+
+
+CREATE TABLE permissions (
+    permission_id SERIAL PRIMARY KEY,
+    permission_name VARCHAR(100) NOT NULL UNIQUE,
+    description VARCHAR(255)
+);
+
+
+CREATE TABLE role_permissions (
+    role_id INT NOT NULL,
+    permission_id INT NOT NULL,
+    PRIMARY KEY (role_id, permission_id),
+    FOREIGN KEY (role_id) REFERENCES roles(role_id),
+    FOREIGN KEY (permission_id) REFERENCES permissions(permission_id)
+);
+
+
+CREATE TABLE users (
+    user_id SERIAL PRIMARY KEY,
+    username VARCHAR(50) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    full_name VARCHAR(100),
+    email VARCHAR(100) UNIQUE,
+    phone VARCHAR(20),
+    status SMALLINT DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+CREATE TABLE user_roles (
+    user_id INT NOT NULL,
+    role_id INT NOT NULL,
+    PRIMARY KEY (user_id, role_id),
+    FOREIGN KEY (user_id) REFERENCES users(user_id),
+    FOREIGN KEY (role_id) REFERENCES roles(role_id)
+);
+
+
+CREATE TABLE user_profiles (
+    profile_id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL UNIQUE,
+    gender VARCHAR(10),
+    date_of_birth DATE,
+    national_id VARCHAR(30),
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
+);
+
+
+CREATE TABLE user_addresses (
+    address_id SERIAL PRIMARY KEY,
+    user_id INT NOT NULL,
+    address VARCHAR(255),
+    ward VARCHAR(100),
+    district VARCHAR(100),
+    city VARCHAR(100),
+    is_default BOOLEAN DEFAULT FALSE,
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
+);
+
+
+CREATE TABLE system_logs (
+    log_id SERIAL PRIMARY KEY,
+    user_id INT,
+    action VARCHAR(255),
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
+);
+
+
+-- =========================
+-- 2. TÀU - CHUYẾN - MANIFEST
+-- =========================
+CREATE TABLE vessels (
+    vessel_id SERIAL PRIMARY KEY,
+    vessel_name VARCHAR(100) NOT NULL,
+    shipping_line VARCHAR(100) -- thay cho bảng hang_tau
+);
+
+
+CREATE TABLE voyages (
+    voyage_id SERIAL PRIMARY KEY,
+    vessel_id INT NOT NULL,
+    voyage_no VARCHAR(50),
+    port_of_loading VARCHAR(100),
+    port_of_discharge VARCHAR(100),
+    estimated_time_arrival TIMESTAMP,
+    actual_time_arrival TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (vessel_id) REFERENCES vessels(vessel_id)
+);
+
+
+CREATE TABLE manifest (
+    manifest_id SERIAL PRIMARY KEY,
+    voyage_id INT NOT NULL,
+    created_date DATE DEFAULT CURRENT_DATE,
+    note VARCHAR(255),
+    FOREIGN KEY (voyage_id) REFERENCES voyages(voyage_id)
+);
+
+
+-- =========================
+-- 3. CONTAINER - HÀNG HÓA
+-- =========================
+CREATE TABLE container_types (
+    container_type_id SERIAL PRIMARY KEY,
+    container_type_name VARCHAR(50) NOT NULL UNIQUE,
+    size INT
+);
+
+
+CREATE TABLE container_statuses (
+    status_id SERIAL PRIMARY KEY,
+    status_name VARCHAR(50) NOT NULL UNIQUE
+);
+
+
+CREATE TABLE cargo_types (
+    cargo_type_id SERIAL PRIMARY KEY,
+    cargo_type_name VARCHAR(100) NOT NULL UNIQUE
+);
+
+
+CREATE TABLE cargo_attributes (
+    attribute_id SERIAL PRIMARY KEY,
+    attribute_name VARCHAR(100) NOT NULL UNIQUE
+);
+
+
+CREATE TABLE container (
+    container_id VARCHAR(20) PRIMARY KEY,
+    manifest_id INT NOT NULL,
+    container_type_id INT,
+    status_id INT,
+    cargo_type_id INT,
+    gross_weight NUMERIC(10,2),
+    seal_number VARCHAR(50),
+    note VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (manifest_id) REFERENCES manifest(manifest_id),
+    FOREIGN KEY (container_type_id) REFERENCES container_types(container_type_id),
+    FOREIGN KEY (status_id) REFERENCES container_statuses(status_id),
+    FOREIGN KEY (cargo_type_id) REFERENCES cargo_types(cargo_type_id)
+);
+
+
+CREATE TABLE container_attributes (
+    container_id VARCHAR(20) NOT NULL,
+    attribute_id INT NOT NULL,
+    PRIMARY KEY (container_id, attribute_id),
+
+
+    FOREIGN KEY (container_id) REFERENCES container(container_id),
+    FOREIGN KEY (attribute_id) REFERENCES cargo_attributes(attribute_id)
+);
+
+
+CREATE TABLE container_status_history (
+    history_id SERIAL PRIMARY KEY,
+    container_id VARCHAR(20) NOT NULL,
+    status_id INT NOT NULL,
+    description VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (container_id) REFERENCES container(container_id),
+    FOREIGN KEY (status_id) REFERENCES container_statuses(status_id)
+);
+
+
+-- =========================
+-- 4. KHO BÃI 3D
+-- =========================
+CREATE TABLE yard_types (
+    yard_type_id SERIAL PRIMARY KEY,
+    yard_type_name VARCHAR(50) NOT NULL UNIQUE
+);
+
+
+CREATE TABLE yards (
+    yard_id SERIAL PRIMARY KEY,
+    yard_type_id INT,
+    yard_name VARCHAR(100) NOT NULL,
+    address VARCHAR(255),
+    FOREIGN KEY (yard_type_id) REFERENCES yard_types(yard_type_id)
+);
+
+
+CREATE TABLE yard_zones (
+    zone_id SERIAL PRIMARY KEY,
+    yard_id INT NOT NULL,
+    zone_name VARCHAR(50) NOT NULL,
+    capacity_slots INT NOT NULL,
+    FOREIGN KEY (yard_id) REFERENCES yards(yard_id)
+);
+
+
+CREATE TABLE block_types (
+    block_type_id SERIAL PRIMARY KEY,
+    block_type_name VARCHAR(50) NOT NULL UNIQUE
+);
+
+
+CREATE TABLE blocks (
+    block_id SERIAL PRIMARY KEY,
+    zone_id INT NOT NULL,
+    block_type_id INT,
+    block_name VARCHAR(50) NOT NULL,
+    FOREIGN KEY (zone_id) REFERENCES yard_zones(zone_id),
+    FOREIGN KEY (block_type_id) REFERENCES block_types(block_type_id)
+);
+
+
+CREATE TABLE slots (
+    slot_id SERIAL PRIMARY KEY,
+    block_id INT NOT NULL,
+    row_no INT NOT NULL,
+    bay_no INT NOT NULL,
+    max_tier INT DEFAULT 5,
+    supported_size INT DEFAULT 20,
+    FOREIGN KEY (block_id) REFERENCES blocks(block_id)
+);
+
+
+CREATE TABLE container_positions (
+    position_id SERIAL PRIMARY KEY,
+    container_id VARCHAR(20) UNIQUE NOT NULL,
+    slot_id INT NOT NULL,
+    tier INT NOT NULL,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (container_id) REFERENCES container(container_id),
+    FOREIGN KEY (slot_id) REFERENCES slots(slot_id)
+);
+CREATE TABLE container_position_history (
+    history_id SERIAL PRIMARY KEY,
+    container_id VARCHAR(20) NOT NULL,
+    slot_id INT NOT NULL,
+    equipment_id INT,
+    tier INT NOT NULL,
+    moved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    moved_by INT,
+
+
+    FOREIGN KEY (container_id) REFERENCES container(container_id),
+    FOREIGN KEY (slot_id) REFERENCES slots(slot_id),
+    FOREIGN KEY (moved_by) REFERENCES users(user_id),
+    FOREIGN KEY (equipment_id) REFERENCES equipments(equipment_id)
+);
+
+
+-- =========================
+-- 5. ƯU TIÊN XUẤT
+-- =========================
+CREATE TABLE export_priority (
+    priority_id SERIAL PRIMARY KEY,
+    container_id VARCHAR(20) UNIQUE NOT NULL,
+    priority_level INT DEFAULT 1,
+    note VARCHAR(255),
+    FOREIGN KEY (container_id) REFERENCES container(container_id)
+);
+-- =========================
+-- 6. ĐƠN HÀNG
+-- =========================
+CREATE TABLE order_status (
+    status_id SERIAL PRIMARY KEY,
+    status_name VARCHAR(50) NOT NULL UNIQUE
+);
+
+
+CREATE TABLE order_types (
+    order_type_id SERIAL PRIMARY KEY,
+    type_name VARCHAR(50) UNIQUE
+);
+
+
+CREATE TABLE orders (
+    order_id SERIAL PRIMARY KEY,
+    order_type_id INT,
+    customer_id INT,
+    customer_name VARCHAR(150) NOT NULL,
+    phone VARCHAR(20),
+    email VARCHAR(100),
+    address VARCHAR(255),
+    status_id INT NOT NULL,
+    note VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expected_gate_in TIMESTAMP,
+    expected_gate_out TIMESTAMP,
+    voyage_id INT,
+    FOREIGN KEY (order_type_id) REFERENCES order_types(order_type_id),
+    FOREIGN KEY (status_id) REFERENCES order_status(status_id),
+    FOREIGN KEY (customer_id) REFERENCES users(user_id),
+    FOREIGN KEY (voyage_id) REFERENCES voyages(voyage_id)
+);
+
+
+CREATE TABLE order_container (
+    order_id INT NOT NULL,
+    container_id VARCHAR(20) NOT NULL,
+    PRIMARY KEY (order_id, container_id),
+    FOREIGN KEY (order_id) REFERENCES orders(order_id),
+    FOREIGN KEY (container_id) REFERENCES container(container_id)
+);
+
+
+CREATE TABLE order_cancellation (
+    cancellation_id SERIAL PRIMARY KEY,
+    order_id INT NOT NULL UNIQUE,
+    reason VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (order_id) REFERENCES orders(order_id)
+);
+
+
+-- =========================
+-- 8. PHIẾU NHẬP - LƯU - XUẤT
+-- =========================
+CREATE TABLE gate_in_receipt (
+    gate_in_id SERIAL PRIMARY KEY,
+    container_id VARCHAR(20) NOT NULL,
+    voyage_id INT,
+    gate_in_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_by INT,
+    note VARCHAR(255),
+
+
+    FOREIGN KEY (container_id) REFERENCES container(container_id),
+    FOREIGN KEY (voyage_id) REFERENCES voyages(voyage_id),
+    FOREIGN KEY (created_by) REFERENCES users(user_id)
+);
+
+
+CREATE TABLE yard_storage (
+    storage_id SERIAL PRIMARY KEY,
+    container_id VARCHAR(20) NOT NULL,
+    yard_id INT NOT NULL,
+    storage_start_date DATE DEFAULT CURRENT_DATE,
+    storage_end_date DATE,
+    note VARCHAR(255),
+
+
+    FOREIGN KEY (container_id) REFERENCES container(container_id),
+    FOREIGN KEY (yard_id) REFERENCES yards(yard_id)
+);
+
+
+
+
+CREATE TABLE gate_out_receipt (
+    gate_out_id SERIAL PRIMARY KEY,
+    container_id VARCHAR(20) NOT NULL,
+    gate_out_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_by INT,
+    note VARCHAR(255),
+
+
+    FOREIGN KEY (container_id) REFERENCES container(container_id),
+    FOREIGN KEY (created_by) REFERENCES users(user_id)
+);
+
+
+—- =========================
+    THIẾT BỊ NÂNG HẠ CONTAINER
+—- ===========================
+CREATE TABLE equipment_types (
+    type_id SERIAL PRIMARY KEY,
+    type_code VARCHAR(50) NOT NULL UNIQUE, -- Vd: 'REACH_STACKER' (Xe nâng), 'RTG_CRANE' (Cẩu trục)
+    type_name VARCHAR(100) NOT NULL,
+    max_lift_tier INT NOT NULL,            -- Sức vươn tối đa (VD: Xe nâng = 4, Cẩu = 5)
+    max_lift_weight NUMERIC(10,2)          -- Tải trọng nâng tối đa (Tấn)
+);
+
+
+CREATE TABLE equipments (
+    equipment_id SERIAL PRIMARY KEY,
+    type_id INT NOT NULL,
+    equipment_name VARCHAR(100) NOT NULL,  -- Vd: 'Xe nâng Kalmar số 01'
+    status SMALLINT DEFAULT 1,             -- 1: Sẵn sàng, 0: Đang bảo trì, 2: Đang hoạt động
+    current_zone_id INT,                   -- Thiết bị này đang nằm ở Khu vực nào?
+
+    FOREIGN KEY (type_id) REFERENCES equipment_types(type_id),
+    FOREIGN KEY (current_zone_id) REFERENCES yard_zones(zone_id)
+);
+
+
+-- =========================
+-- 9. CẢNH BÁO - THÔNG BÁO
+-- =========================
+CREATE TABLE alert_level (
+    level_id SERIAL PRIMARY KEY,
+    level_name VARCHAR(50) NOT NULL UNIQUE
+);
+
+
+CREATE TABLE alert_type (
+    alert_type_id SERIAL PRIMARY KEY,
+    type_code VARCHAR(50) NOT NULL UNIQUE, -- Vd: 'SIZE_MISMATCH', 'MAINTENANCE', 'OVERWEIGHT'
+    type_name VARCHAR(100) NOT NULL,       -- Vd: 'Sai kích thước', 'Hỏng hóc vị trí', 'Quá tải trọng'
+    description VARCHAR(255)
+);
+
+
+CREATE TABLE alert (
+    alert_id SERIAL PRIMARY KEY,
+    zone_id INT,
+    level_id INT,
+    alert_type_id INT NOT NULL,
+    slot_id INT,
+    container_id VARCHAR(20),
+    description VARCHAR(255) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status SMALLINT DEFAULT 0,
+    resolved_at TIMESTAMP,
+    created_by INT,
+    FOREIGN KEY (zone_id) REFERENCES yard_zones(zone_id),
+    FOREIGN KEY (level_id) REFERENCES alert_level(level_id),
+    FOREIGN KEY (alert_type_id) REFERENCES alert_type(alert_type_id),
+    FOREIGN KEY (slot_id) REFERENCES slots(slot_id),
+    FOREIGN KEY (container_id) REFERENCES container(container_id),
+    FOREIGN KEY (created_by) REFERENCES users(user_id)
+);
+
+
+CREATE TABLE notification (
+    notification_id SERIAL PRIMARY KEY,
+    title VARCHAR(150),
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+
+CREATE TABLE user_notification (
+    notification_id INT NOT NULL,
+    user_id INT NOT NULL,
+    is_read BOOLEAN DEFAULT FALSE,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (notification_id, user_id),
+    FOREIGN KEY (notification_id) REFERENCES notification(notification_id),
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
+);
+
+
+
+
+-- =========================
+-- 10. CHAT BOX
+-- =========================
+CREATE TABLE chat_room_type (
+    type_id SERIAL PRIMARY KEY,
+    type_name VARCHAR(50) NOT NULL UNIQUE
+);
+
+
+CREATE TABLE chat_room (
+    room_id SERIAL PRIMARY KEY,
+    type_id INT NOT NULL,
+    room_name VARCHAR(100),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (type_id) REFERENCES chat_room_type(type_id)
+);
+
+
+CREATE TABLE chat_room_member (
+    room_id INT NOT NULL,
+    user_id INT NOT NULL,
+    role VARCHAR(30) DEFAULT 'member',
+    joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (room_id, user_id),
+    FOREIGN KEY (room_id) REFERENCES chat_room(room_id),
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
+);
+
+
+CREATE TABLE message (
+    message_id SERIAL PRIMARY KEY,
+    room_id INT NOT NULL,
+    sender_id INT NOT NULL,
+    description TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (room_id) REFERENCES chat_room(room_id),
+    FOREIGN KEY (sender_id) REFERENCES users(user_id)
+);
+
+
+-- =========================
+-- 11. BẢNG GIÁ (TARIFFS)
+-- =========================
+CREATE TABLE tariffs (
+    tariff_id SERIAL PRIMARY KEY,
+    tariff_code VARCHAR(50) NOT NULL UNIQUE, -- Vd: 'LIFT_ON_20', 'STORAGE_40_REEFER'
+    tariff_name VARCHAR(150) NOT NULL,       -- Vd: 'Phí nâng container 20ft', 'Phí lưu bãi cont 40ft lạnh'
+
+    fee_type VARCHAR(50) NOT NULL,           -- 'LIFT_ON' (Nâng), 'LIFT_OFF' (Hạ), 'STORAGE' (Lưu bãi), 'ELECTRICITY' (Cắm điện)
+    container_size INT,                      -- 20 hoặc 40 (Nối với logic size của bạn)
+    cargo_type_id INT,                       -- Null nếu áp dụng chung, hoặc chỉ định (VD: Hàng lạnh)
+
+    unit_price NUMERIC(15,2) NOT NULL,       -- Đơn giá (VND)
+    unit VARCHAR(50) NOT NULL,               -- 'PER_LIFT' (Theo lượt), 'PER_DAY' (Theo ngày)
+
+    effective_date DATE DEFAULT CURRENT_DATE,-- Ngày bắt đầu áp dụng giá này
+    note VARCHAR(255),
+
+    FOREIGN KEY (cargo_type_id) REFERENCES cargo_types(cargo_type_id)
+);
+
+
+-- =========================
+-- 12. HÓA ĐƠN TỔNG (INVOICES)
+-- =========================
+CREATE TABLE invoices (
+    invoice_id SERIAL PRIMARY KEY,
+    invoice_no VARCHAR(50) UNIQUE NOT NULL,  -- Mã hóa đơn (Vd: INV-20260324-001)
+    order_id INT NOT NULL,                   -- Hóa đơn này thuộc Đơn hàng (Booking) nào
+    customer_id INT NOT NULL,                -- Khách hàng phải thanh toán
+
+    sub_total NUMERIC(15,2) DEFAULT 0,       -- Tổng tiền trước thuế
+    vat_amount NUMERIC(15,2) DEFAULT 0,      -- Tiền thuế VAT (Thường là 8% hoặc 10%)
+    grand_total NUMERIC(15,2) DEFAULT 0,     -- Tổng tiền phải thanh toán
+
+    status VARCHAR(50) DEFAULT 'UNPAID',     -- 'DRAFT' (Nháp), 'UNPAID' (Chưa thanh toán), 'PAID' (Đã thanh toán), 'CANCELLED'
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    paid_at TIMESTAMP,                       -- Thời điểm khách thanh toán thành công
+
+    FOREIGN KEY (order_id) REFERENCES orders(order_id),
+    FOREIGN KEY (customer_id) REFERENCES users(user_id)
+);
+
+
+-- =========================
+-- 13. CHI TIẾT HÓA ĐƠN (INVOICE DETAILS)
+-- =========================
+CREATE TABLE invoice_details (
+    detail_id SERIAL PRIMARY KEY,
+    invoice_id INT NOT NULL,
+    container_id VARCHAR(20) NOT NULL,       -- Phí này áp dụng cho container nào?
+    tariff_id INT NOT NULL,                  -- Loại phí gì?
+
+    quantity NUMERIC(10,2) NOT NULL,         -- Số lượng (VD: 1 lượt nâng, hoặc 5 ngày lưu bãi)
+    unit_price NUMERIC(15,2) NOT NULL,       -- Lấy từ bảng tariffs NAY TẠI THỜI ĐIỂM LẬP HÓA ĐƠN
+    total_price NUMERIC(15,2) NOT NULL,      -- quantity * unit_price
+
+    FOREIGN KEY (invoice_id) REFERENCES invoices(invoice_id) ON DELETE CASCADE,
+    FOREIGN KEY (container_id) REFERENCES container(container_id),
+    FOREIGN KEY (tariff_id) REFERENCES tariffs(tariff_id)
+);
+
+-- =========================
+-- 14. VÍ (WALLET)
+-- =========================
+
+CREATE TABLE wallets (
+    wallet_id  SERIAL PRIMARY KEY,
+    user_id    INT UNIQUE NOT NULL,
+    balance    NUMERIC(15,2) NOT NULL DEFAULT 0 CHECK (balance >= 0),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
+);
+
+CREATE TABLE payments (
+    payment_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id    INT NOT NULL,
+    amount     NUMERIC(15,2) NOT NULL CHECK (amount > 0),
+    payos_order_code     BIGINT UNIQUE,
+    payos_payment_link_id VARCHAR(100),
+    payos_transaction_id  VARCHAR(100) UNIQUE,
+    status     VARCHAR(20) NOT NULL DEFAULT 'PENDING'
+        CHECK (status IN ('PENDING', 'SUCCESS', 'FAILED', 'CANCELLED')),
+    response_data JSONB,
+    paid_at    TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id)
+);
+
+CREATE INDEX idx_payments_user_id ON payments(user_id);
+
+CREATE TABLE wallet_transactions (
+    transaction_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    wallet_id  INT NOT NULL,
+    payment_id UUID,
+    type       VARCHAR(20) NOT NULL
+        CHECK (type IN ('TOPUP', 'REFUND', 'PAYMENT', 'ADJUST')),
+    amount     NUMERIC(15,2) NOT NULL CHECK (amount > 0),
+    balance_after NUMERIC(15,2) NOT NULL CHECK (balance_after >= 0),
+    note       VARCHAR(255),
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (wallet_id) REFERENCES wallets(wallet_id),
+    FOREIGN KEY (payment_id) REFERENCES payments(payment_id)
+);
+
+CREATE TABLE withdraw_requests (
+    withdraw_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id   INT NOT NULL,
+    amount    NUMERIC(15,2) NOT NULL CHECK (amount > 0),
+    status    VARCHAR(20) NOT NULL DEFAULT 'PENDING'
+        CHECK (status IN ('PENDING', 'APPROVED', 'REJECTED', 'PAID')),
+    bank_name    VARCHAR(100) NOT NULL,
+    bank_account VARCHAR(100) NOT NULL,
+    reject_reason VARCHAR(255),
+    processed_by INT,
+    processed_at TIMESTAMP,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(user_id),
+    FOREIGN KEY (processed_by) REFERENCES users(user_id)
+);
+
+
+-- =========================================
+-- DONE
+-- =========================================
