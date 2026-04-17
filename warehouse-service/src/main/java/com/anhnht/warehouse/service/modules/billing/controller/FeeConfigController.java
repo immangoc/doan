@@ -20,7 +20,7 @@ public class FeeConfigController {
     private final FeeConfigServiceImpl    feeConfigServiceImpl; // needed for parseRates helper
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','CUSTOMER')")
     public ResponseEntity<ApiResponse<FeeConfigResponse>> get() {
         return ResponseEntity.ok(ApiResponse.success(toResponse(feeConfigService.get())));
     }

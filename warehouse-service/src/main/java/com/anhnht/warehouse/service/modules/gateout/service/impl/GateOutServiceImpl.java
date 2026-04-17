@@ -72,18 +72,35 @@ public class GateOutServiceImpl implements GateOutService {
                     "Container is not in yard. Current status: " + currentStatus);
         }
 
-        // 1. Create gate-out receipt
+        // 1. Create gate-out receipt (snapshot position before position is deleted)
         GateOutReceipt receipt = new GateOutReceipt();
         receipt.setContainer(container);
         receipt.setNote(request.getNote());
         if (operatorId != null) {
             userRepository.findById(operatorId).ifPresent(receipt::setCreatedBy);
         }
-        GateOutReceipt saved = receiptRepository.save(receipt);
 
-        // 2. Remove container position (slot is now free)
-        positionRepository.findByContainerContainerId(containerId)
-                .ifPresent(positionRepository::delete);
+        // 2. Remove container position (slot is now free) — snapshot onto receipt first
+        positionRepository.findByContainerContainerId(containerId).ifPresent(pos -> {
+            if (pos.getSlot() != null) {
+                receipt.setLastRowNo(pos.getSlot().getRowNo());
+                receipt.setLastBayNo(pos.getSlot().getBayNo());
+                receipt.setLastTier(pos.getTier());
+                var block = pos.getSlot().getBlock();
+                if (block != null) {
+                    receipt.setLastBlockName(block.getBlockName());
+                    if (block.getZone() != null) {
+                        receipt.setLastZoneName(block.getZone().getZoneName());
+                        if (block.getZone().getYard() != null) {
+                            receipt.setLastYardName(block.getZone().getYard().getYardName());
+                        }
+                    }
+                }
+            }
+            positionRepository.delete(pos);
+        });
+
+        GateOutReceipt saved = receiptRepository.save(receipt);
 
         // 3. Persist storage invoice
         persistInvoice(container, saved);

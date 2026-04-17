@@ -22,7 +22,8 @@ public class ContainerResponse {
     private String        note;
     private LocalDateTime createdAt;
 
-    // Position fields (populated when container has an assigned slot)
+    // Position fields (populated when container has an assigned slot, or last
+    // known position snapshot from GateOutReceipt for gated-out containers)
     private String  yardName;
     private String  yardType;
     private String  zoneName;
@@ -30,4 +31,7 @@ public class ContainerResponse {
     private Integer rowNo;
     private Integer bayNo;
     private Integer tier;
+
+    // Populated for gated-out containers (status = GATE_OUT)
+    private LocalDateTime gateOutTime;
 }

@@ -45,10 +45,16 @@ spring:
             enable: false
 
 app:
+  frontend-url: ${APP_FRONTEND_URL:http://localhost:5173}
   kafka:
     enabled: ${APP_KAFKA_ENABLED:false}
     topic:
       yard-events: ${APP_KAFKA_TOPIC_YARD_EVENTS:yard-events}
+
+vnpay:
+  tmn-code: ${VNPAY_TMN_CODE:8WGPR2X7}
+  hash-secret: ${VNPAY_HASH_SECRET:T2XNHM65FD67Q5927E1523F3S3YPFH7T}
+  url: ${VNPAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
 
 jwt:
   secret: ${JWT_SECRET:change-me-secret-change-me-secret}
@@ -62,3 +68,11 @@ springdoc:
   swagger-ui:
     enabled: true
     path: /swagger-ui.html
+
+payos:
+  client-id: 9c59c0e8-a4b6-41d0-bea4-950df0246721
+  api-key: b63691d7-be69-44af-8132-6b9358a16da9
+  checksum-key: 1de7795d2fe2a5e8e64a07aa235d24defff9a20b441cba259a410315cef6b6c0
+  base-url: https://api-merchant.payos.vn
+  return-url: https://localhost:8080/mobile/payos/return
+  cancel-url: https://localhost:8080/mobile/payos/cancel

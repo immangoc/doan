@@ -53,7 +53,18 @@ public enum ErrorCode {
     ALERT_NOT_FOUND("ALERT_NOT_FOUND", "Alert not found"),
 
     // Billing
-    INVOICE_NOT_FOUND("INVOICE_NOT_FOUND", "Invoice not found");
+    INVOICE_NOT_FOUND("INVOICE_NOT_FOUND", "Invoice not found"),
+
+    // Wallet / Payment
+    WALLET_NOT_FOUND("WALLET_NOT_FOUND", "Wallet not found"),
+    WALLET_INSUFFICIENT_BALANCE("WALLET_INSUFFICIENT_BALANCE", "Insufficient wallet balance"),
+    PAYMENT_NOT_FOUND("PAYMENT_NOT_FOUND", "Payment not found"),
+    PAYMENT_ALREADY_PROCESSED("PAYMENT_ALREADY_PROCESSED", "Payment already processed"),
+    PAYMENT_AMOUNT_INVALID("PAYMENT_AMOUNT_INVALID", "Invalid payment amount"),
+    PAYMENT_AMOUNT_MISMATCH("PAYMENT_AMOUNT_MISMATCH", "Payment amount mismatch"),
+    PAYMENT_GATEWAY_ERROR("PAYMENT_GATEWAY_ERROR", "Payment gateway error"),
+    PAYMENT_LINK_CREATION_FAILED("PAYMENT_LINK_CREATION_FAILED", "Payment link creation failed"),
+    WEBHOOK_SIGNATURE_INVALID("WEBHOOK_SIGNATURE_INVALID", "Invalid webhook signature");
 
     private final String code;
     private final String defaultMessage;

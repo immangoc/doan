@@ -25,6 +25,8 @@ public interface GateInMapper {
     @Mapping(source = "createdBy.username",                       target = "operatorName",        nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
     @Mapping(source = "container.cargoType.cargoTypeName",        target = "cargoTypeName",       nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
     @Mapping(source = "container.containerType.containerTypeName",target = "containerTypeName",  nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
+    @Mapping(source = "container.grossWeight",                    target = "grossWeight",         nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
+    @Mapping(source = "container.status.statusName",              target = "statusName",          nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
     @Mapping(target = "yardName",  ignore = true)
     @Mapping(target = "zoneName",  ignore = true)
     @Mapping(target = "blockName", ignore = true)

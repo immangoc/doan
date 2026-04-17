@@ -12,6 +12,7 @@ import com.anhnht.warehouse.service.modules.user.dto.request.UserAddressRequest;
 import com.anhnht.warehouse.service.modules.user.entity.*;
 import com.anhnht.warehouse.service.modules.user.repository.*;
 import com.anhnht.warehouse.service.modules.user.service.UserService;
+import com.anhnht.warehouse.service.modules.wallet.service.WalletService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -32,6 +33,7 @@ public class UserServiceImpl implements UserService {
     private final UserProfileRepository profileRepository;
     private final UserAddressRepository addressRepository;
     private final PasswordEncoder       passwordEncoder;
+    private final WalletService         walletService;
 
     // ---- Lookups ----
 
@@ -97,6 +99,9 @@ public class UserServiceImpl implements UserService {
 
         // Create empty profile
         profileRepository.save(new UserProfile(saved));
+
+        // Create wallet for customer
+        walletService.createWalletForUser(saved.getUserId());
 
         return saved;
     }

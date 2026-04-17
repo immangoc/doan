@@ -11,8 +11,11 @@ import com.anhnht.warehouse.service.modules.container.dto.response.ContainerStat
 import com.anhnht.warehouse.service.modules.container.dto.response.ExportPriorityResponse;
 import com.anhnht.warehouse.service.modules.container.mapper.ContainerMapper;
 import com.anhnht.warehouse.service.modules.container.service.ContainerService;
+import com.anhnht.warehouse.service.modules.container.service.DamageWorkflowService;
 import com.anhnht.warehouse.service.modules.gatein.entity.ContainerPosition;
 import com.anhnht.warehouse.service.modules.gatein.repository.ContainerPositionRepository;
+import com.anhnht.warehouse.service.modules.gateout.entity.GateOutReceipt;
+import com.anhnht.warehouse.service.modules.gateout.repository.GateOutReceiptRepository;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -33,6 +36,8 @@ public class ContainerController {
     private final ContainerService             containerService;
     private final ContainerMapper              containerMapper;
     private final ContainerPositionRepository  positionRepository;
+    private final GateOutReceiptRepository     gateOutReceiptRepository;
+    private final DamageWorkflowService        damageWorkflowService;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
@@ -61,6 +66,13 @@ public class ContainerController {
                             cp -> cp.getContainer().getContainerId(),
                             cp -> cp));
 
+            Map<String, GateOutReceipt> gateOutMap = gateOutReceiptRepository
+                    .findAllByContainerIds(ids).stream()
+                    .collect(Collectors.toMap(
+                            g -> g.getContainer().getContainerId(),
+                            g -> g,
+                            (a, b) -> a));
+
             responsePage.getContent().forEach(r -> {
                 ContainerPosition cp = posMap.get(r.getContainerId());
                 if (cp != null && cp.getSlot() != null) {
@@ -77,6 +89,17 @@ public class ContainerController {
                         if (yard.getYardType() != null)
                             r.setYardType(yard.getYardType().getYardTypeName());
                     }
+                }
+                // For gated-out containers, fill position from snapshot on GateOutReceipt
+                GateOutReceipt g = gateOutMap.get(r.getContainerId());
+                if (g != null) {
+                    r.setGateOutTime(g.getGateOutTime());
+                    if (r.getYardName()  == null) r.setYardName(g.getLastYardName());
+                    if (r.getZoneName()  == null) r.setZoneName(g.getLastZoneName());
+                    if (r.getBlockName() == null) r.setBlockName(g.getLastBlockName());
+                    if (r.getRowNo()     == null) r.setRowNo(g.getLastRowNo());
+                    if (r.getBayNo()     == null) r.setBayNo(g.getLastBayNo());
+                    if (r.getTier()      == null) r.setTier(g.getLastTier());
                 }
             });
         }
@@ -105,6 +128,15 @@ public class ContainerController {
                 }
             }
         });
+        gateOutReceiptRepository.findByContainerContainerId(id).ifPresent(g -> {
+            r.setGateOutTime(g.getGateOutTime());
+            if (r.getYardName()  == null) r.setYardName(g.getLastYardName());
+            if (r.getZoneName()  == null) r.setZoneName(g.getLastZoneName());
+            if (r.getBlockName() == null) r.setBlockName(g.getLastBlockName());
+            if (r.getRowNo()     == null) r.setRowNo(g.getLastRowNo());
+            if (r.getBayNo()     == null) r.setBayNo(g.getLastBayNo());
+            if (r.getTier()      == null) r.setTier(g.getLastTier());
+        });
         return ResponseEntity.ok(ApiResponse.success(r));
     }
 
@@ -128,9 +160,9 @@ public class ContainerController {
     @GetMapping("/{id}/status-history")
     @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<List<ContainerStatusHistoryResponse>>> getStatusHistory(
-            @PathVariable Integer id) {
+            @PathVariable String id) {
         return ResponseEntity.ok(ApiResponse.success(
-                containerMapper.toHistoryResponses(containerService.getStatusHistory(String.valueOf(id)))));
+                containerMapper.toHistoryResponses(containerService.getStatusHistory(id))));
     }
 
     @PutMapping("/{id}/export-priority")
@@ -165,6 +197,18 @@ public class ContainerController {
     public ResponseEntity<ApiResponse<ContainerResponse>> markRepaired(@PathVariable String id) {
         return ResponseEntity.ok(ApiResponse.success(
                 containerMapper.toContainerResponse(containerService.markRepaired(id))));
+    }
+
+    /**
+     * PUT /admin/containers/{id}/damage
+     * Reports a container as damaged: changes status to DAMAGED and
+     * relocates it to a free slot in the damaged yard.
+     */
+    @PutMapping("/{id}/damage")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    public ResponseEntity<ApiResponse<ContainerResponse>> reportDamage(@PathVariable String id) {
+        return ResponseEntity.ok(ApiResponse.success(
+                containerMapper.toContainerResponse(damageWorkflowService.moveToDamagedYard(id))));
     }
 
     @GetMapping("/my")

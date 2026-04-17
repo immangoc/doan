@@ -10,12 +10,14 @@ import com.anhnht.warehouse.service.modules.auth.service.AuthService;
 import com.anhnht.warehouse.service.modules.user.entity.User;
 import com.anhnht.warehouse.service.modules.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.security.SecureRandom;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AuthServiceImpl implements AuthService {
@@ -87,6 +89,7 @@ public class AuthServiceImpl implements AuthService {
     public void sendRegistrationOtp(String email) {
         String otp = generateOtp();
         redisCache.saveOtp(REG_OTP_PREFIX + email, otp, AppConstant.OTP_TTL_SECONDS);
+        log.info("========== [DEV] Registration OTP for {}: {} ==========", email, otp);
         mailService.sendOtp(email, otp);
     }
 

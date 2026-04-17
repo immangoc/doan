@@ -38,4 +38,9 @@ public interface GateOutReceiptRepository extends JpaRepository<GateOutReceipt, 
     Optional<GateOutReceipt> findByIdWithDetails(@Param("id") Integer id);
 
     boolean existsByContainerContainerId(String containerId);
+
+    Optional<GateOutReceipt> findByContainerContainerId(String containerId);
+
+    @Query("SELECT g FROM GateOutReceipt g WHERE g.container.containerId IN :ids")
+    List<GateOutReceipt> findAllByContainerIds(@Param("ids") List<String> ids);
 }
