@@ -20,7 +20,10 @@
       "Bash(find /d/wms/do-an-full/src/components -type f -name *.tsx)",
       "Bash(/tmp/report_summary.txt:*)",
       "Read(//tmp/**)",
-      "Bash(find \"D:\\\\wms\\\\do-an-full\\\\src\" -type f -name \"*.{ts,tsx,js,jsx}\")"
+      "Bash(find \"D:\\\\wms\\\\do-an-full\\\\src\" -type f -name \"*.{ts,tsx,js,jsx}\")",
+      "Bash(mvn -q compile -DskipTests)",
+      "Bash(ls logs/)",
+      "Bash(find . -maxdepth 3 -name \"*.log\" -mtime -1)"
     ]
   }
 }

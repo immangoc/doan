@@ -41,8 +41,14 @@ public class WithdrawRequest {
     @Column(name = "bank_account", length = 100, nullable = false)
     private String bankAccount;
 
+    @Column(name = "reason", length = 500)
+    private String reason;
+
     @Column(name = "reject_reason", length = 255)
     private String rejectReason;
+
+    @Column(name = "transaction_code", length = 100)
+    private String transactionCode;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "processed_by")

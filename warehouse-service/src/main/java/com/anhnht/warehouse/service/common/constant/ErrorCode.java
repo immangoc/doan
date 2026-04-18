@@ -64,7 +64,9 @@ public enum ErrorCode {
     PAYMENT_AMOUNT_MISMATCH("PAYMENT_AMOUNT_MISMATCH", "Payment amount mismatch"),
     PAYMENT_GATEWAY_ERROR("PAYMENT_GATEWAY_ERROR", "Payment gateway error"),
     PAYMENT_LINK_CREATION_FAILED("PAYMENT_LINK_CREATION_FAILED", "Payment link creation failed"),
-    WEBHOOK_SIGNATURE_INVALID("WEBHOOK_SIGNATURE_INVALID", "Invalid webhook signature");
+    WEBHOOK_SIGNATURE_INVALID("WEBHOOK_SIGNATURE_INVALID", "Invalid webhook signature"),
+    WITHDRAW_REQUEST_NOT_FOUND("WITHDRAW_REQUEST_NOT_FOUND", "Withdraw request not found"),
+    WITHDRAW_REQUEST_INVALID_STATE("WITHDRAW_REQUEST_INVALID_STATE", "Withdraw request is not in a state that allows this action");
 
     private final String code;
     private final String defaultMessage;
