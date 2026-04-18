@@ -38,9 +38,7 @@ public class BillOfLadingServiceImpl implements BillOfLadingService {
 
     @Override
     public BillOfLading findByOrderId(Integer orderId) {
-        return billRepository.findByOrderOrderId(orderId)
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.INVOICE_NOT_FOUND,
-                        "Bill of lading not found for order: " + orderId));
+        return billRepository.findByOrderOrderId(orderId).orElse(null);
     }
 
     @Override

@@ -9,30 +9,19 @@ import com.anhnht.warehouse.service.modules.gatein.entity.GateInReceipt;
 import com.anhnht.warehouse.service.modules.gatein.entity.YardStorage;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
-import org.mapstruct.NullValueCheckStrategy;
 
 import java.util.List;
 
 @Mapper(config = CommonMapperConfig.class)
 public interface GateInMapper {
 
-    // All nested paths are eagerly loaded via @EntityGraph in GateInReceiptRepository.findAllPaged
-    @Mapping(source = "container.containerId",                    target = "containerId")
-    @Mapping(source = "voyage.voyageId",                          target = "voyageId",           nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
-    @Mapping(source = "voyage.voyageNo",                          target = "voyageNo",            nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
-    @Mapping(source = "createdBy.userId",                         target = "createdById",         nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
-    @Mapping(source = "createdBy.username",                       target = "createdByUsername",   nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
-    @Mapping(source = "createdBy.username",                       target = "operatorName",        nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
-    @Mapping(source = "container.cargoType.cargoTypeName",        target = "cargoTypeName",       nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
-    @Mapping(source = "container.containerType.containerTypeName",target = "containerTypeName",  nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
-    @Mapping(source = "container.grossWeight",                    target = "grossWeight",         nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
-    @Mapping(source = "container.status.statusName",              target = "statusName",          nullValueCheckStrategy = NullValueCheckStrategy.ALWAYS)
-    @Mapping(target = "yardName",  ignore = true)
-    @Mapping(target = "zoneName",  ignore = true)
-    @Mapping(target = "blockName", ignore = true)
-    @Mapping(target = "rowNo",     ignore = true)
-    @Mapping(target = "bayNo",     ignore = true)
-    @Mapping(target = "tier",      ignore = true)
+    @Mapping(source = "container.containerId",    target = "containerId")
+    @Mapping(source = "voyage.voyageId",          target = "voyageId")
+    @Mapping(source = "voyage.voyageNo",          target = "voyageNo")
+    @Mapping(source = "createdBy.userId",         target = "createdById")
+    @Mapping(source = "createdBy.username",       target = "createdByUsername")
+    @Mapping(source = "createdBy.username",       target = "operatorName")
+    @Mapping(source = "container.cargoType.cargoTypeName", target = "cargoTypeName")
     GateInReceiptResponse toGateInResponse(GateInReceipt receipt);
 
     @Mapping(source = "container.containerId",    target = "containerId")

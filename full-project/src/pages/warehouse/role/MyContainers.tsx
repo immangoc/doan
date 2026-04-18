@@ -19,6 +19,7 @@ type ContainerItem = {
   sealNumber?: string;
   note?: string;
   createdAt?: string;
+  inActiveOrder?: boolean;
 };
 
 type LookupItem = { id: number; name: string };
@@ -141,7 +142,6 @@ export default function MyContainers() {
     }
     setCreating(true);
     try {
-      // Step 1: create container
       const containerRes = await fetch(`${API_BASE}/admin/containers`, {
         method: 'POST',
         headers,
@@ -156,25 +156,6 @@ export default function MyContainers() {
       });
       const containerData = await containerRes.json();
       if (!containerRes.ok) throw new Error(containerData.message || 'Tạo container thất bại');
-
-      // Step 2: create an order linking this container so it appears in the waiting list after approval
-      const customerName = user?.name || 'Khách hàng';
-      const orderRes = await fetch(`${API_BASE}/orders`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          customerName,
-          phone:        user?.phone  || '',
-          email:        user?.email  || '',
-          note:         `Đặt lưu kho container ${createForm.containerId.trim()}`,
-          containerIds: [createForm.containerId.trim()],
-        }),
-      });
-      if (!orderRes.ok) {
-        const orderData = await orderRes.json().catch(() => ({}));
-        // Container was created — warn but don't fail hard
-        console.warn('Order creation failed:', orderData.message);
-      }
 
       setShowCreate(false);
       setCreateForm({ containerId: '', containerTypeId: containerTypes[0]?.id ?? 0, cargoTypeId: cargoTypes[0]?.id ?? 0, grossWeight: '', declaredValue: '', note: '' });
@@ -346,6 +327,11 @@ export default function MyContainers() {
                             <h2 className="text-lg font-semibold text-gray-900 dark:text-white">{c.containerId}</h2>
                             {c.statusName && (
                               <Badge className={statusBadge(c.statusName)}>{c.statusName}</Badge>
+                            )}
+                            {c.inActiveOrder && (
+                              <Badge className="bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-200 text-xs">
+                                Đang trong đơn hàng
+                              </Badge>
                             )}
                           </div>
                           <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-4 text-sm text-gray-600 dark:text-gray-300">

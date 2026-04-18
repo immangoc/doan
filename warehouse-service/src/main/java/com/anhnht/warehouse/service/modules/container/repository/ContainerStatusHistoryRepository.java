@@ -13,4 +13,6 @@ public interface ContainerStatusHistoryRepository extends JpaRepository<Containe
     @EntityGraph(attributePaths = {"status"})
     @Query("SELECT h FROM ContainerStatusHistory h WHERE h.container.containerId = :containerId ORDER BY h.createdAt ASC")
     List<ContainerStatusHistory> findByContainerIdOrdered(@Param("containerId") String containerId);
+
+    void deleteByContainerContainerId(String containerId);
 }

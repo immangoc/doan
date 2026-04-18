@@ -105,6 +105,14 @@ public class OrderController {
                 bookingMapper.toOrderResponse(orderService.findById(id))));
     }
 
+    @GetMapping("/admin/orders/by-container/{containerId}")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    public ResponseEntity<ApiResponse<OrderResponse>> getOrderByContainer(@PathVariable String containerId) {
+        var order = orderService.findOrderByContainerId(containerId);
+        return ResponseEntity.ok(ApiResponse.success(
+                order != null ? bookingMapper.toOrderResponse(order) : null));
+    }
+
     @PutMapping("/admin/orders/{id}/status")
     @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<OrderResponse>> updateOrderStatus(

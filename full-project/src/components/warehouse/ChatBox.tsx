@@ -165,7 +165,7 @@ export default function ChatBox() {
     sendMessage(inputText);
   };
 
-  const currentUserId = (user as any)?.userId ?? (user as any)?.id;
+  const currentUserId = parseInt(String((user as any)?.userId ?? (user as any)?.id ?? ''), 10) || null;
 
   return (
     <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useWarehouseAuth, API_BASE } from '../../../contexts/WarehouseAuthContext';
 import PageHeader from '../../../components/warehouse/PageHeader';
+import AdminRolesSection from '../role/admin-sections/AdminRolesSection';
 
 type UserItem = {
   userId: number;
@@ -26,14 +27,13 @@ const EMPTY_FORM: UserForm = {
   username: '', fullName: '', email: '', password: '', phone: '', roleName: 'CUSTOMER',
 };
 
-const ROLE_LABEL: Record<string, string> = {
-  ADMIN: 'Admin', PLANNER: 'Điều phối', OPERATOR: 'Nhân viên kho', CUSTOMER: 'Khách hàng',
-};
-
 const getRoleDisplay = (user: UserItem): string => {
   if (!user.roles || user.roles.length === 0) return '—';
-  return user.roles.map((r) => ROLE_LABEL[r.roleName || ''] || r.roleName || '?').join(', ');
+  return user.roles.map((r) => r.roleName || '?').join(', ');
 };
+
+type Tab = 'users' | 'roles';
+type RoleItem = { roleId: number; roleName: string };
 
 export default function QuanTriHeThong() {
   const { accessToken } = useWarehouseAuth();
@@ -42,6 +42,8 @@ export default function QuanTriHeThong() {
     ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
   }), [accessToken]);
 
+  const [tab, setTab] = useState<Tab>('users');
+  const [roles, setRoles] = useState<RoleItem[]>([]);
   const [users, setUsers] = useState<UserItem[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
@@ -76,7 +78,14 @@ export default function QuanTriHeThong() {
     }
   };
 
-  useEffect(() => { fetchData(0); }, []);
+  useEffect(() => {
+    fetchData(0);
+    fetch(`${API_BASE}/admin/roles`, { headers })
+      .then((r) => r.json())
+      .then((d) => setRoles(d.data || []))
+      .catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const openEdit = (user: UserItem) => {
     setEditItem(user);
@@ -86,7 +95,7 @@ export default function QuanTriHeThong() {
       email: user.email || '',
       password: '',
       phone: user.phone || '',
-      roleName: user.roles?.[0]?.roleName || 'CUSTOMER',
+      roleName: user.roles?.[0]?.roleName || roles[0]?.roleName || '',
     });
     setFormError('');
     setOpen(true);
@@ -139,16 +148,56 @@ export default function QuanTriHeThong() {
     <>
       <PageHeader
         title="Quản trị hệ thống"
-        subtitle={`Quản lý tài khoản người dùng (${total} tài khoản)`}
+        subtitle={`Quản lý tài khoản người dùng và phân quyền`}
       />
 
-      {error && (
+      {/* Tab bar */}
+      <div style={{ display: 'flex', gap: 0, borderBottom: '2px solid var(--border, #e5e7eb)', marginBottom: 20 }}>
+        <button
+          type="button"
+          onClick={() => setTab('users')}
+          style={{
+            padding: '8px 20px',
+            fontSize: 14,
+            fontWeight: 500,
+            background: 'none',
+            border: 'none',
+            borderBottom: tab === 'users' ? '2px solid #1e40af' : '2px solid transparent',
+            color: tab === 'users' ? '#1e40af' : 'var(--text2, #6b7280)',
+            cursor: 'pointer',
+            marginBottom: -2,
+          }}
+        >
+          👤 Người dùng
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab('roles')}
+          style={{
+            padding: '8px 20px',
+            fontSize: 14,
+            fontWeight: 500,
+            background: 'none',
+            border: 'none',
+            borderBottom: tab === 'roles' ? '2px solid #1e40af' : '2px solid transparent',
+            color: tab === 'roles' ? '#1e40af' : 'var(--text2, #6b7280)',
+            cursor: 'pointer',
+            marginBottom: -2,
+          }}
+        >
+          🛡 Quản lý Role
+        </button>
+      </div>
+
+      {tab === 'roles' && <AdminRolesSection />}
+
+      {tab === 'users' && error && (
         <div className="card" style={{ borderColor: 'var(--danger)', marginBottom: 12 }}>
           <div style={{ color: 'var(--danger)' }}>{error}</div>
         </div>
       )}
 
-      <div className="card">
+      {tab === 'users' && <div className="card">
         {loading ? (
           <div style={{ padding: '24px', color: 'var(--text2)' }}>Đang tải...</div>
         ) : (
@@ -203,7 +252,7 @@ export default function QuanTriHeThong() {
             <button className="btn btn-secondary btn-sm" disabled={page >= totalPages - 1} onClick={() => fetchData(page + 1)}>→</button>
           </div>
         )}
-      </div>
+      </div>}
 
       {/* Add/Edit modal */}
       <div className={`modal-overlay${open ? ' open' : ''}`} onClick={(e) => e.target === e.currentTarget && closeModal()}>
@@ -217,10 +266,9 @@ export default function QuanTriHeThong() {
             <div className="form-group" style={{ gridColumn: '1 / -1' }}>
               <label className="form-label">Vai trò</label>
               <select className="form-input" value={form.roleName} onChange={(e) => setField('roleName', e.target.value)}>
-                <option value="ADMIN">Admin</option>
-                <option value="PLANNER">Điều phối</option>
-                <option value="OPERATOR">Nhân viên kho</option>
-                <option value="CUSTOMER">Khách hàng</option>
+                {roles.map((r) => (
+                  <option key={r.roleId} value={r.roleName}>{r.roleName}</option>
+                ))}
               </select>
             </div>
           </div>

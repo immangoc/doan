@@ -45,6 +45,9 @@ public class OrderServiceImpl implements OrderService {
     private static final String STATUS_STORED            = "STORED";
     private static final String STATUS_EXPORTED          = "EXPORTED";
 
+    private static final List<String> TERMINAL_STATUSES =
+            List.of(STATUS_CANCELLED, STATUS_REJECTED, STATUS_EXPORTED);
+
     private final OrderRepository            orderRepository;
     private final OrderStatusRepository      orderStatusRepository;
     private final OrderCancellationRepository cancellationRepository;
@@ -90,6 +93,12 @@ public class OrderServiceImpl implements OrderService {
                     .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.USER_NOT_FOUND,
                             "User not found: " + customerId));
             order.setCustomer(customer);
+
+            long eligibleCount = containerRepository.countEligibleByOwner(customerId, TERMINAL_STATUSES, -1);
+            if (eligibleCount == 0) {
+                throw new BusinessException(ErrorCode.BAD_REQUEST,
+                        "Bạn cần đăng ký ít nhất một container trước khi tạo đơn hàng");
+            }
         }
 
         // Optionally link containers at creation time
@@ -98,6 +107,11 @@ public class OrderServiceImpl implements OrderService {
                 Container container = containerRepository.findById(cid)
                         .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CONTAINER_NOT_FOUND,
                                 "Container not found: " + cid));
+                long active = orderRepository.countActiveOrdersForContainer(cid, TERMINAL_STATUSES);
+                if (active > 0) {
+                    throw new BusinessException(ErrorCode.BAD_REQUEST,
+                            "Container " + cid + " đã được sử dụng trong một đơn hàng đang hoạt động khác");
+                }
                 order.getContainers().add(container);
             }
         }
@@ -139,6 +153,11 @@ public class OrderServiceImpl implements OrderService {
                 Container container = containerRepository.findById(cid)
                         .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.CONTAINER_NOT_FOUND,
                                 "Container not found: " + cid));
+                long active = orderRepository.countActiveOrdersForContainerExcluding(cid, TERMINAL_STATUSES, orderId);
+                if (active > 0) {
+                    throw new BusinessException(ErrorCode.BAD_REQUEST,
+                            "Container " + cid + " đã được sử dụng trong một đơn hàng đang hoạt động khác");
+                }
                 order.getContainers().add(container);
             }
         }
@@ -250,19 +269,19 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public void markImported(String containerId) {
-        orderRepository.findActiveOrderByContainerId(containerId,
+        Order order = orderRepository.findActiveOrderByContainerId(containerId,
                 List.of(STATUS_WAITING_CHECKIN, STATUS_LATE_CHECKIN, STATUS_APPROVED))
-                .ifPresent(order -> {
-                    order.setStatus(resolveStatus(STATUS_IMPORTED));
-                    orderRepository.save(order);
-                    log.info("[Order] Container {} gate-in → Order #{} → IMPORTED", containerId, order.getOrderId());
-                    if (order.getCustomer() != null) {
-                        notificationService.notify(
-                                "Container đã nhập kho — Đơn #" + order.getOrderId(),
-                                "Container của bạn đã được tiếp nhận và đang chờ sắp xếp vị trí trong bãi.",
-                                order.getCustomer().getUserId());
-                    }
-                });
+                .orElseThrow(() -> new BusinessException(ErrorCode.BOOKING_NOT_FOUND,
+                        "Không tìm thấy đơn hàng hợp lệ cho container: " + containerId));
+        order.setStatus(resolveStatus(STATUS_IMPORTED));
+        orderRepository.save(order);
+        log.info("[Order] Container {} gate-in → Order #{} → IMPORTED", containerId, order.getOrderId());
+        if (order.getCustomer() != null) {
+            notificationService.notify(
+                    "Container đã nhập kho — Đơn #" + order.getOrderId(),
+                    "Container của bạn đã được tiếp nhận và đang chờ sắp xếp vị trí trong bãi.",
+                    order.getCustomer().getUserId());
+        }
     }
 
     /** Called by gate-in service when a container is assigned a yard position. */
@@ -380,6 +399,17 @@ public class OrderServiceImpl implements OrderService {
                     order.getCustomer().getUserId());
         }
         return order;
+    }
+
+    @Override
+    public Order findOrderByContainerId(String containerId) {
+        List<String> activeStatuses = List.of(
+                STATUS_PENDING, STATUS_APPROVED, STATUS_CANCEL_REQUESTED,
+                STATUS_WAITING_CHECKIN, STATUS_LATE_CHECKIN, STATUS_IMPORTED, STATUS_STORED);
+        return orderRepository.findActiveOrderByContainerId(containerId, activeStatuses)
+                .map(Order::getOrderId)
+                .flatMap(orderRepository::findByIdWithDetails)
+                .orElse(null);
     }
 
     // ----------------------------------------------------------------

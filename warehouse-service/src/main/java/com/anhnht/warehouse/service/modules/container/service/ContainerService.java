@@ -14,6 +14,8 @@ public interface ContainerService {
 
     Page<Container> findAll(String keyword, String statusName, Pageable pageable);
     Page<Container> findByCustomer(Integer customerId, Pageable pageable);
+    /** Containers owned by customer that are NOT currently attached to any active order. */
+    Page<Container> findEligibleByCustomer(Integer customerId, Integer exceptOrderId, Pageable pageable);
     Container findById(String containerId);
 
     Container create(ContainerRequest request);

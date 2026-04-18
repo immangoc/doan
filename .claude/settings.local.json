@@ -23,7 +23,16 @@
       "Bash(find \"D:\\\\wms\\\\do-an-full\\\\src\" -type f -name \"*.{ts,tsx,js,jsx}\")",
       "Bash(mvn -q compile -DskipTests)",
       "Bash(ls logs/)",
-      "Bash(find . -maxdepth 3 -name \"*.log\" -mtime -1)"
+      "Bash(find . -maxdepth 3 -name \"*.log\" -mtime -1)",
+      "Bash(rsync -a --exclude='node_modules' --exclude='.git' --exclude='.DS_Store' /Users/mangoc/Downloads/new_1/3d/ /Users/mangoc/Downloads/wms/3d/)",
+      "Bash(cp /Users/mangoc/Downloads/new_1/warehouse-service/src/main/resources/db/migration/V17__add_email_otp_and_order_dates_and_container_fields.sql /Users/mangoc/Downloads/wms/warehouse-service/src/main/resources/db/migration/V31__add_email_otp_and_order_dates_and_container_fields.sql)",
+      "Bash(cp /Users/mangoc/Downloads/new_1/warehouse-service/src/main/resources/db/migration/V18__add_pricing_multipliers.sql /Users/mangoc/Downloads/wms/warehouse-service/src/main/resources/db/migration/V32__add_pricing_multipliers.sql)",
+      "Bash(cp /Users/mangoc/Downloads/new_1/warehouse-service/src/main/resources/db/migration/V19__order_lifecycle_and_slot_locking.sql /Users/mangoc/Downloads/wms/warehouse-service/src/main/resources/db/migration/V33__order_lifecycle_and_slot_locking.sql)",
+      "Bash(cp /Users/mangoc/Downloads/new_1/warehouse-service/src/main/resources/db/migration/V20__fix_free_storage_days_default.sql /Users/mangoc/Downloads/wms/warehouse-service/src/main/resources/db/migration/V34__fix_free_storage_days_default.sql)",
+      "Bash(cp /Users/mangoc/Downloads/new_1/warehouse-service/src/main/resources/db/migration/V21__add_container_owner.sql /Users/mangoc/Downloads/wms/warehouse-service/src/main/resources/db/migration/V35__add_container_owner.sql)",
+      "Bash(./mvnw compile *)",
+      "Bash(./node_modules/.bin/vite build *)",
+      "Bash(xargs -n1 basename)"
     ]
   }
 }

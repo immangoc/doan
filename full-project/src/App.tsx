@@ -25,6 +25,7 @@ import CustomerAccount from './pages/warehouse/role/CustomerAccount';
 import MyContainers from './pages/warehouse/role/MyContainers';
 import Orders from './pages/warehouse/role/Orders';
 import WalletPage from './pages/warehouse/role/Wallet';
+import Payments from './pages/warehouse/role/Payments';
 
 // Public Pages
 import HomePage from './pages/HomePage';
@@ -158,6 +159,14 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['customer']}>
                 <WalletPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/warehouse/customer/payments"
+            element={
+              <ProtectedRoute allowedRoles={['customer']}>
+                <Payments />
               </ProtectedRoute>
             }
           />

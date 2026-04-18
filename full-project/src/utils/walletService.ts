@@ -35,6 +35,29 @@ export interface PaymentStatusResponse {
   paidAt: string | null;
 }
 
+export type WalletTransactionType = 'TOPUP' | 'REFUND' | 'PAYMENT' | 'ADJUST';
+
+export interface WalletTransactionDto {
+  transactionId: string;
+  type: WalletTransactionType;
+  amount: number;
+  balanceAfter: number;
+  note: string | null;
+  createdAt: string;
+  paymentOrderCode: number | null;
+  paymentStatus: string | null;
+}
+
+export interface TransactionsPage {
+  content: WalletTransactionDto[];
+  totalElements: number;
+  totalPages: number;
+  pageNumber: number;
+  pageSize: number;
+  hasNext: boolean;
+  hasPrevious: boolean;
+}
+
 // ─── API Functions ──────────────────────────────────────────────────────────────
 
 /** Lấy thông tin ví của user hiện tại */
@@ -78,4 +101,20 @@ export async function cancelTopup(
     { method: 'POST' },
     token,
   );
+}
+
+/** Lấy lịch sử giao dịch ví (phân trang) */
+export async function getMyTransactions(
+  token: string | null,
+  page = 0,
+  size = 20,
+): Promise<TransactionsPage> {
+  const res = await apiFetch(`/wallets/me/transactions?page=${page}&size=${size}`, {}, token);
+  return res.data;
+}
+
+/** Đếm tổng số lần nạp thành công */
+export async function getMyTopupCount(token: string | null): Promise<number> {
+  const res = await apiFetch('/wallets/me/topup-count', {}, token);
+  return res.data ?? 0;
 }

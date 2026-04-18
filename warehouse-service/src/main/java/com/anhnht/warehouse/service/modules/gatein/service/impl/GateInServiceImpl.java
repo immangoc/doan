@@ -60,6 +60,19 @@ public class GateInServiceImpl implements GateInService {
                     "Container already has a gate-in record: " + containerId);
         }
 
+        // Enforce business rule: container must belong to an approved order
+        var linkedOrder = orderService.findOrderByContainerId(containerId);
+        if (linkedOrder == null) {
+            throw new BusinessException(ErrorCode.BOOKING_NOT_FOUND,
+                    "Container " + containerId + " chưa có đơn hàng. Khách hàng phải tạo đơn hàng và được duyệt trước khi nhập kho.");
+        }
+        var orderStatusName = linkedOrder.getStatus().getStatusName();
+        var validImportStatuses = List.of("APPROVED", "WAITING_CHECKIN", "LATE_CHECKIN");
+        if (!validImportStatuses.contains(orderStatusName)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST,
+                    "Đơn hàng #" + linkedOrder.getOrderId() + " chưa được duyệt (trạng thái: " + orderStatusName + "). Chỉ nhập kho khi đơn hàng đã APPROVED/WAITING_CHECKIN/LATE_CHECKIN.");
+        }
+
         Container container = containerService.findById(containerId);
 
         GateInReceipt receipt = new GateInReceipt();

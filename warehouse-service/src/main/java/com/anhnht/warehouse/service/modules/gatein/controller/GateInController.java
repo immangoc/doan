@@ -54,35 +54,13 @@ public class GateInController {
                 .map(gateInMapper::toGateInResponse);
 
         pageResult.getContent().forEach(g -> {
-            // cargoTypeName & containerTypeName already set by mapper (eager-loaded via @EntityGraph)
-
-            // blockName, rowNo, bayNo, tier, zoneName — from ContainerPosition
             try {
-                var pos = gateInService.getPosition(g.getContainerId());
-                if (pos != null && pos.getSlot() != null) {
-                    var slot = pos.getSlot();
-                    g.setRowNo(slot.getRowNo());
-                    g.setBayNo(slot.getBayNo());
-                    g.setTier(pos.getTier());
-                    if (slot.getBlock() != null) {
-                        g.setBlockName(slot.getBlock().getBlockName());
-                        if (slot.getBlock().getZone() != null) {
-                            g.setZoneName(slot.getBlock().getZone().getZoneName());
-                        }
-                    }
-                }
-            } catch (Exception ignored) {}
-
-            // yardName — from most recent YardStorage
-            try {
-                var storageList = gateInService.getStorageHistory(g.getContainerId());
-                if (storageList != null && !storageList.isEmpty()) {
-                    var storage = storageList.get(0);
-                    if (storage.getYard() != null) {
-                        g.setYardName(storage.getYard().getYardName());
-                    }
-                }
-            } catch (Exception ignored) {}
+                com.anhnht.warehouse.service.modules.gatein.entity.ContainerPosition pos = gateInService.getPosition(g.getContainerId());
+                g.setBlockName(pos.getSlot().getBlock().getBlockName());
+                g.setRowNo(pos.getSlot().getRowNo());
+                g.setBayNo(pos.getSlot().getBayNo());
+                g.setTier(pos.getTier());
+            } catch (Exception e) {}
         });
 
         return ResponseEntity.ok(ApiResponse.success(PageResponse.of(pageResult)));

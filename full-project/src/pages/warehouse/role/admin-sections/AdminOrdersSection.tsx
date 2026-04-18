@@ -331,9 +331,9 @@ export default function AdminOrdersSection() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {orders.map((o) => (
+                    {orders.map((o, idx) => (
                       <TableRow key={o.orderId}>
-                        <TableCell className="font-mono text-xs font-semibold">#{o.orderId}</TableCell>
+                        <TableCell className="font-mono text-xs font-semibold">#{idx + 1}</TableCell>
                         <TableCell>
                           <div className="font-semibold">{o.customerName}</div>
                           {o.address && <div className="text-xs text-gray-500">{o.address}</div>}

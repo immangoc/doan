@@ -29,7 +29,7 @@ public interface GateInReceiptRepository extends JpaRepository<GateInReceipt, In
            "ORDER BY CAST(g.gateInTime AS date)")
     List<Object[]> countGroupedByDate(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
-    @EntityGraph(attributePaths = {"container", "container.cargoType", "container.containerType", "container.status", "voyage", "createdBy"})
+    @EntityGraph(attributePaths = {"container", "container.cargoType", "voyage", "createdBy"})
     @Query("SELECT g FROM GateInReceipt g")
     Page<GateInReceipt> findAllPaged(Pageable pageable);
 
@@ -38,8 +38,4 @@ public interface GateInReceiptRepository extends JpaRepository<GateInReceipt, In
     Optional<GateInReceipt> findByIdWithDetails(@Param("id") Integer id);
 
     boolean existsByContainerContainerId(String containerId);
-
-    @EntityGraph(attributePaths = {"container", "container.cargoType"})
-    @Query("SELECT g FROM GateInReceipt g WHERE g.container.containerId = :containerId ORDER BY g.gateInTime DESC")
-    List<GateInReceipt> findLatestByContainerId(@Param("containerId") String containerId, Pageable pageable);
 }

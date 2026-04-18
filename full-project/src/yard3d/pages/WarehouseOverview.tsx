@@ -24,9 +24,9 @@ import { fetchAndSetOccupancy } from '../services/containerPositionService';
 import { fetchAllYards, getCachedYards } from '../services/yardService';
 import { processApiYards, setYardData, getSlotIdByCoords } from '../store/yardStore';
 import {
-  searchInYardContainers, performGateOut, fetchWaitingContainers,
+  searchInYardContainers, performGateOut, fetchWaitingContainers, fetchStorageBill,
 } from '../services/gateOutService';
-import type { InYardContainer, WaitingItem } from '../services/gateOutService';
+import type { InYardContainer, WaitingItem, StorageBill } from '../services/gateOutService';
 import './WarehouseOverview.css';
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
@@ -241,6 +241,9 @@ function ExportPanel({ onClose }: { onClose: () => void }) {
   const [selectedExport, setSelectedExport] = useState<InYardContainer | null>(null);
   const [gateOutLoading, setGateOutLoading] = useState(false);
   const [gateOutError, setGateOutError] = useState<string | null>(null);
+  const [note, setNote] = useState('');
+  const [bill, setBill] = useState<StorageBill | null>(null);
+  const [billLoading, setBillLoading] = useState(false);
 
   const doSearch = useCallback((keyword: string) => {
     setFetchLoading(true);
@@ -260,7 +263,14 @@ function ExportPanel({ onClose }: { onClose: () => void }) {
   function selectForExport(ctn: InYardContainer) {
     setSelectedExport(ctn);
     setGateOutError(null);
+    setNote('');
+    setBill(null);
     setStep('confirm');
+    setBillLoading(true);
+    fetchStorageBill(ctn.containerId)
+      .then(setBill)
+      .catch(() => setBill(null))
+      .finally(() => setBillLoading(false));
   }
 
   async function handleConfirmGateOut() {
@@ -268,7 +278,7 @@ function ExportPanel({ onClose }: { onClose: () => void }) {
     setGateOutLoading(true);
     setGateOutError(null);
     try {
-      await performGateOut(selectedExport.containerId);
+      await performGateOut(selectedExport.containerId, note);
       setContainers((prev) => prev.filter((c) => c.containerId !== selectedExport.containerId));
       onClose();
     } catch (e) {
@@ -276,6 +286,34 @@ function ExportPanel({ onClose }: { onClose: () => void }) {
       setGateOutLoading(false);
     }
   }
+
+  const fmtNum = (v: string | number | null | undefined): string => {
+    if (v === null || v === undefined || v === '') return '';
+    const n = Number(v);
+    if (!Number.isFinite(n)) return String(v);
+    return new Intl.NumberFormat('vi-VN').format(n);
+  };
+
+  const fmtVND = (v: number): string =>
+    new Intl.NumberFormat('vi-VN', { style: 'currency', currency: 'VND' }).format(v);
+
+  const infoRows: Array<[string, string]> = selectedExport
+    ? [
+        ['Mã container',   selectedExport.containerCode],
+        ['Trạng thái',     selectedExport.statusName],
+        ['Loại hàng',      selectedExport.cargoType],
+        ['Loại cont.',     selectedExport.containerType],
+        ['Trọng lượng',    selectedExport.grossWeight ? `${fmtNum(selectedExport.grossWeight)} kg` : ''],
+        ['Giá trị khai báo', selectedExport.declaredValue ? fmtVND(Number(selectedExport.declaredValue)) : ''],
+        ['Số seal',        selectedExport.sealNumber],
+        ['Kho',            selectedExport.whName],
+        ['Loại kho',       selectedExport.yardType],
+        ['Zone',           selectedExport.zone],
+        ['Block',          selectedExport.blockName],
+        ['Vị trí',         selectedExport.slot],
+        ['Ghi chú',        selectedExport.note],
+      ]
+    : [];
 
   return (
     <div className="ov-right-panel">
@@ -309,7 +347,10 @@ function ExportPanel({ onClose }: { onClose: () => void }) {
                 <div className="ov-waiting-icon ov-export-icon"><LogOut size={18} /></div>
                 <div className="ov-waiting-info">
                   <span className="ov-waiting-code">{ctn.containerCode}</span>
-                  <span className="ov-waiting-meta">{ctn.cargoType || '—'} &middot; {ctn.zone}</span>
+                  <span className="ov-waiting-meta">
+                    {ctn.cargoType || '—'} &middot; {ctn.whName}
+                    {ctn.zone && ctn.zone !== '—' ? ` · ${ctn.zone}` : ''}
+                  </span>
                 </div>
                 <ChevronRight size={16} className="ov-waiting-chevron" />
               </button>
@@ -327,26 +368,78 @@ function ExportPanel({ onClose }: { onClose: () => void }) {
                 {gateOutError}
               </div>
             )}
+
+            {selectedExport.inActiveOrder && (
+              <div style={{
+                fontSize: '0.75rem', background: '#fef3c7', color: '#92400e',
+                borderRadius: 6, padding: '0.5rem 0.75rem',
+              }}>
+                ⚠ Container đang thuộc đơn hàng chưa kết thúc. Xuất kho sẽ đánh dấu đơn đã xuất.
+              </div>
+            )}
+
             <div className="ov-rp-suggestion-card">
               <div className="ov-rp-sug-header">
                 <div className="ov-rp-sug-icon"><LogOut size={16} /></div>
-                <span className="ov-rp-sug-title">Thông tin xuất kho</span>
+                <span className="ov-rp-sug-title">Thông tin container</span>
               </div>
-              {[
-                ['Mã container', selectedExport.containerCode],
-                ['Loại hàng', selectedExport.cargoType],
-                ['Loại cont.', selectedExport.containerType],
-                ['Kho', selectedExport.whName],
-                ['Zone', selectedExport.zone],
-                ['Block', selectedExport.blockName],
-                ['Vị trí', selectedExport.slot],
-              ].filter(([, v]) => v && v !== '—').map(([label, value]) => (
-                <div key={label} className="ov-rp-sug-row">
-                  <span className="ov-rp-sug-label">{label}</span>
-                  <span className="ov-rp-sug-value ov-rp-blue">{value}</span>
-                </div>
-              ))}
+              {infoRows
+                .filter(([, v]) => v && v !== '—')
+                .map(([label, value]) => (
+                  <div key={label} className="ov-rp-sug-row">
+                    <span className="ov-rp-sug-label">{label}</span>
+                    <span className="ov-rp-sug-value ov-rp-blue">{value}</span>
+                  </div>
+                ))}
             </div>
+
+            {/* Storage bill preview */}
+            <div className="ov-rp-suggestion-card" style={{ background: '#fff7ed', borderColor: '#fed7aa' }}>
+              <div className="ov-rp-sug-header">
+                <div className="ov-rp-sug-icon" style={{ background: '#f97316' }}><Info size={16} /></div>
+                <span className="ov-rp-sug-title">Phí lưu kho</span>
+              </div>
+              {billLoading ? (
+                <div className="ov-rp-sug-row"><span className="ov-rp-sug-label">Đang tính phí…</span></div>
+              ) : bill ? (
+                <>
+                  <div className="ov-rp-sug-row">
+                    <span className="ov-rp-sug-label">Số ngày lưu</span>
+                    <span className="ov-rp-sug-value">{bill.days} ngày</span>
+                  </div>
+                  <div className="ov-rp-sug-row">
+                    <span className="ov-rp-sug-label">Số ngày tính phí</span>
+                    <span className="ov-rp-sug-value">{bill.billableDays} ngày</span>
+                  </div>
+                  <div className="ov-rp-sug-row">
+                    <span className="ov-rp-sug-label">Giá/ngày</span>
+                    <span className="ov-rp-sug-value">{fmtVND(bill.ratePerDay)}</span>
+                  </div>
+                  <div className="ov-rp-sug-row" style={{ borderTop: '1px solid #fed7aa', paddingTop: 6, marginTop: 4 }}>
+                    <span className="ov-rp-sug-label" style={{ fontWeight: 600, color: '#9a3412' }}>Tổng phí</span>
+                    <span className="ov-rp-sug-value" style={{ color: '#c2410c', fontWeight: 700 }}>
+                      {fmtVND(bill.total)}
+                    </span>
+                  </div>
+                </>
+              ) : (
+                <div className="ov-rp-sug-row"><span className="ov-rp-sug-label">Không có dữ liệu lưu kho để tính phí</span></div>
+              )}
+            </div>
+
+            {/* Gate-out note input */}
+            <div className="ov-rp-field">
+              <label>Ghi chú xuất kho (tuỳ chọn)</label>
+              <input
+                type="text"
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
+                placeholder="VD: Giao cho KH, xe BKS 29H-1234…"
+                className="ov-rp-input"
+                maxLength={255}
+              />
+            </div>
+
             <button
               className="btn-primary ov-rp-submit-btn"
               onClick={handleConfirmGateOut}
@@ -665,16 +758,16 @@ export function WarehouseOverview() {
         </div>
 
         {/* ── Dashboard row: Donut + Status + Warehouse summary ── */}
-        <div className="ov-dash-row" style={{ gridTemplateColumns: '280px 1fr 1fr' }}>
+        <div className="ov-dash-row">
           {/* Donut chart */}
-          <div className="ov-dash-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-            <div className="ov-dash-card-header" style={{ alignSelf: 'stretch' }}>
+          <div className="ov-dash-card ov-dash-card-donut">
+            <div className="ov-dash-card-header">
               <BarChart3 size={18} className="ov-dash-card-icon" />
               <h3>Độ lấp đầy</h3>
             </div>
             <DonutChart pct={yardFillRate} />
-            <div style={{ textAlign: 'center', fontSize: '0.8rem', color: '#6b7280' }}>
-              <strong style={{ color: '#111827' }}>{kpi.containersInYard}</strong> / {zoneOccupancy.reduce((s, z) => s + z.capacitySlots, 0)} vị trí
+            <div className="ov-donut-meta">
+              <strong>{kpi.containersInYard}</strong> / {zoneOccupancy.reduce((s, z) => s + z.capacitySlots, 0)} vị trí
             </div>
           </div>
 
@@ -684,25 +777,32 @@ export function WarehouseOverview() {
               <Activity size={18} className="ov-dash-card-icon" />
               <h3>Trạng thái container</h3>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 10, padding: '4px 0' }}>
+            <div className="ov-status-list">
               {kpi.containersByStatus.map((s) => {
                 const total = kpi.totalContainers || 1;
                 const pct = Math.round((s.count / total) * 100);
-                const barColor = s.name === 'IN_YARD' ? '#10b981' : s.name === 'GATE_IN' ? '#3b82f6' : s.name === 'GATE_OUT' ? '#f59e0b' : s.name === 'AVAILABLE' ? '#8b5cf6' : '#6b7280';
+                const barColor =
+                  s.name === 'IN_YARD'   ? '#10b981' :
+                  s.name === 'GATE_IN'   ? '#3b82f6' :
+                  s.name === 'GATE_OUT'  ? '#f59e0b' :
+                  s.name === 'AVAILABLE' ? '#8b5cf6' : '#6b7280';
                 return (
                   <div key={s.name}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.78rem', marginBottom: 3 }}>
-                      <span style={{ color: '#374151', fontWeight: 500 }}>{s.name}</span>
-                      <span style={{ color: barColor, fontWeight: 700 }}>{s.count} <span style={{ fontWeight: 400, color: '#9ca3af' }}>({pct}%)</span></span>
+                    <div className="ov-status-row-label">
+                      <span className="ov-status-row-name">{s.name}</span>
+                      <span className="ov-status-row-value" style={{ color: barColor }}>
+                        {s.count}<span className="ov-status-row-pct">({pct}%)</span>
+                      </span>
                     </div>
-                    <div style={{ height: 6, background: '#f1f5f9', borderRadius: 3, overflow: 'hidden' }}>
-                      <div style={{ width: `${pct}%`, height: '100%', background: barColor, borderRadius: 3, transition: 'width 0.4s' }} />
+                    <div className="ov-status-row-track">
+                      <div className="ov-status-row-fill" style={{ width: `${pct}%`, background: barColor }} />
                     </div>
                   </div>
                 );
               })}
-              <div style={{ fontSize: '0.75rem', color: '#6b7280', display: 'flex', alignItems: 'center', gap: 4, paddingTop: 4, borderTop: '1px solid #f1f5f9' }}>
-                <Box size={13} /><span>Tổng: <strong style={{ color: '#111827' }}>{kpi.totalContainers}</strong> container</span>
+              <div className="ov-status-total">
+                <Box size={13} />
+                <span>Tổng: <strong>{kpi.totalContainers}</strong> container</span>
               </div>
             </div>
           </div>
@@ -713,7 +813,7 @@ export function WarehouseOverview() {
               <CheckCircle size={18} className="ov-dash-card-icon" />
               <h3>Dung lượng theo kho</h3>
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            <div className="ov-wh-cap-list">
               {(() => {
                 const grouped = new Map<string, { capacity: number; occupied: number }>();
                 zoneOccupancy.forEach((z) => {
@@ -722,82 +822,78 @@ export function WarehouseOverview() {
                   cur.occupied += z.occupiedSlots;
                   grouped.set(z.yardName, cur);
                 });
-                return Array.from(grouped.entries()).sort((a, b) => a[0].localeCompare(b[0])).map(([name, d]) => {
-                  const pct = d.capacity > 0 ? Math.round((d.occupied / d.capacity) * 100) : 0;
-                  const color = pct >= 90 ? '#ef4444' : pct >= 70 ? '#f59e0b' : '#10b981';
-                  return (
-                    <div key={name} style={{ padding: '8px 10px', background: '#f8fafc', borderRadius: 8, border: '1px solid #e2e8f0' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: '0.78rem' }}>
-                        <span style={{ fontWeight: 600, color: '#1e293b' }}>{name}</span>
-                        <span style={{ fontWeight: 700, color }}>{pct}%</span>
+                return Array.from(grouped.entries())
+                  .sort((a, b) => a[0].localeCompare(b[0]))
+                  .map(([name, d]) => {
+                    const pct = d.capacity > 0 ? Math.round((d.occupied / d.capacity) * 100) : 0;
+                    const color = pct >= 90 ? '#ef4444' : pct >= 70 ? '#f59e0b' : '#10b981';
+                    return (
+                      <div key={name} className="ov-wh-cap-item">
+                        <div className="ov-wh-cap-head">
+                          <span className="ov-wh-cap-name">{name}</span>
+                          <span className="ov-wh-cap-pct" style={{ color }}>{pct}%</span>
+                        </div>
+                        <div className="ov-wh-cap-track">
+                          <div className="ov-wh-cap-fill" style={{ width: `${pct}%`, background: color }} />
+                        </div>
+                        <div className="ov-wh-cap-counts">
+                          <span>{d.occupied} đã dùng</span>
+                          <span>{d.capacity - d.occupied} trống</span>
+                        </div>
                       </div>
-                      <div style={{ height: 5, background: '#e2e8f0', borderRadius: 3, overflow: 'hidden' }}>
-                        <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 3 }} />
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3, fontSize: '0.7rem', color: '#94a3b8' }}>
-                        <span>{d.occupied} đã dùng</span>
-                        <span>{d.capacity - d.occupied} trống</span>
-                      </div>
-                    </div>
-                  );
-                });
+                    );
+                  });
               })()}
             </div>
           </div>
         </div>
 
         {/* ── Zone detail table ── */}
-        <div className="ov-dash-card" style={{ marginBottom: 20 }}>
+        <div className="ov-dash-card">
           <div className="ov-dash-card-header">
             <BarChart3 size={18} className="ov-dash-card-icon" />
             <h3>Chi tiết theo khu vực</h3>
           </div>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.78rem' }}>
+          <div className="ov-zone-table-wrap">
+            <table className="ov-zone-table">
               <thead>
-                <tr style={{ borderBottom: '2px solid #e2e8f0' }}>
-                  <th style={{ padding: '8px 12px', color: '#64748b', fontWeight: 600, textAlign: 'left' }}>Kho</th>
-                  <th style={{ padding: '8px 12px', color: '#64748b', fontWeight: 600, textAlign: 'left' }}>Zone</th>
-                  <th style={{ padding: '8px 12px', color: '#64748b', fontWeight: 600, textAlign: 'right' }}>Sức chứa</th>
-                  <th style={{ padding: '8px 12px', color: '#64748b', fontWeight: 600, textAlign: 'right' }}>Đã dùng</th>
-                  <th style={{ padding: '8px 12px', color: '#64748b', fontWeight: 600, textAlign: 'right' }}>Trống</th>
-                  <th style={{ padding: '8px 12px', color: '#64748b', fontWeight: 600, textAlign: 'right' }}>Tỷ lệ</th>
-                  <th style={{ padding: '8px 12px', color: '#64748b', fontWeight: 600, minWidth: 100 }}></th>
+                <tr>
+                  <th>Kho</th>
+                  <th>Zone</th>
+                  <th className="ov-num">Sức chứa</th>
+                  <th className="ov-num">Đã dùng</th>
+                  <th className="ov-num">Trống</th>
+                  <th className="ov-num">Tỷ lệ</th>
+                  <th className="ov-bar-cell"></th>
                 </tr>
               </thead>
               <tbody>
-                {[...zoneOccupancy].sort((a, b) => a.yardName.localeCompare(b.yardName) || a.zoneName.localeCompare(b.zoneName)).map((z) => {
-                  const pct = Math.round(z.occupancyRate * 100);
-                  const color = pct >= 90 ? '#ef4444' : pct >= 70 ? '#f59e0b' : '#10b981';
-                  const empty = z.capacitySlots - z.occupiedSlots;
-                  return (
-                    <tr key={z.zoneId} style={{ borderBottom: '1px solid #f1f5f9' }}>
-                      <td style={{ padding: '8px 12px', fontWeight: 500 }}>{z.yardName}</td>
-                      <td style={{ padding: '8px 12px', color: '#475569' }}>{z.zoneName}</td>
-                      <td style={{ padding: '8px 12px', textAlign: 'right', color: '#475569' }}>{z.capacitySlots}</td>
-                      <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 600 }}>{z.occupiedSlots}</td>
-                      <td style={{ padding: '8px 12px', textAlign: 'right', color: empty <= 5 ? '#ef4444' : '#475569' }}>{empty}</td>
-                      <td style={{ padding: '8px 12px', textAlign: 'right', fontWeight: 700, color }}>{pct}%</td>
-                      <td style={{ padding: '8px 12px' }}>
-                        <div style={{ height: 6, background: '#f1f5f9', borderRadius: 3 }}>
-                          <div style={{ width: `${pct}%`, height: '100%', background: color, borderRadius: 3 }} />
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
+                {[...zoneOccupancy]
+                  .sort((a, b) => a.yardName.localeCompare(b.yardName) || a.zoneName.localeCompare(b.zoneName))
+                  .map((z) => {
+                    const pct = Math.round(z.occupancyRate * 100);
+                    const color = pct >= 90 ? '#ef4444' : pct >= 70 ? '#f59e0b' : '#10b981';
+                    const empty = z.capacitySlots - z.occupiedSlots;
+                    return (
+                      <tr key={z.zoneId}>
+                        <td className="ov-yard-name">{z.yardName}</td>
+                        <td className="ov-zone-cell">{z.zoneName}</td>
+                        <td className="ov-num ov-zone-cell">{z.capacitySlots}</td>
+                        <td className="ov-num" style={{ fontWeight: 600 }}>{z.occupiedSlots}</td>
+                        <td className={`ov-num ${empty <= 5 ? 'ov-empty-low' : 'ov-zone-cell'}`}>{empty}</td>
+                        <td className="ov-num ov-pct-cell" style={{ color }}>{pct}%</td>
+                        <td className="ov-bar-cell">
+                          <div className="ov-zone-table-mini-bar">
+                            <div className="ov-zone-table-mini-fill" style={{ width: `${pct}%`, background: color }} />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
               </tbody>
             </table>
           </div>
         </div>
-
-        {/* ── Quick link to 3D ── */}
-        <div style={{ display: 'flex', justifyContent: 'flex-end', paddingBottom: 20 }}>
-          <button className="ov-btn-nav" onClick={() => navigate('/yard/3d')} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '8px 16px', borderRadius: 8, border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1d4ed8', fontSize: '0.82rem', fontWeight: 600, cursor: 'pointer' }}>
-            <LayoutDashboard size={16} /><span>Xem sơ đồ 3D trực quan</span>
-          </button>
-        </div>
-
 
       </div>
     </DashboardLayout>

@@ -25,6 +25,27 @@ export interface InYardContainer {
   slot: string;
   blockName: string;
   yardType: string;
+  /** Additional detail — shown in ExportPanel */
+  grossWeight: string;
+  declaredValue: string;
+  sealNumber: string;
+  note: string;
+  statusName: string;
+  rowNo: number | null;
+  bayNo: number | null;
+  tier: number | null;
+  inActiveOrder: boolean;
+}
+
+export interface StorageBill {
+  containerId: string;
+  firstStoredAt: string | null;
+  days: number;
+  billableDays: number;
+  ratePerDay: number;
+  subtotal: number;
+  total: number;
+  currency: string;
 }
 
 export interface WaitingItem {
@@ -99,79 +120,139 @@ export async function searchInYardContainers(keyword: string): Promise<InYardCon
       slot:          slotLabel || String(c.slotName ?? c.slot ?? '—'),
       blockName:     String(c.blockName      ?? ''),
       yardType:      String(c.yardType       ?? ''),
+      grossWeight:   c.grossWeight   != null ? String(c.grossWeight)   : '',
+      declaredValue: c.declaredValue != null ? String(c.declaredValue) : '',
+      sealNumber:    String(c.sealNumber ?? ''),
+      note:          String(c.note ?? ''),
+      statusName:    String(c.statusName ?? ''),
+      rowNo:         c.rowNo != null ? Number(c.rowNo) : null,
+      bayNo:         c.bayNo != null ? Number(c.bayNo) : null,
+      tier:          c.tier  != null ? Number(c.tier)  : null,
+      inActiveOrder: Boolean(c.inActiveOrder),
     };
   });
 }
 
 /**
- * POST /admin/gate-out with containerId.
- * On success, refreshes the 3D occupancy grid.
+ * GET /admin/containers/{id}/storage-bill
+ * Preview storage fee before gate-out. Returns null on 404 (no storage record yet).
  */
-export async function performGateOut(containerId: string): Promise<void> {
+export async function fetchStorageBill(containerId: string): Promise<StorageBill | null> {
+  const res = await apiFetch(`/admin/containers/${encodeURIComponent(containerId)}/storage-bill`);
+  if (res.status === 404) return null;
+  if (!res.ok) return null;
+  const json: Rec = await res.json().catch(() => ({}));
+  const d = json.data ?? json;
+  if (!d) return null;
+  return {
+    containerId:   String(d.containerId ?? containerId),
+    firstStoredAt: d.firstStoredAt ? String(d.firstStoredAt) : null,
+    days:          Number(d.days ?? 0),
+    billableDays:  Number(d.billableDays ?? d.days ?? 0),
+    ratePerDay:    Number(d.ratePerDay ?? 0),
+    subtotal:      Number(d.subtotal ?? 0),
+    total:         Number(d.total ?? d.subtotal ?? 0),
+    currency:      String(d.currency ?? 'VND'),
+  };
+}
+
+/**
+ * POST /admin/gate-out with containerId + optional note.
+ * On success, refreshes the 3D occupancy grid (errors during refresh are swallowed
+ * so the caller doesn't see a success mutation followed by a UI failure).
+ */
+export async function performGateOut(containerId: string, note?: string): Promise<void> {
+  const body: Rec = { containerId };
+  if (note && note.trim()) body.note = note.trim();
+
   const res = await apiFetch('/admin/gate-out', {
     method: 'POST',
-    body: JSON.stringify({ containerId }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`Gate-out thất bại (HTTP ${res.status})${body ? ': ' + body : ''}`);
+    let message = `Gate-out thất bại (HTTP ${res.status})`;
+    try {
+      const errJson = await res.json();
+      const apiMsg = errJson?.message ?? errJson?.error ?? errJson?.data?.message;
+      if (apiMsg) message = String(apiMsg);
+    } catch {
+      const text = await res.text().catch(() => '');
+      if (text) message += ': ' + text;
+    }
+    throw new Error(message);
   }
 
-  await refreshOccupancy();
+  try {
+    await refreshOccupancy();
+  } catch {
+    // DB update already succeeded — don't surface a UI-refresh error to the user.
+  }
 }
 
 // ─── Waiting list ─────────────────────────────────────────────────────────────
 
 /**
  * Fetch containers waiting for gate-in from approved admin orders.
- * GET /admin/orders?statusName=APPROVED&size=100
+ * Queries orders in statuses APPROVED / WAITING_CHECKIN / LATE_CHECKIN in parallel.
  *
- * Flattens each approved order's containerIds so the 3D gate-in flow can
+ * Flattens each order's containerIds so the 3D gate-in flow can
  * open the exact container selected by admin approval.
+ * Containers already in yard (status IN_YARD) are filtered out.
  */
 export async function fetchWaitingContainers(): Promise<WaitingItem[]> {
-  const res = await apiFetch('/admin/orders?statusName=APPROVED&size=100&sortBy=createdAt&direction=desc');
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const validStatuses = ['APPROVED', 'WAITING_CHECKIN', 'LATE_CHECKIN'];
 
-  const json: Rec = await res.json();
-  const orders = toList(json);
+  const responses = await Promise.all(
+    validStatuses.map((s) =>
+      apiFetch(`/admin/orders?statusName=${s}&size=100&sortBy=createdAt&direction=desc`)
+        .then((r) => (r.ok ? r.json() : Promise.resolve({ data: { content: [] } })))
+        .catch(() => ({ data: { content: [] } })),
+    ),
+  );
 
-  const rawItems = orders.flatMap((o: Rec) => {
-    const containerIds = Array.isArray(o.containerIds) ? o.containerIds : [];
-    const customerName = String(o.customerName ?? o.customerFullName ?? o.fullName ?? '');
-    const cargoType = String(o.cargoTypeName ?? o.cargoType ?? '');
-    const containerType = String(o.containerTypeName ?? o.containerType ?? '');
-    const weight = String(o.grossWeight ?? o.weight ?? '');
-    const orderDate = formatDate(String(o.createdAt ?? o.orderDate ?? ''));
+  const rawItems: WaitingItem[] = [];
+  for (const json of responses) {
+    const orders = toList(json as Rec);
+    for (const o of orders) {
+      const containerIds = Array.isArray(o.containerIds) ? o.containerIds : [];
+      const customerName = String(o.customerName ?? o.customerFullName ?? o.fullName ?? '');
+      const cargoType = String(o.cargoTypeName ?? o.cargoType ?? '');
+      const containerType = String(o.containerTypeName ?? o.containerType ?? '');
+      const weight = String(o.grossWeight ?? o.weight ?? '');
+      const orderDate = formatDate(String(o.createdAt ?? o.orderDate ?? ''));
 
-    return containerIds.length > 0
-      ? containerIds.map((containerCode: string) => ({
-          orderId: Number(o.orderId ?? o.id ?? 0),
-          containerCode: String(containerCode ?? ''),
-          cargoType,
-          containerType,
-          weight,
-          orderDate,
-          customerName,
-        }))
-      : [{
-          orderId: Number(o.orderId ?? o.id ?? 0),
-          containerCode: String(o.containerCode ?? o.code ?? o.containerId ?? ''),
-          cargoType,
-          containerType,
-          weight,
-          orderDate,
-          customerName,
-        }];
-  }).filter((item) => item.containerCode);
+      const items = containerIds.length > 0
+        ? containerIds.map((containerCode: string) => ({
+            orderId: Number(o.orderId ?? o.id ?? 0),
+            containerCode: String(containerCode ?? ''),
+            cargoType,
+            containerType,
+            weight,
+            orderDate,
+            customerName,
+          }))
+        : [{
+            orderId: Number(o.orderId ?? o.id ?? 0),
+            containerCode: String(o.containerCode ?? o.code ?? o.containerId ?? ''),
+            cargoType,
+            containerType,
+            weight,
+            orderDate,
+            customerName,
+          }];
 
+      for (const it of items) if (it.containerCode) rawItems.push(it);
+    }
+  }
+
+  // Drop containers already placed in yard so the waiting list only shows ones pending check-in.
   const checked = await Promise.all(rawItems.map(async (item) => {
     const status = await containerStatus(item.containerCode);
     return { item, status };
   }));
 
   return checked
-    .filter(({ status }) => status === 'GATE_IN' || status === 'IN_YARD')
+    .filter(({ status }) => status !== 'IN_YARD')
     .map(({ item }) => item);
 }

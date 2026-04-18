@@ -5,6 +5,7 @@ import com.anhnht.warehouse.service.common.exception.BusinessException;
 import com.anhnht.warehouse.service.common.exception.ResourceNotFoundException;
 import com.anhnht.warehouse.service.modules.user.entity.Role;
 import com.anhnht.warehouse.service.modules.user.repository.RoleRepository;
+import com.anhnht.warehouse.service.modules.user.repository.UserRepository;
 import com.anhnht.warehouse.service.modules.user.service.RoleService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -18,6 +19,7 @@ import java.util.List;
 public class RoleServiceImpl implements RoleService {
 
     private final RoleRepository roleRepository;
+    private final UserRepository userRepository;
 
     @Override
     public List<Role> findAll() {
@@ -57,6 +59,11 @@ public class RoleServiceImpl implements RoleService {
     @Transactional
     public void delete(Integer roleId) {
         Role role = findById(roleId);
+        long usersWithRole = userRepository.countByRolesRoleId(roleId);
+        if (usersWithRole > 0) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST,
+                    "Không thể xóa role '" + role.getRoleName() + "' vì đang được gán cho " + usersWithRole + " người dùng.");
+        }
         roleRepository.delete(role);
     }
 }

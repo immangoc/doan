@@ -30,8 +30,9 @@ public class BillOfLadingController {
     @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<BillOfLadingResponse>> getBillForOrder(
             @PathVariable Integer orderId) {
+        var bill = billService.findByOrderId(orderId);
         return ResponseEntity.ok(ApiResponse.success(
-                bookingMapper.toBillResponse(billService.findByOrderId(orderId))));
+                bill != null ? bookingMapper.toBillResponse(bill) : null));
     }
 
     // ============================================================

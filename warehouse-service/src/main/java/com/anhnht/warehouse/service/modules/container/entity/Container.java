@@ -1,6 +1,7 @@
 package com.anhnht.warehouse.service.modules.container.entity;
 
 import com.anhnht.warehouse.service.common.base.BaseEntity;
+import com.anhnht.warehouse.service.modules.user.entity.User;
 import com.anhnht.warehouse.service.modules.vessel.entity.Manifest;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -19,6 +20,10 @@ public class Container extends BaseEntity {
     @Id
     @Column(name = "container_id", length = 20)
     private String containerId;  // user-supplied, NOT auto-generated
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "customer_id")
+    private User owner;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "manifest_id")

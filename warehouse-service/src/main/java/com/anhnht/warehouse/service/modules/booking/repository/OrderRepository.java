@@ -5,6 +5,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -64,4 +65,28 @@ public interface OrderRepository extends JpaRepository<Order, Integer> {
            "AND o.status.statusName IN :activeStatuses")
     Optional<Order> findActiveOrderByContainerId(@Param("containerId") String containerId,
                                                   @Param("activeStatuses") List<String> activeStatuses);
+
+    /** Validation: count active orders containing this container (excludes terminal statuses). */
+    @Query("SELECT COUNT(o) FROM Order o JOIN o.containers c WHERE c.containerId = :containerId " +
+           "AND o.status.statusName NOT IN :terminalStatuses")
+    long countActiveOrdersForContainer(@Param("containerId") String containerId,
+                                       @Param("terminalStatuses") List<String> terminalStatuses);
+
+    /** Batch: return container IDs from the given list that are in at least one active order. */
+    @Query("SELECT DISTINCT c.containerId FROM Order o JOIN o.containers c " +
+           "WHERE c.containerId IN :containerIds AND o.status.statusName NOT IN :terminalStatuses")
+    List<String> findContainerIdsInActiveOrders(@Param("containerIds") List<String> containerIds,
+                                                @Param("terminalStatuses") List<String> terminalStatuses);
+
+    /** Hard-delete support: remove a container from ALL orders in order_container join table. */
+    @Modifying
+    @Query(value = "DELETE FROM order_container WHERE container_id = :containerId", nativeQuery = true)
+    void removeContainerFromAllOrders(@Param("containerId") String containerId);
+
+    /** Validation for update: same as above but excludes a specific order (the one being edited). */
+    @Query("SELECT COUNT(o) FROM Order o JOIN o.containers c WHERE c.containerId = :containerId " +
+           "AND o.status.statusName NOT IN :terminalStatuses AND o.orderId <> :excludeOrderId")
+    long countActiveOrdersForContainerExcluding(@Param("containerId") String containerId,
+                                                @Param("terminalStatuses") List<String> terminalStatuses,
+                                                @Param("excludeOrderId") Integer excludeOrderId);
 }

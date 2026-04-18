@@ -33,4 +33,6 @@ public interface ContainerPositionRepository extends JpaRepository<ContainerPosi
     @Query("SELECT COUNT(cp) FROM ContainerPosition cp " +
            "JOIN cp.slot s JOIN s.block b JOIN b.zone z WHERE z.zoneId = :zoneId")
     long countOccupiedInZone(@Param("zoneId") Integer zoneId);
+
+    void deleteByContainerContainerId(String containerId);
 }

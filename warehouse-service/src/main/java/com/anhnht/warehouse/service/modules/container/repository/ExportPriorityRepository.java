@@ -7,4 +7,5 @@ import java.util.Optional;
 
 public interface ExportPriorityRepository extends JpaRepository<ExportPriority, Integer> {
     Optional<ExportPriority> findByContainerContainerId(String containerId);
+    void deleteByContainerContainerId(String containerId);
 }

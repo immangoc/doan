@@ -3,12 +3,15 @@ package com.anhnht.warehouse.service.modules.container.service.impl;
 import com.anhnht.warehouse.service.common.constant.ErrorCode;
 import com.anhnht.warehouse.service.common.exception.BusinessException;
 import com.anhnht.warehouse.service.common.exception.ResourceNotFoundException;
+import com.anhnht.warehouse.service.common.util.SecurityUtils;
+import com.anhnht.warehouse.service.modules.booking.repository.OrderRepository;
 import com.anhnht.warehouse.service.modules.container.dto.request.ContainerRequest;
 import com.anhnht.warehouse.service.modules.container.dto.request.ExportPriorityRequest;
 import com.anhnht.warehouse.service.modules.container.entity.*;
 import com.anhnht.warehouse.service.modules.container.repository.*;
 import com.anhnht.warehouse.service.modules.container.service.ContainerService;
 import com.anhnht.warehouse.service.modules.alert.service.NotificationService;
+import com.anhnht.warehouse.service.modules.gatein.repository.ContainerPositionRepository;
 import com.anhnht.warehouse.service.modules.user.repository.UserRepository;
 import com.anhnht.warehouse.service.modules.vessel.entity.Manifest;
 import com.anhnht.warehouse.service.modules.vessel.repository.ManifestRepository;
@@ -25,6 +28,9 @@ import java.util.List;
 @Transactional(readOnly = true)
 public class ContainerServiceImpl implements ContainerService {
 
+    private static final List<String> TERMINAL_STATUSES =
+            List.of("CANCELLED", "REJECTED", "EXPORTED");
+
     private final ContainerRepository              containerRepository;
     private final ContainerStatusRepository        statusRepository;
     private final ContainerStatusHistoryRepository historyRepository;
@@ -35,6 +41,8 @@ public class ContainerServiceImpl implements ContainerService {
     private final CargoAttributeRepository         cargoAttributeRepository;
     private final NotificationService              notificationService;
     private final UserRepository                   userRepository;
+    private final OrderRepository                  orderRepository;
+    private final ContainerPositionRepository      containerPositionRepository;
 
     @Override
     public Page<Container> findAll(String keyword, String statusName, Pageable pageable) {
@@ -46,6 +54,12 @@ public class ContainerServiceImpl implements ContainerService {
     @Override
     public Page<Container> findByCustomer(Integer customerId, Pageable pageable) {
         return containerRepository.findByCustomerUserId(customerId, pageable);
+    }
+
+    @Override
+    public Page<Container> findEligibleByCustomer(Integer customerId, Integer exceptOrderId, Pageable pageable) {
+        int exceptId = (exceptOrderId != null) ? exceptOrderId : -1;
+        return containerRepository.findEligibleByOwner(customerId, TERMINAL_STATUSES, exceptId, pageable);
     }
 
     @Override
@@ -69,6 +83,12 @@ public class ContainerServiceImpl implements ContainerService {
         container.setGrossWeight(request.getGrossWeight());
         container.setDeclaredValue(request.getDeclaredValue());
         container.setNote(request.getNote());
+
+        // Set owner to the current authenticated user
+        Integer currentUserId = SecurityUtils.getCurrentUserId();
+        if (currentUserId != null) {
+            userRepository.findById(currentUserId).ifPresent(container::setOwner);
+        }
 
         applyLookups(container, request);
 
@@ -97,6 +117,20 @@ public class ContainerServiceImpl implements ContainerService {
     @Transactional
     public void delete(String containerId) {
         Container container = findById(containerId);
+
+        // Prevent deleting a container that is in an active order
+        long active = orderRepository.countActiveOrdersForContainer(containerId, TERMINAL_STATUSES);
+        if (active > 0) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST,
+                    "Không thể xóa container đang trong đơn hàng hoạt động. Hủy đơn hàng trước khi xóa container.");
+        }
+
+        // Remove FK references so hard delete succeeds
+        historyRepository.deleteByContainerContainerId(containerId);
+        containerPositionRepository.deleteByContainerContainerId(containerId);
+        priorityRepository.deleteByContainerContainerId(containerId);
+        orderRepository.removeContainerFromAllOrders(containerId);
+
         containerRepository.delete(container);
     }
 

@@ -735,27 +735,90 @@
 .ov-btn-refresh:disabled { opacity: 0.6; cursor: not-allowed; }
 
 /* ── KPI row ─────────────────────────────────────────────────────────────── */
-.ov-kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 14px; flex-shrink: 0; }
+.ov-kpi-row { display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px; flex-shrink: 0; }
 .ov-kpi-card {
+  position: relative;
   background: #fff; border: 1px solid var(--color-border); border-radius: 12px;
-  padding: 16px 18px; display: flex; flex-direction: column; gap: 6px; transition: box-shadow 0.15s;
+  padding: 14px 16px; display: flex; flex-direction: column; gap: 4px;
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+  overflow: hidden;
 }
-.ov-kpi-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.07); }
-.ov-kpi-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 2px; }
-.ov-kpi-icon-wrap { width: 38px; height: 38px; border-radius: 10px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-.ov-kpi-value { font-size: 28px; font-weight: 800; color: #111827; line-height: 1; }
-.ov-kpi-label { font-size: 12px; font-weight: 600; color: #6b7280; text-transform: uppercase; letter-spacing: 0.03em; }
-.ov-kpi-sub { font-size: 11.5px; color: #9ca3af; }
+.ov-kpi-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.08);
+  border-color: transparent;
+}
+.ov-kpi-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
+.ov-kpi-icon-wrap {
+  width: 36px; height: 36px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+}
+.ov-kpi-value { font-size: 26px; font-weight: 800; color: #0f172a; line-height: 1.1; letter-spacing: -0.01em; }
+.ov-kpi-label { font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.05em; }
+.ov-kpi-sub { font-size: 11px; color: #94a3b8; margin-top: 2px; }
 
 /* ── Dashboard middle row ─────────────────────────────────────────────────── */
-.ov-dash-row { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 14px; flex-shrink: 0; }
+.ov-dash-row { display: grid; grid-template-columns: 260px 1.2fr 1fr; gap: 14px; flex-shrink: 0; align-items: stretch; }
 .ov-dash-card {
   background: #fff; border: 1px solid var(--color-border); border-radius: 12px;
-  padding: 18px 20px; display: flex; flex-direction: column; gap: 12px;
+  padding: 16px 18px; display: flex; flex-direction: column; gap: 12px;
+  transition: box-shadow 0.2s;
 }
+.ov-dash-card:hover { box-shadow: 0 2px 10px rgba(0,0,0,0.04); }
 .ov-dash-card-header { display: flex; align-items: center; gap: 10px; padding-bottom: 10px; border-bottom: 1px solid #f3f4f6; }
-.ov-dash-card-header h3 { font-size: 14px; font-weight: 700; color: var(--color-text-primary); margin: 0; }
+.ov-dash-card-header h3 { font-size: 13.5px; font-weight: 700; color: var(--color-text-primary); margin: 0; }
 .ov-dash-card-icon { color: var(--color-primary); flex-shrink: 0; }
+.ov-dash-card-donut { align-items: center; justify-content: space-between; gap: 10px; }
+
+/* Fill-rate donut card inner */
+.ov-donut-meta { text-align: center; font-size: 12px; color: #6b7280; }
+.ov-donut-meta strong { color: #111827; font-weight: 700; }
+
+/* Container-status rows */
+.ov-status-list { display: flex; flex-direction: column; gap: 9px; flex: 1; }
+.ov-status-row-label { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 3px; }
+.ov-status-row-name { color: #374151; font-weight: 500; }
+.ov-status-row-value { font-weight: 700; }
+.ov-status-row-pct { font-weight: 400; color: #9ca3af; margin-left: 4px; }
+.ov-status-row-track { height: 6px; background: #f1f5f9; border-radius: 3px; overflow: hidden; }
+.ov-status-row-fill { height: 100%; border-radius: 3px; transition: width 0.4s; }
+.ov-status-total {
+  font-size: 11.5px; color: #6b7280; display: flex; align-items: center; gap: 5px;
+  padding-top: 8px; margin-top: auto; border-top: 1px solid #f3f4f6;
+}
+
+/* Warehouse capacity mini cards */
+.ov-wh-cap-list { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+.ov-wh-cap-item {
+  padding: 8px 10px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;
+  transition: border-color 0.15s;
+}
+.ov-wh-cap-item:hover { border-color: #cbd5e1; }
+.ov-wh-cap-head { display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 12px; }
+.ov-wh-cap-name { font-weight: 600; color: #1e293b; }
+.ov-wh-cap-pct { font-weight: 700; }
+.ov-wh-cap-track { height: 5px; background: #e2e8f0; border-radius: 3px; overflow: hidden; }
+.ov-wh-cap-fill { height: 100%; border-radius: 3px; transition: width 0.4s; }
+.ov-wh-cap-counts { display: flex; justify-content: space-between; margin-top: 3px; font-size: 10.5px; color: #94a3b8; }
+
+/* Zone table */
+.ov-zone-table-wrap { overflow-x: auto; }
+.ov-zone-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.ov-zone-table th {
+  padding: 8px 12px; color: #64748b; font-weight: 600;
+  text-align: left; border-bottom: 2px solid #e2e8f0; background: #f8fafc;
+}
+.ov-zone-table th.ov-num { text-align: right; }
+.ov-zone-table td { padding: 8px 12px; border-bottom: 1px solid #f1f5f9; }
+.ov-zone-table td.ov-num { text-align: right; }
+.ov-zone-table tr:hover td { background: #f8fafc; }
+.ov-zone-table .ov-yard-name { font-weight: 600; color: #1e293b; }
+.ov-zone-table .ov-zone-cell { color: #475569; }
+.ov-zone-table .ov-pct-cell { font-weight: 700; }
+.ov-zone-table .ov-empty-low { color: #ef4444; font-weight: 600; }
+.ov-zone-table .ov-bar-cell { min-width: 100px; }
+.ov-zone-table-mini-bar { height: 6px; background: #f1f5f9; border-radius: 3px; overflow: hidden; }
+.ov-zone-table-mini-fill { height: 100%; border-radius: 3px; transition: width 0.4s; }
 
 /* Zone bars */
 .ov-zone-bars { display: flex; flex-direction: column; gap: 10px; overflow-y: auto; max-height: 200px; }
@@ -787,8 +850,8 @@
 /* ── Responsive (dashboard additions) ─────────────────────────────────────── */
 @media (max-width: 1400px) {
   .ov-kpi-row { grid-template-columns: repeat(3, 1fr); }
-  .ov-dash-row { grid-template-columns: 1fr 1fr; }
-  .ov-dash-whs { grid-column: 1 / -1; }
+  .ov-dash-row { grid-template-columns: 240px 1fr; }
+  .ov-dash-row > :nth-child(3) { grid-column: 1 / -1; }
   .ov-stat-row-mini { flex-direction: row; flex-wrap: wrap; max-height: none; }
   .ov-stat-row-mini .ov-stat-card { flex: 1; min-width: 140px; }
 }

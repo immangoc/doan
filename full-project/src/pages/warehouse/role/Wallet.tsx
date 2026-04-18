@@ -37,9 +37,13 @@ import {
   createTopup,
   getTopupStatus,
   cancelTopup as cancelTopupApi,
+  getMyTransactions,
+  getMyTopupCount,
   type WalletBalance,
   type PaymentLinkResponse,
   type PaymentStatusResponse,
+  type WalletTransactionDto,
+  type WalletTransactionType,
 } from '../../../utils/walletService';
 
 // ─── Helpers ────────────────────────────────────────────────────────────────────
@@ -76,6 +80,16 @@ export default function WalletPage() {
   // ── Completed topups in session ──
   const [recentTopups, setRecentTopups] = useState<PaymentStatusResponse[]>([]);
 
+  // ── Transaction history ──
+  const [transactions, setTransactions] = useState<WalletTransactionDto[]>([]);
+  const [txLoading, setTxLoading] = useState(false);
+  const [txError, setTxError] = useState('');
+  const [txPage, setTxPage] = useState(0);
+  const [txTotalPages, setTxTotalPages] = useState(1);
+  const [txTotal, setTxTotal] = useState(0);
+  const [topupCount, setTopupCount] = useState<number | null>(null);
+  const TX_SIZE = 10;
+
   // ── Withdraw form state ──
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
@@ -105,6 +119,40 @@ export default function WalletPage() {
   useEffect(() => {
     fetchWallet();
   }, [fetchWallet]);
+
+  // ── Fetch transaction history + topup count ──
+  const fetchTransactions = useCallback(
+    async (page = 0) => {
+      setTxLoading(true);
+      setTxError('');
+      try {
+        const data = await getMyTransactions(accessToken, page, TX_SIZE);
+        setTransactions(data.content);
+        setTxPage(data.pageNumber);
+        setTxTotalPages(Math.max(1, data.totalPages));
+        setTxTotal(data.totalElements);
+      } catch (e: any) {
+        setTxError(e.message || 'Không thể tải lịch sử giao dịch');
+      } finally {
+        setTxLoading(false);
+      }
+    },
+    [accessToken],
+  );
+
+  const fetchTopupCount = useCallback(async () => {
+    try {
+      const n = await getMyTopupCount(accessToken);
+      setTopupCount(n);
+    } catch {
+      // ignore — fallback to session count
+    }
+  }, [accessToken]);
+
+  useEffect(() => {
+    fetchTransactions(0);
+    fetchTopupCount();
+  }, [fetchTransactions, fetchTopupCount]);
 
   // ── Topup: create payment link ──
   const handleCreateTopup = async () => {
@@ -155,7 +203,9 @@ export default function WalletPage() {
             stopPolling();
             if (status.status === 'SUCCESS') {
               setRecentTopups((prev) => [status, ...prev]);
-              fetchWallet(); // Refresh balance
+              fetchWallet();
+              fetchTransactions(0);
+              fetchTopupCount();
             }
           }
         } catch {
@@ -167,7 +217,7 @@ export default function WalletPage() {
       poll();
       pollingRef.current = setInterval(poll, 5000); // Poll every 5s
     },
-    [accessToken, fetchWallet],
+    [accessToken, fetchWallet, fetchTransactions, fetchTopupCount],
   );
 
   const stopPolling = () => {
@@ -252,12 +302,52 @@ export default function WalletPage() {
     const topupResult = params.get('topup');
     if (topupResult === 'success') {
       fetchWallet();
+      fetchTransactions(0);
+      fetchTopupCount();
       // Clean the URL
       window.history.replaceState({}, '', window.location.pathname);
     } else if (topupResult === 'cancel') {
       window.history.replaceState({}, '', window.location.pathname);
     }
-  }, [fetchWallet]);
+  }, [fetchWallet, fetchTransactions, fetchTopupCount]);
+
+  // ── Transaction type helpers ──
+  const txTypeConfig = (type: WalletTransactionType) => {
+    switch (type) {
+      case 'TOPUP':
+        return {
+          label: 'Nạp tiền',
+          icon: ArrowDownLeft,
+          color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+          amountClass: 'text-green-600 dark:text-green-400',
+          sign: '+',
+        };
+      case 'REFUND':
+        return {
+          label: 'Hoàn tiền',
+          icon: ArrowDownLeft,
+          color: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+          amountClass: 'text-emerald-600 dark:text-emerald-400',
+          sign: '+',
+        };
+      case 'PAYMENT':
+        return {
+          label: 'Thanh toán',
+          icon: ArrowUpRight,
+          color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+          amountClass: 'text-red-600 dark:text-red-400',
+          sign: '−',
+        };
+      case 'ADJUST':
+        return {
+          label: 'Điều chỉnh',
+          icon: RefreshCw,
+          color: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300',
+          amountClass: 'text-slate-600 dark:text-slate-400',
+          sign: '',
+        };
+    }
+  };
 
   // ── Status helpers ──
   const statusConfig = (status: string) => {
@@ -283,7 +373,11 @@ export default function WalletPage() {
             <p className="page-subtitle">Quản lý số dư, nạp tiền và lịch sử giao dịch của bạn.</p>
           </div>
           <div className="flex gap-3">
-            <Button variant="outline" onClick={fetchWallet} disabled={walletLoading}>
+            <Button
+              variant="outline"
+              onClick={() => { fetchWallet(); fetchTransactions(txPage); fetchTopupCount(); }}
+              disabled={walletLoading}
+            >
               <RefreshCw className={`w-4 h-4 mr-2 ${walletLoading ? 'animate-spin' : ''}`} />
               Làm mới
             </Button>
@@ -366,8 +460,12 @@ export default function WalletPage() {
               },
               {
                 icon: ReceiptText,
-                label: 'Nạp gần đây',
-                value: `${recentTopups.filter((t) => t.status === 'SUCCESS').length} lần`,
+                label: 'Lần nạp thành công',
+                value: `${
+                  topupCount !== null
+                    ? topupCount
+                    : recentTopups.filter((t) => t.status === 'SUCCESS').length
+                } lần`,
                 bgColor: 'bg-blue-100 dark:bg-blue-900/30',
                 textColor: 'text-blue-700 dark:text-blue-300',
               },
@@ -608,6 +706,101 @@ export default function WalletPage() {
             </CardContent>
           </Card>
         )}
+
+        {/* ── Transaction history ── */}
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <CardTitle className="flex items-center gap-2">
+                <ReceiptText className="w-5 h-5" />
+                Lịch sử giao dịch
+              </CardTitle>
+              <div className="text-xs text-gray-500">
+                {txLoading ? 'Đang tải...' : `${txTotal} giao dịch`}
+              </div>
+            </div>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {txError && (
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-700 rounded-lg p-3 text-red-700 dark:text-red-300 text-sm">
+                {txError}
+              </div>
+            )}
+
+            {!txLoading && !txError && transactions.length === 0 && (
+              <div className="text-center py-10 text-sm text-gray-500">
+                Chưa có giao dịch nào
+              </div>
+            )}
+
+            {transactions.map((tx, index) => {
+              const cfg = txTypeConfig(tx.type);
+              if (!cfg) return null;
+              const Icon = cfg.icon;
+              return (
+                <motion.div
+                  key={tx.transactionId}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: Math.min(index * 0.03, 0.3) }}
+                  className="rounded-2xl border border-gray-200 dark:border-gray-700 p-4 flex items-center gap-4"
+                >
+                  <div className={`rounded-xl p-2.5 ${cfg.color}`}>
+                    <Icon className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-gray-900 dark:text-white">
+                        {cfg.label}
+                      </span>
+                      {tx.paymentOrderCode && (
+                        <span className="font-mono text-[11px] text-gray-500">
+                          #{tx.paymentOrderCode}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-xs text-gray-500 truncate">
+                      {tx.note || '—'}
+                      {tx.createdAt && ` • ${new Date(tx.createdAt).toLocaleString('vi-VN')}`}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <div className={`font-bold whitespace-nowrap ${cfg.amountClass}`}>
+                      {cfg.sign}{formatVND(tx.amount)}
+                    </div>
+                    <div className="text-[11px] text-gray-500 whitespace-nowrap">
+                      Số dư: {formatVND(tx.balanceAfter)}
+                    </div>
+                  </div>
+                </motion.div>
+              );
+            })}
+
+            {txTotalPages > 1 && (
+              <div className="flex items-center justify-between pt-2 text-sm">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fetchTransactions(Math.max(0, txPage - 1))}
+                  disabled={txLoading || txPage === 0}
+                >
+                  Trang trước
+                </Button>
+                <div className="text-gray-500">
+                  Trang {txPage + 1} / {txTotalPages}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => fetchTransactions(Math.min(txTotalPages - 1, txPage + 1))}
+                  disabled={txLoading || txPage >= txTotalPages - 1}
+                >
+                  Trang sau
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
         {/* ── Topup Dialog ── */}
         <Dialog open={topupOpen} onOpenChange={setTopupOpen}>

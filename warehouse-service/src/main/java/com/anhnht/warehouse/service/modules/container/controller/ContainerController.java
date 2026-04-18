@@ -4,6 +4,7 @@ import com.anhnht.warehouse.service.common.dto.response.ApiResponse;
 import com.anhnht.warehouse.service.common.dto.response.PageResponse;
 import com.anhnht.warehouse.service.common.util.PageableUtils;
 import com.anhnht.warehouse.service.common.util.SecurityUtils;
+import com.anhnht.warehouse.service.modules.booking.repository.OrderRepository;
 import com.anhnht.warehouse.service.modules.container.dto.request.ContainerRequest;
 import com.anhnht.warehouse.service.modules.container.dto.request.ExportPriorityRequest;
 import com.anhnht.warehouse.service.modules.container.dto.response.ContainerResponse;
@@ -24,8 +25,10 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 @RestController
@@ -33,11 +36,15 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ContainerController {
 
+    private static final List<String> TERMINAL_STATUSES =
+            List.of("CANCELLED", "REJECTED", "EXPORTED");
+
     private final ContainerService             containerService;
     private final ContainerMapper              containerMapper;
     private final ContainerPositionRepository  positionRepository;
     private final GateOutReceiptRepository     gateOutReceiptRepository;
     private final DamageWorkflowService        damageWorkflowService;
+    private final OrderRepository              orderRepository;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
@@ -221,8 +228,42 @@ public class ContainerController {
 
         Pageable pageable = PageableUtils.of(page, size, sortBy, direction);
         Integer customerId = SecurityUtils.getCurrentUserId();
+        Page<ContainerResponse> responsePage = containerService.findByCustomer(customerId, pageable)
+                .map(containerMapper::toContainerResponse);
+
+        // Batch-flag containers that are currently in an active order
+        List<String> ids = responsePage.getContent().stream()
+                .map(ContainerResponse::getContainerId)
+                .collect(Collectors.toList());
+        if (!ids.isEmpty()) {
+            Set<String> inActiveOrder = new HashSet<>(
+                    orderRepository.findContainerIdsInActiveOrders(ids, TERMINAL_STATUSES));
+            responsePage.getContent().forEach(r ->
+                    r.setInActiveOrder(inActiveOrder.contains(r.getContainerId())));
+        }
+
+        return ResponseEntity.ok(ApiResponse.success(PageResponse.of(responsePage)));
+    }
+
+    /**
+     * GET /admin/containers/my/eligible
+     * Returns containers owned by the current user that are not attached to any active order.
+     * Optional param orderId: if provided, containers already in that order are also included
+     * (used when editing an existing order).
+     */
+    @GetMapping("/my/eligible")
+    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','OPERATOR')")
+    public ResponseEntity<ApiResponse<PageResponse<ContainerResponse>>> getEligibleContainers(
+            @RequestParam(required = false)             Integer orderId,
+            @RequestParam(defaultValue = "0")           int page,
+            @RequestParam(defaultValue = "100")         int size,
+            @RequestParam(defaultValue = "containerId") String sortBy,
+            @RequestParam(defaultValue = "asc")         String direction) {
+
+        Pageable pageable = PageableUtils.of(page, size, sortBy, direction);
+        Integer customerId = SecurityUtils.getCurrentUserId();
         return ResponseEntity.ok(ApiResponse.success(
-                PageResponse.of(containerService.findByCustomer(customerId, pageable)
+                PageResponse.of(containerService.findEligibleByCustomer(customerId, orderId, pageable)
                         .map(containerMapper::toContainerResponse))));
     }
 }

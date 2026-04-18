@@ -81,6 +81,7 @@ export default function Orders() {
 
   // My containers (for dropdown)
   const [myContainers, setMyContainers] = useState<{ containerId: string }[]>([]);
+  const [loadingContainers, setLoadingContainers] = useState(true);
 
   // Create order
   const [openCreate, setOpenCreate] = useState(false);
@@ -126,17 +127,23 @@ export default function Orders() {
     }
   };
 
-  const fetchMyContainers = async () => {
+  const fetchEligibleContainers = async (orderId?: number) => {
+    if (!orderId) setLoadingContainers(true);
     try {
-      const res = await fetch(`${apiUrl}/admin/containers/my?page=0&size=100&sortBy=containerId&direction=asc`, { headers });
+      const url = orderId
+        ? `${apiUrl}/admin/containers/my/eligible?orderId=${orderId}&page=0&size=100&sortBy=containerId&direction=asc`
+        : `${apiUrl}/admin/containers/my/eligible?page=0&size=100&sortBy=containerId&direction=asc`;
+      const res = await fetch(url, { headers });
       const data = await res.json();
       if (res.ok) setMyContainers(data.data?.content || []);
-    } catch { /* ignore */ }
+    } catch { /* ignore */ } finally {
+      if (!orderId) setLoadingContainers(false);
+    }
   };
 
   useEffect(() => {
     fetchOrders(page);
-    fetchMyContainers();
+    fetchEligibleContainers();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
@@ -201,6 +208,7 @@ export default function Orders() {
       exportDate: order.exportDate || '',
       containerIds: order.containerIds ? [...order.containerIds] : [],
     });
+    fetchEligibleContainers(order.orderId);
     setOpenEdit(true);
   };
 
@@ -279,12 +287,11 @@ export default function Orders() {
     try {
       const res = await fetch(`${apiUrl}/orders/${order.orderId}/bill`, { headers });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Chưa có vận đơn cho đơn hàng này');
-      setBillData(data.data);
-    } catch (e: any) {
-      setBillData(null);
-      alert(e.message || 'Lỗi lấy vận đơn');
-      setOpenBill(false);
+      if (res.ok) {
+        setBillData(data.data || null);
+      }
+    } catch {
+      /* network error — leave billData null, dialog stays open showing "no bill" */
     } finally {
       setBillLoading(false);
     }
@@ -302,12 +309,19 @@ export default function Orders() {
             <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Quản lý đơn hàng</h1>
             <p className="text-gray-600 dark:text-gray-400 mt-1">Theo dõi và quản lý đơn hàng của bạn.</p>
           </div>
-          <Button
-            className="bg-blue-900 hover:bg-blue-800 text-white"
-            onClick={() => { resetCreateForm(); setOpenCreate(true); }}
-          >
-            <Plus className="w-4 h-4 mr-2" />Tạo đơn hàng
-          </Button>
+          <div className="flex flex-col items-end gap-1">
+            <Button
+              className="bg-blue-900 hover:bg-blue-800 text-white disabled:opacity-50"
+              onClick={() => { resetCreateForm(); fetchEligibleContainers(); setOpenCreate(true); }}
+              disabled={loadingContainers || myContainers.length === 0}
+              title={!loadingContainers && myContainers.length === 0 ? 'Bạn cần đăng ký container trước khi tạo đơn hàng' : undefined}
+            >
+              <Plus className="w-4 h-4 mr-2" />Tạo đơn hàng
+            </Button>
+            {!loadingContainers && myContainers.length === 0 && (
+              <span className="text-xs text-amber-600">Chưa có container khả dụng. Hãy đăng ký container trước.</span>
+            )}
+          </div>
         </div>
 
         {error && (
@@ -383,9 +397,9 @@ export default function Orders() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filtered.map((o) => (
+                    {filtered.map((o, idx) => (
                       <TableRow key={o.orderId}>
-                        <TableCell className="font-mono text-xs font-semibold">#{o.orderId}</TableCell>
+                        <TableCell className="font-mono text-xs font-semibold">#{idx + 1}</TableCell>
                         <TableCell>
                           <div className="font-semibold">{o.customerName}</div>
                           {o.address && <div className="text-xs text-gray-500">{o.address}</div>}

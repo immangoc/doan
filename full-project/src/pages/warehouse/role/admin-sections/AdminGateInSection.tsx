@@ -21,6 +21,13 @@ type GateInItem = {
 
 type YardItem = { yardId: number; yardName: string };
 
+type ApprovedOrder = {
+  orderId: number;
+  customerName: string;
+  containerIds: string[];
+  exportDate?: string;
+};
+
 const PAGE_SIZE = 20;
 
 export default function AdminGateInSection() {
@@ -39,6 +46,7 @@ export default function AdminGateInSection() {
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
   const [yards, setYards] = useState<YardItem[]>([]);
+  const [approvedOrders, setApprovedOrders] = useState<ApprovedOrder[]>([]);
 
   const [showCreate, setShowCreate] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -48,6 +56,8 @@ export default function AdminGateInSection() {
     voyageId: '',
     note: '',
   });
+  const [orderExportDate, setOrderExportDate] = useState<string | null>(null);
+  const [orderValidationError, setOrderValidationError] = useState<string | null>(null);
 
   const fetchYards = async () => {
     try {
@@ -82,6 +92,21 @@ export default function AdminGateInSection() {
     }
   };
 
+  const fetchApprovedOrders = async () => {
+    try {
+      const params = new URLSearchParams({ statusName: 'APPROVED', size: '100', page: '0' });
+      const res = await fetch(`${API_BASE}/admin/orders?${params}`, { headers });
+      const data = await res.json();
+      if (res.ok) {
+        setApprovedOrders(
+          (data.data?.content || []).filter((o: ApprovedOrder) => o.containerIds?.length > 0),
+        );
+      }
+    } catch {
+      // ignore — manual input still available
+    }
+  };
+
   useEffect(() => {
     fetchYards();
     fetchItems(0);
@@ -90,12 +115,61 @@ export default function AdminGateInSection() {
 
   const openCreate = () => {
     setForm({ containerId: '', yardId: '', voyageId: '', note: '' });
+    setOrderExportDate(null);
+    setOrderValidationError(null);
+    fetchApprovedOrders();
     setShowCreate(true);
+  };
+
+  const handleOrderSelect = (orderId: string) => {
+    if (!orderId) {
+      setForm((f) => ({ ...f, containerId: '' }));
+      setOrderExportDate(null);
+      setOrderValidationError(null);
+      return;
+    }
+    const order = approvedOrders.find((o) => String(o.orderId) === orderId);
+    if (!order) return;
+    setForm((f) => ({ ...f, containerId: order.containerIds[0] ?? '' }));
+    setOrderExportDate(order.exportDate ?? null);
+    setOrderValidationError(null);
+  };
+
+  const VALID_IMPORT_STATUSES = ['APPROVED', 'WAITING_CHECKIN', 'LATE_CHECKIN'];
+
+  const lookupOrderExportDate = async (containerId: string) => {
+    const cid = containerId.trim();
+    if (!cid) { setOrderExportDate(null); setOrderValidationError(null); return; }
+    try {
+      const res = await fetch(`${API_BASE}/admin/orders/by-container/${encodeURIComponent(cid)}`, { headers });
+      const data = await res.json();
+      if (!res.ok || !data.data) {
+        setOrderExportDate(null);
+        setOrderValidationError(`Container "${cid}" chưa có đơn hàng hợp lệ. Khách hàng phải tạo đơn hàng và được duyệt trước khi nhập kho.`);
+        return;
+      }
+      const orderStatus = String(data.data.statusName ?? '').toUpperCase();
+      if (!VALID_IMPORT_STATUSES.includes(orderStatus)) {
+        setOrderExportDate(null);
+        setOrderValidationError(`Đơn hàng #${data.data.orderId} chưa được duyệt (trạng thái: ${orderStatus}). Chỉ nhập kho khi đơn hàng đã APPROVED.`);
+        return;
+      }
+      setOrderValidationError(null);
+      if (data.data?.exportDate) {
+        setOrderExportDate(String(data.data.exportDate));
+      } else {
+        setOrderExportDate(null);
+      }
+    } catch {
+      setOrderExportDate(null);
+      setOrderValidationError(null);
+    }
   };
 
   const submitCreate = async () => {
     if (!form.containerId.trim()) return alert('Container ID là bắt buộc');
     if (!form.yardId) return alert('Bãi chứa là bắt buộc');
+    if (orderValidationError) return alert(orderValidationError);
     setSubmitting(true);
     try {
       const body: Record<string, unknown> = {
@@ -199,12 +273,41 @@ export default function AdminGateInSection() {
             <DialogDescription>Nhập thông tin để xác nhận container vào cổng.</DialogDescription>
           </DialogHeader>
           <div className="space-y-3">
+            {approvedOrders.length > 0 && (
+              <div>
+                <label className="text-sm font-medium">Chọn từ đơn đã duyệt</label>
+                <Select onValueChange={handleOrderSelect}>
+                  <SelectTrigger><SelectValue placeholder="-- Chọn đơn hàng APPROVED --" /></SelectTrigger>
+                  <SelectContent>
+                    {approvedOrders.map((o) => (
+                      <SelectItem key={o.orderId} value={String(o.orderId)}>
+                        {o.containerIds.slice(0, 2).join(', ')}{o.containerIds.length > 2 ? '…' : ''} — {o.customerName}
+                        {o.exportDate ? ` — Xuất: ${o.exportDate}` : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div>
               <label className="text-sm font-medium">Container ID *</label>
               <Input
                 value={form.containerId}
-                onChange={(e) => setForm((f) => ({ ...f, containerId: e.target.value }))}
+                onChange={(e) => { setForm((f) => ({ ...f, containerId: e.target.value })); setOrderValidationError(null); }}
+                onBlur={(e) => lookupOrderExportDate(e.target.value)}
                 placeholder="VD: ABCU1234567"
+              />
+              {orderValidationError && (
+                <p className="text-xs text-red-600 mt-1">{orderValidationError}</p>
+              )}
+            </div>
+            <div>
+              <label className="text-sm font-medium">Ngày xuất (dự kiến)</label>
+              <Input
+                type="date"
+                value={orderExportDate ?? ''}
+                onChange={(e) => setOrderExportDate(e.target.value || null)}
+                placeholder="Tự động điền từ đơn hàng"
               />
             </div>
             <div>

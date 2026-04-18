@@ -64,4 +64,7 @@ public interface OrderService {
 
     /** Called by gate-out service after container passes gate — order → EXPORTED. */
     void markExported(String containerId);
+
+    /** Returns the most recent non-terminal order containing this container, or null. */
+    Order findOrderByContainerId(String containerId);
 }

@@ -34,4 +34,7 @@ public class ContainerResponse {
 
     // Populated for gated-out containers (status = GATE_OUT)
     private LocalDateTime gateOutTime;
+
+    /** True when this container is attached to at least one active (non-terminal) order. */
+    private boolean inActiveOrder;
 }
