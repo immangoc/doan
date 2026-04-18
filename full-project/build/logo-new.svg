@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 160">
+  <defs>
+    <linearGradient id="blueGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0B1F3B" />
+      <stop offset="100%" stop-color="#1E4AB8" />
+    </linearGradient>
+    <linearGradient id="redGrad" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#D60C25" />
+      <stop offset="100%" stop-color="#F04A3D" />
+    </linearGradient>
+  </defs>
+  <rect x="0" y="0" width="240" height="160" rx="20" fill="transparent" />
+  <path d="M40 130V30H70V90H110V30H140V130H110V80H70V130H40Z" fill="url(#blueGrad)" />
+  <path d="M35 68C68 32 120 20 195 40" stroke="url(#redGrad)" stroke-width="20" stroke-linecap="round" fill="none" />
+  <path d="M50 56C88 40 138 36 190 52" stroke="#fff" stroke-width="6" stroke-linecap="round" fill="none" opacity="0.85" />
+  <text x="45" y="150" font-family="Segoe UI, Arial, sans-serif" font-size="24" font-weight="700" fill="#0B1F3B">HUNG THUY</text>
+  <text x="45" y="175" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="500" fill="#4B5563">Transport loading</text>
+</svg>

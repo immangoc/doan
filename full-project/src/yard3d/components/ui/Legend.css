@@ -1,0 +1,33 @@
+.legend-grid {
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 8px 28px;
+  width: fit-content;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.legend-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 3px;
+  flex-shrink: 0;
+}
+
+.legend-label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+}
+
+@media (max-width: 480px) {
+  .legend-grid {
+    gap: 6px 20px;
+  }
+  .legend-label { font-size: 12px; }
+}

@@ -1,0 +1,180 @@
+.app-container .topbar {
+  height: var(--topbar-height);
+  background-color: var(--color-bg-panel);
+  border-bottom: 1px solid var(--color-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
+  flex-shrink: 0;
+  gap: 16px;
+}
+
+.app-container .topbar-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.app-container .menu-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  color: var(--color-text-secondary);
+  flex-shrink: 0;
+  transition: background-color 0.15s;
+}
+
+.app-container .menu-toggle:hover {
+  background-color: var(--color-bg-main);
+}
+
+.app-container .breadcrumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13.5px;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+
+.app-container .breadcrumb-item {
+  color: var(--color-text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+}
+
+.app-container .breadcrumb-item.active {
+  color: var(--color-text-primary);
+  font-weight: 600;
+}
+
+.app-container .breadcrumb-home-icon {
+  color: var(--color-text-muted);
+}
+
+.app-container .breadcrumb-chevron {
+  color: var(--color-text-muted);
+  flex-shrink: 0;
+}
+
+.app-container .topbar-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+
+.app-container .topbar-icons {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.app-container .icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: auto;
+  height: 36px;
+  border-radius: 8px;
+  color: var(--color-text-secondary);
+  transition: background-color 0.15s;
+  position: relative;
+  padding: 0 8px;
+  border: none;
+  background: none;
+  margin: 0;
+}
+
+.app-container .icon-btn:hover {
+  background-color: var(--color-bg-main);
+}
+
+.app-container .language-btn {
+  width: auto;
+  padding: 0 12px;
+  border-radius: 20px;
+  font-weight: 500;
+  font-size: 13.5px;
+  border: 1px solid var(--color-border);
+  gap: 6px;
+  color: var(--color-text-secondary);
+  background: none;
+}
+
+.app-container .flag-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+
+.app-container .lang-label {
+  white-space: nowrap;
+}
+
+.app-container .notification-btn {
+  padding: 0 8px;
+}
+
+.app-container .notif-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background-color: var(--status-fragile);
+  color: white;
+  font-size: 9px;
+  font-weight: bold;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .app-container .menu-toggle {
+    display: flex;
+  }
+
+  .app-container .breadcrumbs {
+    font-size: 12.5px;
+  }
+
+  /* Hide middle breadcrumb on very small screens */
+  .app-container .breadcrumbs .breadcrumb-item:nth-child(3),
+  .app-container .breadcrumbs .breadcrumb-chevron:nth-child(4) {
+    display: none;
+  }
+
+  .app-container .lang-label {
+    display: none;
+  }
+
+  .app-container .language-btn {
+    padding: 0 8px;
+    border-radius: 8px;
+    min-width: 36px;
+    justify-content: center;
+  }
+
+  .app-container .topbar {
+    padding: 0 16px;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-container .language-btn {
+    display: none;
+  }
+}
