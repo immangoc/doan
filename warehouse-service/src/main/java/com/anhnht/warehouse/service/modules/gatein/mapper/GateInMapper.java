@@ -21,7 +21,10 @@ public interface GateInMapper {
     @Mapping(source = "createdBy.userId",         target = "createdById")
     @Mapping(source = "createdBy.username",       target = "createdByUsername")
     @Mapping(source = "createdBy.username",       target = "operatorName")
-    @Mapping(source = "container.cargoType.cargoTypeName", target = "cargoTypeName")
+    @Mapping(source = "container.cargoType.cargoTypeName",         target = "cargoTypeName")
+    @Mapping(source = "container.containerType.containerTypeName", target = "containerTypeName")
+    @Mapping(source = "container.status.statusName",               target = "statusName")
+    @Mapping(source = "container.grossWeight",                     target = "grossWeight")
     GateInReceiptResponse toGateInResponse(GateInReceipt receipt);
 
     @Mapping(source = "container.containerId",    target = "containerId")

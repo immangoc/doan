@@ -29,11 +29,17 @@ public interface GateInReceiptRepository extends JpaRepository<GateInReceipt, In
            "ORDER BY CAST(g.gateInTime AS date)")
     List<Object[]> countGroupedByDate(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
-    @EntityGraph(attributePaths = {"container", "container.cargoType", "voyage", "createdBy"})
+    @EntityGraph(attributePaths = {
+            "container", "container.cargoType", "container.containerType", "container.status",
+            "voyage", "createdBy"
+    })
     @Query("SELECT g FROM GateInReceipt g")
     Page<GateInReceipt> findAllPaged(Pageable pageable);
 
-    @EntityGraph(attributePaths = {"container", "voyage", "createdBy"})
+    @EntityGraph(attributePaths = {
+            "container", "container.cargoType", "container.containerType", "container.status",
+            "voyage", "createdBy"
+    })
     @Query("SELECT g FROM GateInReceipt g WHERE g.gateInId = :id")
     Optional<GateInReceipt> findByIdWithDetails(@Param("id") Integer id);
 

@@ -56,9 +56,14 @@ public class GateInController {
         pageResult.getContent().forEach(g -> {
             try {
                 com.anhnht.warehouse.service.modules.gatein.entity.ContainerPosition pos = gateInService.getPosition(g.getContainerId());
-                g.setBlockName(pos.getSlot().getBlock().getBlockName());
-                g.setRowNo(pos.getSlot().getRowNo());
-                g.setBayNo(pos.getSlot().getBayNo());
+                var slot  = pos.getSlot();
+                var block = slot.getBlock();
+                var zone  = block.getZone();
+                g.setBlockName(block.getBlockName());
+                g.setZoneName(zone.getZoneName());
+                g.setYardName(zone.getYard().getYardName());
+                g.setRowNo(slot.getRowNo());
+                g.setBayNo(slot.getBayNo());
                 g.setTier(pos.getTier());
             } catch (Exception e) {}
         });
