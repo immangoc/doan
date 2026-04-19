@@ -93,12 +93,6 @@ export default function OperatorDashboard() {
     { title: 'Đơn hàng chờ duyệt', value: dash?.pendingOrders ?? '—', icon: AlertTriangle, color: dash?.pendingOrders ? 'bg-red-500' : 'bg-gray-400' },
   ];
 
-  const quickActions = [
-    { title: 'Quét QR Container', icon: Scan, color: 'bg-blue-500' },
-    { title: 'Báo cáo sự cố', icon: AlertTriangle, color: 'bg-red-500' },
-    { title: 'Kiểm tra vị trí', icon: MapPin, color: 'bg-green-500' },
-    { title: 'Ghi chú', icon: FileText, color: 'bg-yellow-500' },
-  ];
 
   return (
     <WarehouseLayout>
@@ -143,26 +137,6 @@ export default function OperatorDashboard() {
           ))}
         </div>
 
-        <Card>
-          <CardContent className="p-4">
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {quickActions.map((action, index) => (
-                <motion.button
-                  key={action.title}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: index * 0.05 }}
-                  className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-gray-200 dark:border-gray-700 hover:border-blue-500 dark:hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-all"
-                >
-                  <div className={`${action.color} p-3 rounded-lg`}>
-                    <action.icon className="w-5 h-5 text-white" />
-                  </div>
-                  <span className="text-xs font-medium text-center text-gray-700 dark:text-gray-300">{action.title}</span>
-                </motion.button>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <Card>

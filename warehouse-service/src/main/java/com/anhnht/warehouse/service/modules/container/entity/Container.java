@@ -9,6 +9,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "container")
@@ -19,7 +20,7 @@ public class Container extends BaseEntity {
 
     @Id
     @Column(name = "container_id", length = 20)
-    private String containerId;  // user-supplied, NOT auto-generated
+    private String containerId; // user-supplied, NOT auto-generated
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "customer_id")
@@ -56,4 +57,13 @@ public class Container extends BaseEntity {
 
     @Column(name = "declared_value", precision = 15, scale = 2)
     private BigDecimal declaredValue;
+
+    @Column(name = "repair_status", length = 50)
+    private String repairStatus;
+
+    @Column(name = "repair_date")
+    private LocalDateTime repairDate;
+
+    @Column(name = "compensation_cost", precision = 15, scale = 2)
+    private BigDecimal compensationCost;
 }

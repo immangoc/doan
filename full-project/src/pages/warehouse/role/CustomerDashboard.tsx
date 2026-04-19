@@ -124,8 +124,8 @@ export default function CustomerDashboard() {
           </div>
         )}
 
-        <div className="grid gap-6 xl:grid-cols-[1.7fr_0.95fr]">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+        <div className="grid gap-6 xl:grid-cols-[1.7fr_0.95fr] items-start">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 h-fit">
             {stats.map((stat, index) => (
               <motion.div
                 key={stat.title}
@@ -150,14 +150,14 @@ export default function CustomerDashboard() {
             ))}
           </div>
 
-          <Card className="h-full">
+          <Card className="h-full border border-gray-200 dark:border-gray-700">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Bell className="w-5 h-5" />
                 Thông báo mới
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-4 overflow-y-auto max-h-[250px] custom-scrollbar">
               {loading ? (
                 <div className="text-sm text-gray-400 text-center py-4">Đang tải...</div>
               ) : notifications.length === 0 ? (

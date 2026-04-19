@@ -56,6 +56,12 @@ export interface WaitingItem {
   weight:        string;
   orderDate:     string;
   customerName:  string;
+  note:          string;
+  importDate:    string;
+  exportDate:    string;
+  phone:         string;
+  email:         string;
+  address:       string;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -201,7 +207,7 @@ export async function performGateOut(containerId: string, note?: string): Promis
  * Containers already in yard (status IN_YARD) are filtered out.
  */
 export async function fetchWaitingContainers(): Promise<WaitingItem[]> {
-  const validStatuses = ['APPROVED', 'WAITING_CHECKIN', 'LATE_CHECKIN'];
+  const validStatuses = ['PENDING'];
 
   const responses = await Promise.all(
     validStatuses.map((s) =>
@@ -219,35 +225,56 @@ export async function fetchWaitingContainers(): Promise<WaitingItem[]> {
       const customerName = String(o.customerName ?? o.customerFullName ?? o.fullName ?? '');
       const cargoType = String(o.cargoTypeName ?? o.cargoType ?? '');
       const containerType = String(o.containerTypeName ?? o.containerType ?? '');
-      const weight = String(o.grossWeight ?? o.weight ?? '');
+      const weight = String(o.totalWeight ?? o.grossWeight ?? o.weight ?? '');
       const orderDate = formatDate(String(o.createdAt ?? o.orderDate ?? ''));
+      const note = String(o.note ?? '');
+      const importDate = String(o.importDate ?? '');
+      // Ensure exportDate is YYYY-MM-DD for <input type="date">
+      let exportDate = '';
+      if (Array.isArray(o.exportDate)) {
+        const [y, m, d] = o.exportDate;
+        exportDate = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      } else {
+        const rawExportDate = String(o.exportDate ?? '');
+        exportDate = rawExportDate.includes('T') ? rawExportDate.split('T')[0] : rawExportDate;
+        if (exportDate.includes(',')) {
+          const parts = exportDate.split(',');
+          if (parts.length >= 3) {
+            exportDate = `${parts[0]}-${parts[1].padStart(2, '0')}-${parts[2].padStart(2, '0')}`;
+          }
+        } else {
+          const dmMatch = exportDate.match(/^(\d{2})[\/\-](\d{2})[\/\-](\d{4})$/);
+          if (dmMatch) exportDate = `${dmMatch[3]}-${dmMatch[2]}-${dmMatch[1]}`;
+        }
+      }
+      
+      const phone = String(o.phone ?? '');
+      const email = String(o.email ?? '');
+      const address = String(o.address ?? '');
+
+      const shared = { cargoType, containerType, weight, orderDate, customerName, note, importDate, exportDate, phone, email, address };
 
       const items = containerIds.length > 0
         ? containerIds.map((containerCode: string) => ({
             orderId: Number(o.orderId ?? o.id ?? 0),
             containerCode: String(containerCode ?? ''),
-            cargoType,
-            containerType,
-            weight,
-            orderDate,
-            customerName,
+            ...shared,
           }))
         : [{
             orderId: Number(o.orderId ?? o.id ?? 0),
             containerCode: String(o.containerCode ?? o.code ?? o.containerId ?? ''),
-            cargoType,
-            containerType,
-            weight,
-            orderDate,
-            customerName,
+            ...shared,
           }];
 
-      for (const it of items) if (it.containerCode) rawItems.push(it);
+      for (const it of items) {
+        rawItems.push(it); // Push even if containerCode is empty
+      }
     }
   }
 
   // Drop containers already placed in yard so the waiting list only shows ones pending check-in.
   const checked = await Promise.all(rawItems.map(async (item) => {
+    if (!item.containerCode) return { item, status: 'NOT_FOUND' };
     const status = await containerStatus(item.containerCode);
     return { item, status };
   }));

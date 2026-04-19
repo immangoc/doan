@@ -65,8 +65,8 @@ public class DamageWorkflowServiceImpl implements DamageWorkflowService {
             } catch (Exception ignored) {}
         });
 
-        // Mark repairStatus=REPAIRING (keep status as DAMAGED; relocation auto-sync already does that)
-        // container.setRepairStatus("REPAIRING"); // TODO: repairStatus does not exist in Container entity
+        // Mark repairStatus=PENDING when first moved to damaged yard
+        container.setRepairStatus("PENDING");
         containerRepository.save(container);
 
         return containerRepository.findByIdWithDetails(containerId).orElse(container);

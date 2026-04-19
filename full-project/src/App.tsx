@@ -9,6 +9,7 @@ import PlannerDashboard from './pages/warehouse/role/PlannerDashboard';
 import OperatorDashboard from './pages/warehouse/role/OperatorDashboard';
 import CustomerDashboard from './pages/warehouse/role/CustomerDashboard';
 import ProtectedRoute from './components/warehouse/ProtectedRoute';
+import WarehouseLayout from './components/warehouse/WarehouseLayout';
 import AdminWarehouseManagementLayout from './components/warehouse/AdminWarehouseManagementLayout';
 import AdminDashboardPage from './pages/warehouse/admin/Dashboard';
 import BaoCaoThongKePage from './pages/warehouse/admin/BaoCaoThongKe';
@@ -118,7 +119,7 @@ export default function App() {
             path="/warehouse/operator/dashboard"
             element={
               <ProtectedRoute allowedRoles={['operator']}>
-                <OperatorDashboard />
+                <Navigate to="/yard3d/tong-quan" replace />
               </ProtectedRoute>
             }
           />
@@ -167,6 +168,16 @@ export default function App() {
             element={
               <ProtectedRoute allowedRoles={['customer']}>
                 <Payments />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/warehouse/account"
+            element={
+              <ProtectedRoute allowedRoles={['admin', 'planner', 'operator']}>
+                <WarehouseLayout>
+                  <QuanLyTaiKhoanPage />
+                </WarehouseLayout>
               </ProtectedRoute>
             }
           />

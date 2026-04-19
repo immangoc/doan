@@ -10,24 +10,24 @@ import java.time.LocalDateTime;
 @Setter
 public class ContainerResponse {
 
-    private String        containerId;
-    private Integer       manifestId;
-    private String        containerTypeName;
-    private String        statusName;
-    private String        cargoTypeName;
-    private String        attributeName;
-    private BigDecimal    grossWeight;
-    private BigDecimal    declaredValue;
-    private String        sealNumber;
-    private String        note;
+    private String containerId;
+    private Integer manifestId;
+    private String containerTypeName;
+    private String statusName;
+    private String cargoTypeName;
+    private String attributeName;
+    private BigDecimal grossWeight;
+    private BigDecimal declaredValue;
+    private String sealNumber;
+    private String note;
     private LocalDateTime createdAt;
 
     // Position fields (populated when container has an assigned slot, or last
     // known position snapshot from GateOutReceipt for gated-out containers)
-    private String  yardName;
-    private String  yardType;
-    private String  zoneName;
-    private String  blockName;
+    private String yardName;
+    private String yardType;
+    private String zoneName;
+    private String blockName;
     private Integer rowNo;
     private Integer bayNo;
     private Integer tier;
@@ -35,6 +35,14 @@ public class ContainerResponse {
     // Populated for gated-out containers (status = GATE_OUT)
     private LocalDateTime gateOutTime;
 
-    /** True when this container is attached to at least one active (non-terminal) order. */
+    /**
+     * True when this container is attached to at least one active (non-terminal)
+     * order.
+     */
     private boolean inActiveOrder;
+
+    // Damage tracking fields (from V18 migration)
+    private String repairStatus;
+    private LocalDateTime repairDate;
+    private BigDecimal compensationCost;
 }

@@ -118,18 +118,8 @@ export default function AdminWarehouseManagementLayout(
 
   const navItems: AdminNavItem[] = useMemo(
     () => [
-      { id: 'dashboard', label: 'Dashboard', to: '/warehouse/admin/dashboard', icon: IconDashboard },
-      { id: 'baocao', label: 'Báo cáo & Thống kê', to: '/warehouse/admin/section/bao-cao-thong-ke', icon: IconPulse },
-      // Trong demo HTML: "Đơn hàng" là 1 trang riêng. Ở app, phần danh sách đơn hàng đang ở xuat-bao-cao.
-      { id: 'donhang', label: 'Đơn hàng', to: '/warehouse/admin/section/don-hang', icon: IconDoc, badge: '4' },
-      { id: 'container', label: 'Loại Container', to: '/warehouse/admin/section/quan-ly-loai-container', icon: IconContainer },
-      { id: 'loaihang', label: 'Loại Hàng', to: '/warehouse/admin/section/quan-ly-loai-hang', icon: IconTag },
-      { id: 'hangtau', label: 'Hãng Tàu', to: '/warehouse/admin/section/quan-ly-hang-tau', icon: IconShip },
-      { id: 'lichTrinh', label: 'Lịch Trình', to: '/warehouse/admin/section/quan-ly-lich', icon: IconCalendar },
       { id: 'cuocphi', label: 'Cước Phí', to: '/warehouse/admin/section/quan-ly-cuoc-phi-bieu-cuoc', icon: IconDollar },
-      { id: 'quanlykho', label: 'Quản lý kho', to: '/tong-quan', icon: IconWarehouse },
       { id: 'quantritaikhoan', label: 'Quản trị hệ thống', to: '/warehouse/admin/section/quan-tri-he-thong', icon: IconUsers },
-      { id: 'yeucauruttien', label: 'Yêu cầu rút tiền', to: '/warehouse/admin/section/yeu-cau-rut-tien', icon: IconDollar },
       { id: 'taikhoan', label: 'Tài khoản Admin', to: '/warehouse/admin/section/quan-ly-tai-khoan', icon: IconUser },
     ],
     [],
@@ -200,41 +190,8 @@ export default function AdminWarehouseManagementLayout(
           </div>
         </div>
 
-        <div className="sidebar-section">Tổng quan</div>
-        {navItems.slice(0, 2).map((item) => (
-          <Link key={item.id} to={item.to} className={`nav-item ${activeTo === item.to ? 'active' : ''}`}>
-            {item.icon}
-            {item.label}
-          </Link>
-        ))}
-
         <div className="sidebar-section">Quản lý</div>
-        {navItems.slice(2, 9).map((item) =>
-          item.id === 'quanlykho' ? (
-            <button
-              key={item.id}
-              type="button"
-              className="nav-item"
-              onClick={() => {
-                const token = localStorage.getItem('ht_token');
-                const url = `${window.location.origin}/yard3d/tong-quan${token ? `?token=${encodeURIComponent(token)}` : ''}`;
-                window.open(url, '_blank');
-              }}
-            >
-              {item.icon}
-              {item.label}
-            </button>
-          ) : (
-            <Link key={item.id} to={item.to} className={`nav-item ${activeTo === item.to ? 'active' : ''}`}>
-              {item.icon}
-              {item.label}
-              {item.badge ? <span className="nav-badge">{item.badge}</span> : null}
-            </Link>
-          )
-        )}
-
-        <div className="sidebar-section">Hệ thống</div>
-        {navItems.slice(9).map((item) => (
+        {navItems.map((item) => (
           <Link key={item.id} to={item.to} className={`nav-item ${activeTo === item.to ? 'active' : ''}`}>
             {item.icon}
             {item.label}

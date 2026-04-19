@@ -36,25 +36,24 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 public class ContainerController {
 
-    private static final List<String> TERMINAL_STATUSES =
-            List.of("CANCELLED", "REJECTED", "EXPORTED");
+    private static final List<String> TERMINAL_STATUSES = List.of("CANCELLED", "REJECTED", "EXPORTED");
 
-    private final ContainerService             containerService;
-    private final ContainerMapper              containerMapper;
-    private final ContainerPositionRepository  positionRepository;
-    private final GateOutReceiptRepository     gateOutReceiptRepository;
-    private final DamageWorkflowService        damageWorkflowService;
-    private final OrderRepository              orderRepository;
+    private final ContainerService containerService;
+    private final ContainerMapper containerMapper;
+    private final ContainerPositionRepository positionRepository;
+    private final GateOutReceiptRepository gateOutReceiptRepository;
+    private final DamageWorkflowService damageWorkflowService;
+    private final OrderRepository orderRepository;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<PageResponse<ContainerResponse>>> getContainers(
-            @RequestParam(required = false)               String keyword,
-            @RequestParam(required = false)               String statusName,
-            @RequestParam(defaultValue = "0")             int page,
-            @RequestParam(defaultValue = "20")            int size,
-            @RequestParam(defaultValue = "containerId")   String sortBy,
-            @RequestParam(defaultValue = "asc")           String direction) {
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) String statusName,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
+            @RequestParam(defaultValue = "containerId") String sortBy,
+            @RequestParam(defaultValue = "asc") String direction) {
 
         Pageable pageable = PageableUtils.of(page, size, sortBy, direction);
         Page<ContainerResponse> responsePage = containerService
@@ -84,14 +83,16 @@ public class ContainerController {
                 ContainerPosition cp = posMap.get(r.getContainerId());
                 if (cp != null && cp.getSlot() != null) {
                     var block = cp.getSlot().getBlock();
-                    var zone  = block != null ? block.getZone() : null;
-                    var yard  = zone  != null ? zone.getYard()  : null;
+                    var zone = block != null ? block.getZone() : null;
+                    var yard = zone != null ? zone.getYard() : null;
                     r.setRowNo(cp.getSlot().getRowNo());
                     r.setBayNo(cp.getSlot().getBayNo());
                     r.setTier(cp.getTier());
-                    if (block != null) r.setBlockName(block.getBlockName());
-                    if (zone  != null) r.setZoneName(zone.getZoneName());
-                    if (yard  != null) {
+                    if (block != null)
+                        r.setBlockName(block.getBlockName());
+                    if (zone != null)
+                        r.setZoneName(zone.getZoneName());
+                    if (yard != null) {
                         r.setYardName(yard.getYardName());
                         if (yard.getYardType() != null)
                             r.setYardType(yard.getYardType().getYardTypeName());
@@ -101,12 +102,18 @@ public class ContainerController {
                 GateOutReceipt g = gateOutMap.get(r.getContainerId());
                 if (g != null) {
                     r.setGateOutTime(g.getGateOutTime());
-                    if (r.getYardName()  == null) r.setYardName(g.getLastYardName());
-                    if (r.getZoneName()  == null) r.setZoneName(g.getLastZoneName());
-                    if (r.getBlockName() == null) r.setBlockName(g.getLastBlockName());
-                    if (r.getRowNo()     == null) r.setRowNo(g.getLastRowNo());
-                    if (r.getBayNo()     == null) r.setBayNo(g.getLastBayNo());
-                    if (r.getTier()      == null) r.setTier(g.getLastTier());
+                    if (r.getYardName() == null)
+                        r.setYardName(g.getLastYardName());
+                    if (r.getZoneName() == null)
+                        r.setZoneName(g.getLastZoneName());
+                    if (r.getBlockName() == null)
+                        r.setBlockName(g.getLastBlockName());
+                    if (r.getRowNo() == null)
+                        r.setRowNo(g.getLastRowNo());
+                    if (r.getBayNo() == null)
+                        r.setBayNo(g.getLastBayNo());
+                    if (r.getTier() == null)
+                        r.setTier(g.getLastTier());
                 }
             });
         }
@@ -121,14 +128,16 @@ public class ContainerController {
         positionRepository.findByContainerContainerId(id).ifPresent(cp -> {
             if (cp.getSlot() != null) {
                 var block = cp.getSlot().getBlock();
-                var zone  = block != null ? block.getZone() : null;
-                var yard  = zone  != null ? zone.getYard()  : null;
+                var zone = block != null ? block.getZone() : null;
+                var yard = zone != null ? zone.getYard() : null;
                 r.setRowNo(cp.getSlot().getRowNo());
                 r.setBayNo(cp.getSlot().getBayNo());
                 r.setTier(cp.getTier());
-                if (block != null) r.setBlockName(block.getBlockName());
-                if (zone  != null) r.setZoneName(zone.getZoneName());
-                if (yard  != null) {
+                if (block != null)
+                    r.setBlockName(block.getBlockName());
+                if (zone != null)
+                    r.setZoneName(zone.getZoneName());
+                if (yard != null) {
                     r.setYardName(yard.getYardName());
                     if (yard.getYardType() != null)
                         r.setYardType(yard.getYardType().getYardTypeName());
@@ -137,12 +146,18 @@ public class ContainerController {
         });
         gateOutReceiptRepository.findByContainerContainerId(id).ifPresent(g -> {
             r.setGateOutTime(g.getGateOutTime());
-            if (r.getYardName()  == null) r.setYardName(g.getLastYardName());
-            if (r.getZoneName()  == null) r.setZoneName(g.getLastZoneName());
-            if (r.getBlockName() == null) r.setBlockName(g.getLastBlockName());
-            if (r.getRowNo()     == null) r.setRowNo(g.getLastRowNo());
-            if (r.getBayNo()     == null) r.setBayNo(g.getLastBayNo());
-            if (r.getTier()      == null) r.setTier(g.getLastTier());
+            if (r.getYardName() == null)
+                r.setYardName(g.getLastYardName());
+            if (r.getZoneName() == null)
+                r.setZoneName(g.getLastZoneName());
+            if (r.getBlockName() == null)
+                r.setBlockName(g.getLastBlockName());
+            if (r.getRowNo() == null)
+                r.setRowNo(g.getLastRowNo());
+            if (r.getBayNo() == null)
+                r.setBayNo(g.getLastBayNo());
+            if (r.getTier() == null)
+                r.setTier(g.getLastTier());
         });
         return ResponseEntity.ok(ApiResponse.success(r));
     }
@@ -218,13 +233,27 @@ public class ContainerController {
                 containerMapper.toContainerResponse(damageWorkflowService.moveToDamagedYard(id))));
     }
 
+    /**
+     * PUT /admin/containers/{id}/damage-details
+     * Updates damage-tracking fields (repairStatus, repairDate, compensationCost)
+     * on a DAMAGED container.
+     */
+    @PutMapping("/{id}/damage-details")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    public ResponseEntity<ApiResponse<ContainerResponse>> updateDamageDetails(
+            @PathVariable String id,
+            @Valid @RequestBody com.anhnht.warehouse.service.modules.container.dto.request.DamageDetailsRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(
+                containerMapper.toContainerResponse(containerService.updateDamageDetails(id, request))));
+    }
+
     @GetMapping("/my")
     @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<PageResponse<ContainerResponse>>> getMyContainers(
-            @RequestParam(defaultValue = "0")           int page,
-            @RequestParam(defaultValue = "20")          int size,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "containerId") String sortBy,
-            @RequestParam(defaultValue = "asc")         String direction) {
+            @RequestParam(defaultValue = "asc") String direction) {
 
         Pageable pageable = PageableUtils.of(page, size, sortBy, direction);
         Integer customerId = SecurityUtils.getCurrentUserId();
@@ -238,8 +267,7 @@ public class ContainerController {
         if (!ids.isEmpty()) {
             Set<String> inActiveOrder = new HashSet<>(
                     orderRepository.findContainerIdsInActiveOrders(ids, TERMINAL_STATUSES));
-            responsePage.getContent().forEach(r ->
-                    r.setInActiveOrder(inActiveOrder.contains(r.getContainerId())));
+            responsePage.getContent().forEach(r -> r.setInActiveOrder(inActiveOrder.contains(r.getContainerId())));
         }
 
         return ResponseEntity.ok(ApiResponse.success(PageResponse.of(responsePage)));
@@ -247,18 +275,20 @@ public class ContainerController {
 
     /**
      * GET /admin/containers/my/eligible
-     * Returns containers owned by the current user that are not attached to any active order.
-     * Optional param orderId: if provided, containers already in that order are also included
+     * Returns containers owned by the current user that are not attached to any
+     * active order.
+     * Optional param orderId: if provided, containers already in that order are
+     * also included
      * (used when editing an existing order).
      */
     @GetMapping("/my/eligible")
     @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<PageResponse<ContainerResponse>>> getEligibleContainers(
-            @RequestParam(required = false)             Integer orderId,
-            @RequestParam(defaultValue = "0")           int page,
-            @RequestParam(defaultValue = "100")         int size,
+            @RequestParam(required = false) Integer orderId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "100") int size,
             @RequestParam(defaultValue = "containerId") String sortBy,
-            @RequestParam(defaultValue = "asc")         String direction) {
+            @RequestParam(defaultValue = "asc") String direction) {
 
         Pageable pageable = PageableUtils.of(page, size, sortBy, direction);
         Integer customerId = SecurityUtils.getCurrentUserId();

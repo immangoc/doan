@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { motion } from 'motion/react';
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout';
 import {
@@ -20,152 +20,195 @@ import { Label } from '../../components/ui/label';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '../../components/ui/select';
-import { useWarehouseAuth } from '../../contexts/WarehouseAuthContext';
-import { projectId, publicAnonKey } from '../../utils/supabase/info';
+import { useWarehouseAuth, API_BASE } from '../../contexts/WarehouseAuthContext';
 
-interface Container {
-  id: string;
-  container_number: string;
-  customer_name: string;
-  container_type: string;
-  cargo_type: string;
-  weight_kg: number;
-  position: string;
-  status: 'pending' | 'in_storage' | 'exported';
-  eta: string;
-  etd: string;
-  zone: string;
-  block: string;
-  slot: string;
-  notes?: string;
-  created_at?: string;
+interface ContainerRow {
+  containerId: string;
+  containerTypeName?: string;
+  statusName?: string;
+  cargoTypeName?: string;
+  grossWeight?: number | string;
+  declaredValue?: number | string;
+  sealNumber?: string;
+  note?: string;
+  createdAt?: string;
+  yardName?: string;
+  zoneName?: string;
+  blockName?: string;
+  rowNo?: number;
+  bayNo?: number;
+  tier?: number;
+  gateOutTime?: string;
 }
 
+interface LookupItem { id: number; name: string; }
+
 const EMPTY_FORM = {
-  container_number: '', customer_name: '', container_type: '20ft',
-  cargo_type: '', weight_kg: '', zone: 'A', block: '01', slot: '001',
-  status: 'pending', eta: '', etd: '', notes: '',
+  containerId: '',
+  containerTypeId: '',
+  cargoTypeId: '',
+  grossWeight: '',
+  declaredValue: '',
+  sealNumber: '',
+  note: '',
 };
 
 const STATUS_MAP: Record<string, { label: string; color: string }> = {
-  pending:    { label: 'Chờ xử lý',   color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
-  in_storage: { label: 'Đang lưu kho', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
-  exported:   { label: 'Đã xuất',      color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
+  AVAILABLE: { label: 'Sẵn sàng',    color: 'bg-gray-100 text-gray-700 dark:bg-gray-900/30 dark:text-gray-400' },
+  GATE_IN:   { label: 'Chờ hạ bãi',  color: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400' },
+  IN_YARD:   { label: 'Trong bãi',   color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400' },
+  GATE_OUT:  { label: 'Chờ xuất',    color: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400' },
+  EXPORTED:  { label: 'Đã xuất',     color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' },
+  DAMAGED:   { label: 'Hư hỏng',     color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' },
+  OVERDUE:   { label: 'Quá hạn',     color: 'bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-400' },
+  CANCELLED: { label: 'Đã hủy',      color: 'bg-gray-100 text-gray-500 dark:bg-gray-900/30 dark:text-gray-400' },
 };
 
 export default function ContainerManagement() {
   const { accessToken, user } = useWarehouseAuth();
-  const [containers, setContainers] = useState<Container[]>([]);
+  const [containers, setContainers] = useState<ContainerRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingContainer, setEditingContainer] = useState<Container | null>(null);
+  const [editing, setEditing] = useState<ContainerRow | null>(null);
   const [formData, setFormData] = useState<typeof EMPTY_FORM>({ ...EMPTY_FORM });
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
+  const [containerTypes, setContainerTypes] = useState<LookupItem[]>([]);
+  const [cargoTypes, setCargoTypes] = useState<LookupItem[]>([]);
 
-  const apiUrl = `https://${projectId}.supabase.co/functions/v1/make-server-ce1eb60c`;
-  const headers = { 'Content-Type': 'application/json', 'Authorization': `Bearer ${accessToken || publicAnonKey}` };
+  const headers = useMemo(() => ({
+    'Content-Type': 'application/json',
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+  }), [accessToken]);
 
   const fetchContainers = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${apiUrl}/containers`, { headers });
+      const params = new URLSearchParams({ page: '0', size: '100' });
+      if (filterStatus !== 'all') params.set('statusName', filterStatus);
+      if (searchTerm.trim()) params.set('keyword', searchTerm.trim());
+      const res = await fetch(`${API_BASE}/admin/containers?${params}`, { headers });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Lỗi lấy dữ liệu');
-      setContainers(data.containers || []);
+      if (!res.ok) throw new Error(data.message || 'Lỗi tải dữ liệu');
+      const content = data?.data?.content ?? [];
+      setContainers(content);
     } catch (err: any) {
-      setError(err.message);
+      setError(err.message || 'Lỗi');
     } finally {
       setLoading(false);
     }
-  }, [accessToken]);
+  }, [headers, filterStatus, searchTerm]);
 
   useEffect(() => { fetchContainers(); }, [fetchContainers]);
 
-  const filteredContainers = containers.filter((c) => {
-    const matchSearch =
-      c.container_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.customer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.cargo_type.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchStatus = filterStatus === 'all' || c.status === filterStatus;
-    return matchSearch && matchStatus;
-  });
+  // Fetch lookups once
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const [ctRes, cargoRes] = await Promise.all([
+          fetch(`${API_BASE}/public/container-types`),
+          fetch(`${API_BASE}/public/cargo-types`),
+        ]);
+        const ctJson = await ctRes.json();
+        const cargoJson = await cargoRes.json();
+        setContainerTypes((ctJson?.data ?? []).map((x: any) => ({
+          id: x.containerTypeId, name: x.containerTypeName,
+        })));
+        setCargoTypes((cargoJson?.data ?? []).map((x: any) => ({
+          id: x.cargoTypeId, name: x.cargoTypeName,
+        })));
+      } catch { /* lookups non-critical */ }
+    };
+    load();
+  }, []);
+
+  const filteredContainers = containers;
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
     setFormError('');
     try {
-      const payload = {
-        ...formData,
-        weight_kg: parseFloat(formData.weight_kg) || 0,
+      const payload: Record<string, unknown> = {
+        containerId: formData.containerId.trim(),
+        containerTypeId: formData.containerTypeId ? Number(formData.containerTypeId) : null,
+        cargoTypeId: formData.cargoTypeId ? Number(formData.cargoTypeId) : null,
+        grossWeight: formData.grossWeight ? Number(formData.grossWeight) : null,
+        declaredValue: formData.declaredValue ? Number(formData.declaredValue) : null,
+        sealNumber: formData.sealNumber || null,
+        note: formData.note || null,
       };
-      let res: Response;
-      if (editingContainer) {
-        res = await fetch(`${apiUrl}/containers/${editingContainer.id}`, {
-          method: 'PUT', headers, body: JSON.stringify(payload),
-        });
-      } else {
-        res = await fetch(`${apiUrl}/containers`, {
-          method: 'POST', headers, body: JSON.stringify(payload),
-        });
-      }
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Lỗi lưu container');
+      const url = editing
+        ? `${API_BASE}/admin/containers/${editing.containerId}`
+        : `${API_BASE}/admin/containers`;
+      const res = await fetch(url, {
+        method: editing ? 'PUT' : 'POST',
+        headers, body: JSON.stringify(payload),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.message || 'Lỗi lưu container');
       await fetchContainers();
       setIsDialogOpen(false);
-      setEditingContainer(null);
+      setEditing(null);
       setFormData({ ...EMPTY_FORM });
     } catch (err: any) {
-      setFormError(err.message);
+      setFormError(err.message || 'Lỗi');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleEdit = (container: Container) => {
-    setEditingContainer(container);
+  const handleEdit = (c: ContainerRow) => {
+    setEditing(c);
+    const ct = containerTypes.find((t) => t.name === c.containerTypeName);
+    const cg = cargoTypes.find((t) => t.name === c.cargoTypeName);
     setFormData({
-      container_number: container.container_number,
-      customer_name: container.customer_name,
-      container_type: container.container_type,
-      cargo_type: container.cargo_type,
-      weight_kg: container.weight_kg.toString(),
-      zone: container.zone || 'A',
-      block: container.block || '01',
-      slot: container.slot || '001',
-      status: container.status,
-      eta: container.eta || '',
-      etd: container.etd || '',
-      notes: container.notes || '',
+      containerId: c.containerId,
+      containerTypeId: ct ? String(ct.id) : '',
+      cargoTypeId: cg ? String(cg.id) : '',
+      grossWeight: c.grossWeight != null ? String(c.grossWeight) : '',
+      declaredValue: c.declaredValue != null ? String(c.declaredValue) : '',
+      sealNumber: c.sealNumber || '',
+      note: c.note || '',
     });
+    setFormError('');
     setIsDialogOpen(true);
   };
 
-  const handleDelete = async (id: string, containerNumber: string) => {
-    if (!confirm(`Bạn có chắc chắn muốn xóa container ${containerNumber}?`)) return;
+  const handleDelete = async (id: string) => {
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa container ${id}?`)) return;
     try {
-      const res = await fetch(`${apiUrl}/containers/${id}`, { method: 'DELETE', headers });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Lỗi xóa container');
-      setContainers(prev => prev.filter(c => c.id !== id));
+      const res = await fetch(`${API_BASE}/admin/containers/${id}`, { method: 'DELETE', headers });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || 'Lỗi xóa container');
+      }
+      setContainers((prev) => prev.filter((c) => c.containerId !== id));
     } catch (err: any) {
-      alert('Lỗi: ' + err.message);
+      alert('Lỗi: ' + (err.message || 'Lỗi'));
     }
   };
 
   const handleExport = () => {
     const csv = [
-      ['Mã Container', 'Khách hàng', 'Loại', 'Hàng hóa', 'Trọng lượng (kg)', 'Vị trí', 'Trạng thái', 'ETA', 'ETD'],
-      ...filteredContainers.map(c => [
-        c.container_number, c.customer_name, c.container_type, c.cargo_type,
-        c.weight_kg, c.position, STATUS_MAP[c.status]?.label || c.status, c.eta, c.etd,
-      ])
-    ].map(row => row.join(',')).join('\n');
+      ['Mã Container', 'Loại', 'Hàng hóa', 'Trọng lượng (kg)', 'Kho', 'Zone', 'Block', 'Vị trí', 'Trạng thái', 'Seal'],
+      ...filteredContainers.map((c) => [
+        c.containerId,
+        c.containerTypeName || '',
+        c.cargoTypeName || '',
+        c.grossWeight ?? '',
+        c.yardName || '',
+        c.zoneName || '',
+        c.blockName || '',
+        c.rowNo && c.bayNo ? `R${c.rowNo}B${c.bayNo}${c.tier ? `/T${c.tier}` : ''}` : '',
+        STATUS_MAP[c.statusName || '']?.label || c.statusName || '',
+        c.sealNumber || '',
+      ]),
+    ].map((row) => row.join(',')).join('\n');
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     link.href = URL.createObjectURL(blob);
@@ -173,8 +216,15 @@ export default function ContainerManagement() {
     link.click();
   };
 
-  const canEdit = user?.role === 'admin' || user?.role === 'planner';
+  const canEdit = user?.role === 'admin' || user?.role === 'planner' || user?.role === 'operator';
   const canDelete = user?.role === 'admin';
+
+  const stats = useMemo(() => ([
+    { label: 'Tổng container', count: containers.length, color: 'bg-blue-500' },
+    { label: 'Chờ hạ bãi',  count: containers.filter((c) => c.statusName === 'GATE_IN').length, color: 'bg-yellow-500' },
+    { label: 'Trong bãi',   count: containers.filter((c) => c.statusName === 'IN_YARD').length, color: 'bg-blue-600' },
+    { label: 'Đã xuất',     count: containers.filter((c) => c.statusName === 'EXPORTED').length, color: 'bg-green-500' },
+  ]), [containers]);
 
   return (
     <WarehouseLayout>
@@ -183,7 +233,7 @@ export default function ContainerManagement() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
           <div>
             <h2 className="text-3xl font-bold text-gray-900 dark:text-white mb-1">Quản lý Container</h2>
-            <p className="text-gray-600 dark:text-gray-400">Dữ liệu thời gian thực từ Supabase</p>
+            <p className="text-gray-600 dark:text-gray-400">Dữ liệu thời gian thực từ hệ thống kho bãi</p>
           </div>
           <div className="flex gap-2">
             <Button variant="outline" onClick={fetchContainers} disabled={loading}>
@@ -193,7 +243,7 @@ export default function ContainerManagement() {
             {canEdit && (
               <Dialog open={isDialogOpen} onOpenChange={(open) => {
                 setIsDialogOpen(open);
-                if (!open) { setEditingContainer(null); setFormData({ ...EMPTY_FORM }); setFormError(''); }
+                if (!open) { setEditing(null); setFormData({ ...EMPTY_FORM }); setFormError(''); }
               }}>
                 <DialogTrigger asChild>
                   <Button className="bg-blue-900 hover:bg-blue-800 text-white">
@@ -202,9 +252,9 @@ export default function ContainerManagement() {
                 </DialogTrigger>
                 <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
-                    <DialogTitle>{editingContainer ? 'Chỉnh sửa Container' : 'Thêm Container mới'}</DialogTitle>
+                    <DialogTitle>{editing ? 'Chỉnh sửa Container' : 'Thêm Container mới'}</DialogTitle>
                     <DialogDescription>
-                      {editingContainer ? 'Cập nhật thông tin container' : 'Nhập thông tin để thêm container vào kho bãi'}
+                      {editing ? 'Cập nhật thông tin container' : 'Nhập thông tin container (vị trí trong bãi được gán qua luồng hạ bãi)'}
                     </DialogDescription>
                   </DialogHeader>
                   <form onSubmit={handleSubmit} className="space-y-4">
@@ -216,91 +266,81 @@ export default function ContainerManagement() {
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label>Mã Container *</Label>
-                        <Input value={formData.container_number}
-                          onChange={e => setFormData({ ...formData, container_number: e.target.value.toUpperCase() })}
-                          placeholder="TEMU1234567" required disabled={!!editingContainer} />
+                        <Input
+                          value={formData.containerId}
+                          onChange={(e) => setFormData({ ...formData, containerId: e.target.value.toUpperCase() })}
+                          placeholder="TEMU1234567" required disabled={!!editing}
+                        />
                       </div>
                       <div className="space-y-2">
-                        <Label>Loại Container *</Label>
-                        <Select value={formData.container_type} onValueChange={v => setFormData({ ...formData, container_type: v })}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
+                        <Label>Loại Container</Label>
+                        <Select
+                          value={formData.containerTypeId}
+                          onValueChange={(v) => setFormData({ ...formData, containerTypeId: v })}
+                        >
+                          <SelectTrigger><SelectValue placeholder="Chọn loại" /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="20ft">20ft</SelectItem>
-                            <SelectItem value="40ft">40ft</SelectItem>
-                            <SelectItem value="40ft-hc">40ft High Cube</SelectItem>
-                            <SelectItem value="45ft">45ft</SelectItem>
+                            {containerTypes.map((ct) => (
+                              <SelectItem key={ct.id} value={String(ct.id)}>{ct.name}</SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </div>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Tên Khách hàng *</Label>
-                      <Input value={formData.customer_name}
-                        onChange={e => setFormData({ ...formData, customer_name: e.target.value })}
-                        placeholder="Công ty TNHH..." required />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>Loại hàng hóa *</Label>
-                        <Input value={formData.cargo_type}
-                          onChange={e => setFormData({ ...formData, cargo_type: e.target.value })}
-                          placeholder="Điện tử, Dệt may..." required />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Trọng lượng (kg) *</Label>
-                        <Input type="number" value={formData.weight_kg}
-                          onChange={e => setFormData({ ...formData, weight_kg: e.target.value })}
-                          placeholder="24000" required />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-4">
-                      <div className="space-y-2">
-                        <Label>Khu vực *</Label>
-                        <Select value={formData.zone} onValueChange={v => setFormData({ ...formData, zone: v })}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
+                        <Label>Loại hàng hóa</Label>
+                        <Select
+                          value={formData.cargoTypeId}
+                          onValueChange={(v) => setFormData({ ...formData, cargoTypeId: v })}
+                        >
+                          <SelectTrigger><SelectValue placeholder="Chọn loại hàng" /></SelectTrigger>
                           <SelectContent>
-                            {['A','B','C','D'].map(z => <SelectItem key={z} value={z}>Zone {z}</SelectItem>)}
+                            {cargoTypes.map((cg) => (
+                              <SelectItem key={cg.id} value={String(cg.id)}>{cg.name}</SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </div>
                       <div className="space-y-2">
-                        <Label>Block *</Label>
-                        <Input value={formData.block} onChange={e => setFormData({ ...formData, block: e.target.value })} placeholder="01" required />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Slot *</Label>
-                        <Input value={formData.slot} onChange={e => setFormData({ ...formData, slot: e.target.value })} placeholder="001" required />
+                        <Label>Trọng lượng (kg)</Label>
+                        <Input
+                          type="number" value={formData.grossWeight}
+                          onChange={(e) => setFormData({ ...formData, grossWeight: e.target.value })}
+                          placeholder="24000"
+                        />
                       </div>
                     </div>
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label>Trạng thái *</Label>
-                        <Select value={formData.status} onValueChange={v => setFormData({ ...formData, status: v })}>
-                          <SelectTrigger><SelectValue /></SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="pending">Chờ xử lý</SelectItem>
-                            <SelectItem value="in_storage">Đang lưu kho</SelectItem>
-                            <SelectItem value="exported">Đã xuất</SelectItem>
-                          </SelectContent>
-                        </Select>
+                        <Label>Giá trị khai báo (VND)</Label>
+                        <Input
+                          type="number" value={formData.declaredValue}
+                          onChange={(e) => setFormData({ ...formData, declaredValue: e.target.value })}
+                          placeholder="100000000"
+                        />
                       </div>
                       <div className="space-y-2">
-                        <Label>ETA *</Label>
-                        <Input type="date" value={formData.eta} onChange={e => setFormData({ ...formData, eta: e.target.value })} required />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>ETD *</Label>
-                        <Input type="date" value={formData.etd} onChange={e => setFormData({ ...formData, etd: e.target.value })} required />
+                        <Label>Số seal</Label>
+                        <Input
+                          value={formData.sealNumber}
+                          onChange={(e) => setFormData({ ...formData, sealNumber: e.target.value })}
+                          placeholder="SL-000123"
+                        />
                       </div>
                     </div>
                     <div className="space-y-2">
                       <Label>Ghi chú</Label>
-                      <Input value={formData.notes} onChange={e => setFormData({ ...formData, notes: e.target.value })} placeholder="Ghi chú thêm..." />
+                      <Input
+                        value={formData.note}
+                        onChange={(e) => setFormData({ ...formData, note: e.target.value })}
+                        placeholder="Ghi chú thêm..."
+                      />
                     </div>
                     <DialogFooter>
                       <Button type="button" variant="outline" onClick={() => setIsDialogOpen(false)}>Hủy</Button>
                       <Button type="submit" className="bg-blue-900 hover:bg-blue-800" disabled={submitting}>
-                        {submitting ? 'Đang lưu...' : editingContainer ? 'Cập nhật' : 'Thêm mới'}
+                        {submitting ? 'Đang lưu...' : editing ? 'Cập nhật' : 'Thêm mới'}
                       </Button>
                     </DialogFooter>
                   </form>
@@ -312,12 +352,7 @@ export default function ContainerManagement() {
 
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {[
-            { label: 'Tổng container', count: containers.length, color: 'bg-blue-500' },
-            { label: 'Chờ xử lý', count: containers.filter(c => c.status === 'pending').length, color: 'bg-yellow-500' },
-            { label: 'Đang lưu kho', count: containers.filter(c => c.status === 'in_storage').length, color: 'bg-blue-600' },
-            { label: 'Đã xuất', count: containers.filter(c => c.status === 'exported').length, color: 'bg-green-500' },
-          ].map(s => (
+          {stats.map((s) => (
             <Card key={s.label}>
               <CardContent className="p-4 flex items-center gap-3">
                 <div className={`${s.color} w-3 h-10 rounded-full`} />
@@ -336,18 +371,22 @@ export default function ContainerManagement() {
             <div className="flex flex-col sm:flex-row gap-4">
               <div className="flex-1 relative">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 w-5 h-5" />
-                <Input placeholder="Tìm kiếm mã container, khách hàng, hàng hóa..." value={searchTerm}
-                  onChange={e => setSearchTerm(e.target.value)} className="pl-10" />
+                <Input
+                  placeholder="Tìm mã container..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-10"
+                />
               </div>
               <Select value={filterStatus} onValueChange={setFilterStatus}>
-                <SelectTrigger className="w-full sm:w-48">
+                <SelectTrigger className="w-full sm:w-56">
                   <Filter className="w-4 h-4 mr-2" /><SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">Tất cả trạng thái</SelectItem>
-                  <SelectItem value="pending">Chờ xử lý</SelectItem>
-                  <SelectItem value="in_storage">Đang lưu kho</SelectItem>
-                  <SelectItem value="exported">Đã xuất</SelectItem>
+                  {Object.entries(STATUS_MAP).map(([k, v]) => (
+                    <SelectItem key={k} value={k}>{v.label}</SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
               <Button variant="outline" onClick={handleExport}>
@@ -375,7 +414,7 @@ export default function ContainerManagement() {
             {loading ? (
               <div className="flex items-center justify-center py-16">
                 <RefreshCw className="w-8 h-8 text-blue-600 animate-spin" />
-                <span className="ml-3 text-gray-600">Đang tải dữ liệu từ Supabase...</span>
+                <span className="ml-3 text-gray-600">Đang tải dữ liệu...</span>
               </div>
             ) : (
               <div className="overflow-x-auto">
@@ -383,75 +422,85 @@ export default function ContainerManagement() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Mã Container</TableHead>
-                      <TableHead>Khách hàng</TableHead>
                       <TableHead>Loại</TableHead>
                       <TableHead>Hàng hóa</TableHead>
                       <TableHead>Trọng lượng</TableHead>
                       <TableHead>Vị trí</TableHead>
                       <TableHead>Trạng thái</TableHead>
-                      <TableHead>ETD</TableHead>
+                      <TableHead>Ngày tạo</TableHead>
                       {(canEdit || canDelete) && <TableHead className="text-right">Thao tác</TableHead>}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {filteredContainers.map((container, index) => (
-                      <motion.tr key={container.id}
-                        initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
-                        transition={{ delay: index * 0.04 }}
-                        className="hover:bg-gray-50 dark:hover:bg-gray-800">
-                        <TableCell className="font-mono font-bold text-blue-700 dark:text-blue-400">
-                          {container.container_number}
-                        </TableCell>
-                        <TableCell className="max-w-[180px] truncate text-sm">{container.customer_name}</TableCell>
-                        <TableCell><Badge variant="outline">{container.container_type}</Badge></TableCell>
-                        <TableCell className="text-sm">{container.cargo_type}</TableCell>
-                        <TableCell className="text-sm">{Number(container.weight_kg).toLocaleString()} kg</TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-1 text-sm font-mono">
-                            <MapPin className="w-3 h-3 text-gray-400" />
-                            {container.position || `${container.zone}-${container.block}-${container.slot}`}
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <span className={`px-2 py-1 rounded-full text-xs font-semibold ${STATUS_MAP[container.status]?.color || ''}`}>
-                            {STATUS_MAP[container.status]?.label || container.status}
-                          </span>
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          <div className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3 text-gray-400" />
-                            {container.etd ? new Date(container.etd).toLocaleDateString('vi-VN') : '—'}
-                          </div>
-                        </TableCell>
-                        {(canEdit || canDelete) && (
-                          <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-1">
-                              {canEdit && (
-                                <Button variant="ghost" size="sm" onClick={() => handleEdit(container)}
-                                  className="text-blue-600 hover:text-blue-700 hover:bg-blue-50">
-                                  <Edit className="w-4 h-4" />
-                                </Button>
-                              )}
-                              {canDelete && (
-                                <Button variant="ghost" size="sm"
-                                  onClick={() => handleDelete(container.id, container.container_number)}
-                                  className="text-red-600 hover:text-red-700 hover:bg-red-50">
-                                  <Trash2 className="w-4 h-4" />
-                                </Button>
-                              )}
+                    {filteredContainers.map((c, index) => {
+                      const pos = [c.yardName, c.zoneName, c.blockName].filter(Boolean).join(' · ');
+                      const slot = c.rowNo != null && c.bayNo != null
+                        ? `R${c.rowNo}B${c.bayNo}${c.tier ? `/T${c.tier}` : ''}`
+                        : '';
+                      return (
+                        <motion.tr
+                          key={c.containerId}
+                          initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}
+                          transition={{ delay: index * 0.02 }}
+                          className="hover:bg-gray-50 dark:hover:bg-gray-800"
+                        >
+                          <TableCell className="font-mono font-bold text-blue-700 dark:text-blue-400">
+                            {c.containerId}
+                          </TableCell>
+                          <TableCell><Badge variant="outline">{c.containerTypeName || '—'}</Badge></TableCell>
+                          <TableCell className="text-sm">{c.cargoTypeName || '—'}</TableCell>
+                          <TableCell className="text-sm">
+                            {c.grossWeight != null && c.grossWeight !== '' ? `${Number(c.grossWeight).toLocaleString('vi-VN')} kg` : '—'}
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-1 text-sm">
+                              <MapPin className="w-3 h-3 text-gray-400" />
+                              <span className="font-mono">{pos || '—'}{slot ? ` · ${slot}` : ''}</span>
                             </div>
                           </TableCell>
-                        )}
-                      </motion.tr>
-                    ))}
+                          <TableCell>
+                            <span className={`px-2 py-1 rounded-full text-xs font-semibold ${STATUS_MAP[c.statusName || '']?.color || 'bg-gray-100 text-gray-700'}`}>
+                              {STATUS_MAP[c.statusName || '']?.label || c.statusName || '—'}
+                            </span>
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            <div className="flex items-center gap-1">
+                              <Calendar className="w-3 h-3 text-gray-400" />
+                              {c.createdAt ? new Date(c.createdAt).toLocaleDateString('vi-VN') : '—'}
+                            </div>
+                          </TableCell>
+                          {(canEdit || canDelete) && (
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                {canEdit && (
+                                  <Button
+                                    variant="ghost" size="sm" onClick={() => handleEdit(c)}
+                                    className="text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                  >
+                                    <Edit className="w-4 h-4" />
+                                  </Button>
+                                )}
+                                {canDelete && (
+                                  <Button
+                                    variant="ghost" size="sm"
+                                    onClick={() => handleDelete(c.containerId)}
+                                    className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
+                          )}
+                        </motion.tr>
+                      );
+                    })}
                   </TableBody>
                 </Table>
-                {filteredContainers.length === 0 && !loading && (
+                {filteredContainers.length === 0 && !loading && !error && (
                   <div className="text-center py-12">
                     <Package className="w-12 h-12 text-gray-300 mx-auto mb-3" />
-                    <p className="text-gray-500">
-                      {containers.length === 0 ? 'Chưa có container nào. Hãy nhấn "Khởi tạo demo" ở trang đăng nhập.' : 'Không tìm thấy container phù hợp'}
-                    </p>
+                    <p className="text-gray-500">Không có container phù hợp</p>
                   </div>
                 )}
               </div>

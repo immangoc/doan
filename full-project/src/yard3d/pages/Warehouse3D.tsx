@@ -23,6 +23,7 @@ import type { GateInParams } from '../services/gateInService';
 import { fetchAndSetOccupancy } from '../services/containerPositionService';
 import { fetchAllYards, getCachedYards } from '../services/yardService';
 import { processApiYards, setYardData, getSlotIdByCoords, subscribeYard, getYardData, getZoneDims, getZoneGrid } from '../store/yardStore';
+import { apiFetch } from '../services/apiClient';
 import { subscribeOccupancy, getOccupancyData, isOccupancyFetched } from '../store/occupancyStore';
 import { fetchWaitingContainers, searchInYardContainers } from '../services/gateOutService';
 import type { WaitingItem, InYardContainer } from '../services/gateOutService';
@@ -258,14 +259,51 @@ function ImportPanel({ onClose, initialCode, initialItem, onPreviewChange, onWhT
   onWhTypeChange?: (whType: WHType) => void;
 }) {
   const [step, setStep] = useState<ImportStep>('form');
+
+  let defaultExportDate = initialItem?.exportDate ?? '';
+  if (initialItem && !defaultExportDate) {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    defaultExportDate = d.toISOString().split('T')[0];
+  }
+
   const [form, setForm] = useState({
     containerCode: initialItem?.containerCode ?? initialCode ?? '',
     cargoType: initialItem ? normalizeCargoType(initialItem.cargoType) : 'Hàng Khô',
     sizeType: (initialItem?.containerType?.toUpperCase().includes('40') ? '40ft' : '20ft') as '20ft' | '40ft',
     weight: initialItem?.weight ?? '',
-    exportDate: '',
+    exportDate: defaultExportDate,
     priority: 'Cao',
   });
+
+  useEffect(() => {
+    if (initialItem && initialItem.containerCode) {
+      apiFetch(`/admin/containers?keyword=${encodeURIComponent(initialItem.containerCode)}&page=0&size=1`)
+        .then(res => res.json())
+        .then(json => {
+          const data = json.data ?? json;
+          const content = Array.isArray(data) ? data : (data.content ?? []);
+          if (content.length > 0) {
+            const container = content[0];
+            setForm(f => {
+              const updates = { ...f };
+              if (!initialItem.weight && container.grossWeight != null) {
+                updates.weight = `${container.grossWeight} kg`;
+              }
+              const cType = container.cargoTypeName ?? container.cargoType ?? container.type;
+              if (cType) updates.cargoType = normalizeCargoType(String(cType));
+              
+              const sType = container.containerTypeName ?? container.containerType ?? container.sizeType;
+              if (sType) updates.sizeType = String(sType).toUpperCase().includes('40') ? '40ft' : '20ft';
+              
+              return updates;
+            });
+          }
+        })
+        .catch(() => {});
+    }
+  }, [initialItem]);
+
   const [suggestion, setSuggestion] = useState<SuggestedPosition | null>(null);
   const [manualZone, setManualZone] = useState('Zone A');
   const [manualWarehouse, setManualWH] = useState('Kho hàng khô');
@@ -273,6 +311,68 @@ function ImportPanel({ onClose, initialCode, initialItem, onPreviewChange, onWhT
   const [manualPos, setManualPos] = useState('CT01');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Inline waiting list
+  const [waitingItems, setWaitingItems] = useState<WaitingItem[]>([]);
+  const [waitingLoading, setWaitingLoading] = useState(!initialItem);
+  const [selectedOrder, setSelectedOrder] = useState<WaitingItem | null>(initialItem ?? null);
+
+  useEffect(() => {
+    if (initialItem) return;
+    let cancelled = false;
+    setWaitingLoading(true);
+    fetchWaitingContainers()
+      .then((list) => { if (!cancelled) setWaitingItems(list); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setWaitingLoading(false); });
+    return () => { cancelled = true; };
+  }, [initialItem]);
+
+  function pickOrder(item: WaitingItem) {
+    setSelectedOrder(item);
+
+    let finalExportDate = item.exportDate ?? '';
+    if (!finalExportDate) {
+      const d = new Date();
+      d.setDate(d.getDate() + 7);
+      finalExportDate = d.toISOString().split('T')[0];
+    }
+
+    setForm({
+      containerCode: item.containerCode,
+      cargoType: normalizeCargoType(item.cargoType),
+      sizeType: (item.containerType ?? '').toUpperCase().includes('40') ? '40ft' : '20ft',
+      weight: item.weight,
+      exportDate: finalExportDate,
+      priority: 'Cao',
+    });
+
+    if (item.containerCode) {
+      apiFetch(`/admin/containers?keyword=${encodeURIComponent(item.containerCode)}&page=0&size=1`)
+        .then(res => res.json())
+        .then(json => {
+          const data = json.data ?? json;
+          const content = Array.isArray(data) ? data : (data.content ?? []);
+          if (content.length > 0) {
+            const container = content[0];
+            setForm(f => {
+              const updates = { ...f };
+              if (!item.weight && container.grossWeight != null) {
+                updates.weight = `${container.grossWeight} kg`;
+              }
+              const cType = container.cargoTypeName ?? container.cargoType ?? container.type;
+              if (cType) updates.cargoType = normalizeCargoType(String(cType));
+              
+              const sType = container.containerTypeName ?? container.containerType ?? container.sizeType;
+              if (sType) updates.sizeType = String(sType).toUpperCase().includes('40') ? '40ft' : '20ft';
+              
+              return updates;
+            });
+          }
+        })
+        .catch(() => {});
+    }
+  }
 
   useEffect(() => {
     return () => onPreviewChange(null);
@@ -336,7 +436,7 @@ function ImportPanel({ onClose, initialCode, initialItem, onPreviewChange, onWhT
       yardId,
       slotId,
       tier: floor,
-      skipContainerCheck: !!initialItem,  // container from waiting list already exists
+      skipContainerCheck: !!selectedOrder,  // container from waiting list already exists
     };
 
     try {
@@ -393,20 +493,66 @@ function ImportPanel({ onClose, initialCode, initialItem, onPreviewChange, onWhT
         )}
         {step === 'form' && (
           <>
-            {initialItem && (
-              <div style={{ fontSize: '0.75rem', background: '#eff6ff', color: '#1d4ed8', borderRadius: '6px', padding: '0.5rem 0.75rem', marginBottom: '0.5rem' }}>
-                Container từ danh sách chờ — thông tin đã điền sẵn
+            {/* Inline waiting orders list */}
+            {!selectedOrder && !initialItem && (
+              <div style={{ marginBottom: '0.75rem' }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: 6, color: '#1e3a5f' }}>
+                  📋 Đơn hàng chờ nhập ({waitingLoading ? '...' : waitingItems.length})
+                </div>
+                {waitingLoading && <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Đang tải...</div>}
+                {!waitingLoading && waitingItems.length === 0 && (
+                  <div style={{ fontSize: '0.75rem', color: '#9ca3af', background: '#f9fafb', borderRadius: 6, padding: '0.5rem 0.75rem' }}>
+                    Không có đơn hàng nào đang chờ nhập kho.
+                  </div>
+                )}
+                {!waitingLoading && waitingItems.length > 0 && (
+                  <div style={{ maxHeight: 160, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {waitingItems.map((item) => (
+                      <button
+                        key={`${item.orderId}-${item.containerCode}`}
+                        onClick={() => pickOrder(item)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                          padding: '0.45rem 0.6rem', border: '1px solid #e5e7eb', borderRadius: 6,
+                          background: '#fff', cursor: 'pointer', textAlign: 'left', fontSize: '0.75rem',
+                        }}
+                      >
+                        <Truck size={14} style={{ color: '#3b82f6', flexShrink: 0 }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, color: '#1e3a5f' }}>{item.containerCode}</div>
+                          <div style={{ color: '#6b7280' }}>{item.cargoType} · {item.containerType} · 👤 {item.customerName}</div>
+                        </div>
+                        <ChevronRight size={14} style={{ color: '#9ca3af', flexShrink: 0 }} />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div style={{ borderBottom: '1px solid #e5e7eb', margin: '0.75rem 0 0.25rem' }} />
               </div>
             )}
+
+            {/* Selected order info minimal banner */}
+            {selectedOrder && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', padding: '0.5rem 0.75rem', background: '#f3f4f6', borderRadius: '6px' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.75rem', color: '#374151' }}>Đã chọn Đơn hàng #{selectedOrder.orderId}</span>
+                {!initialItem && (
+                  <button
+                    onClick={() => { setSelectedOrder(null); setForm({ containerCode: '', cargoType: 'Hàng Khô', sizeType: '20ft', weight: '', exportDate: '', priority: 'Cao' }); }}
+                    style={{ fontSize: '0.7rem', color: '#dc2626', cursor: 'pointer', background: 'none', border: 'none', textDecoration: 'underline' }}
+                  >Bỏ chọn</button>
+                )}
+              </div>
+            )}
+
             <div className="rp-field">
               <label>Mã số container</label>
               <input
                 type="text"
                 value={form.containerCode}
                 placeholder="VD: CTN-2026-1234"
-                readOnly={!!initialItem}
-                style={initialItem ? { background: '#f9fafb', color: '#6b7280', cursor: 'default' } : undefined}
-                onChange={(e) => { if (!initialItem) setForm({ ...form, containerCode: e.target.value }); }}
+                readOnly={!!selectedOrder}
+                style={selectedOrder ? { background: '#f9fafb', color: '#6b7280', cursor: 'default' } : undefined}
+                onChange={(e) => { if (!selectedOrder) setForm({ ...form, containerCode: e.target.value }); }}
               />
             </div>
             <div className="rp-field">
@@ -914,7 +1060,7 @@ export function Warehouse3D() {
           <button className="btn-primary w3d-import-btn" onClick={handleSearchSubmit}>
             <Search size={17} /><span>Tìm</span>
           </button>
-          <button className="btn-primary w3d-import-btn" onClick={() => setPanelMode('import')}>
+          <button className="btn-primary w3d-import-btn" onClick={() => { setSelectedItem(undefined); setSelectedCode(undefined); setPanelMode('import'); }}>
             <Plus size={17} /><span>Nhập kho</span>
           </button>
           <button

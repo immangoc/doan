@@ -15,10 +15,7 @@ const navGroups = [
       { label: 'Đơn hàng', to: '/warehouse/admin/section/don-hang', icon: 'orders', badge: '4' },
       { label: 'Loại Container', to: '/warehouse/admin/section/quan-ly-loai-container', icon: 'container' },
       { label: 'Loại Hàng', to: '/warehouse/admin/section/quan-ly-loai-hang', icon: 'tag' },
-      { label: 'Hãng Tàu', to: '/warehouse/admin/section/quan-ly-hang-tau', icon: 'ship' },
-      { label: 'Lịch Trình', to: '/warehouse/admin/section/quan-ly-lich', icon: 'calendar' },
       { label: 'Cước Phí', to: '/warehouse/admin/section/quan-ly-cuoc-phi-bieu-cuoc', icon: 'dollar' },
-      { label: 'Quản lý kho', to: '/yard3d/tong-quan', icon: 'warehouse' },
     ],
   },
   {

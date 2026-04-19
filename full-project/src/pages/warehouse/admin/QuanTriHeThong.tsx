@@ -108,15 +108,18 @@ export default function QuanTriHeThong() {
 
   const handleSave = async () => {
     if (!editItem) return;
+    const role = roles.find((r) => r.roleName === form.roleName);
+    if (!role) { setFormError('Vui lòng chọn vai trò hợp lệ'); return; }
     setSaving(true);
     setFormError('');
     try {
-      const body: Record<string, string> = { roleName: form.roleName };
-      const res = await fetch(`${API_BASE}/admin/users/${editItem.userId}`, {
-        method: 'PUT', headers, body: JSON.stringify(body),
+      const res = await fetch(`${API_BASE}/admin/users/${editItem.userId}/roles/${role.roleId}`, {
+        method: 'PUT', headers,
       });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.message || 'Lỗi cập nhật');
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.message || 'Lỗi cập nhật vai trò');
+      }
       closeModal();
       fetchData(page);
     } catch (e: any) {

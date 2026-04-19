@@ -23,6 +23,7 @@ import type { GateInParams } from '../services/gateInService';
 import { fetchAndSetOccupancy } from '../services/containerPositionService';
 import { fetchAllYards, getCachedYards } from '../services/yardService';
 import { processApiYards, setYardData, getSlotIdByCoords } from '../store/yardStore';
+import { apiFetch } from '../services/apiClient';
 import {
   searchInYardContainers, performGateOut, fetchWaitingContainers, fetchStorageBill,
 } from '../services/gateOutService';
@@ -40,23 +41,21 @@ function WHIcon({ type, size = 18 }: { type: WHType; size?: number }) {
 
 // ─── KPI Big Card ─────────────────────────────────────────────────────────────
 function KpiCard({
-  label, value, sub, icon, color, bg, trend,
+  label, value, sub, icon, color, bg,
 }: {
   label: string; value: number | string; sub?: string;
   icon: React.ReactNode; color: string; bg: string; trend?: 'up' | 'down' | 'neutral';
 }) {
   return (
-    <div className="ov-kpi-card" style={{ borderLeft: `4px solid ${color}` }}>
-      <div className="ov-kpi-top">
-        <div className="ov-kpi-icon-wrap" style={{ background: bg }}>
-          <span style={{ color }}>{icon}</span>
-        </div>
-        {trend === 'up' && <TrendingUp size={14} style={{ color: '#10b981' }} />}
-        {trend === 'down' && <TrendingDown size={14} style={{ color: '#f87171' }} />}
+    <div className="ov-kpi-card">
+      <div className="ov-kpi-body">
+        <div className="ov-kpi-label">{label}</div>
+        <div className="ov-kpi-value">{value}</div>
+        {sub && <div className="ov-kpi-sub">{sub}</div>}
       </div>
-      <div className="ov-kpi-value">{value}</div>
-      <div className="ov-kpi-label">{label}</div>
-      {sub && <div className="ov-kpi-sub">{sub}</div>}
+      <div className="ov-kpi-icon-wrap" style={{ background: bg }}>
+        <span style={{ color }}>{icon}</span>
+      </div>
     </div>
   );
 }
@@ -219,7 +218,8 @@ function WaitingListPanel({ onClose, onSelect, refreshKey }: {
             <div className="ov-waiting-icon"><Truck size={18} /></div>
             <div className="ov-waiting-info">
               <span className="ov-waiting-code">{ctn.containerCode}</span>
-              <span className="ov-waiting-meta">{ctn.cargoType} &middot; {ctn.orderDate}</span>
+              <span className="ov-waiting-meta">{ctn.cargoType} &middot; {ctn.containerType}</span>
+              <span className="ov-waiting-meta" style={{ color: '#6b7280' }}>👤 {ctn.customerName} &middot; {ctn.orderDate}</span>
             </div>
             <ChevronRight size={16} className="ov-waiting-chevron" />
           </button>
@@ -465,14 +465,51 @@ function ImportPanel({ onClose, initialCode, initialItem, onPreviewChange }: {
   onPreviewChange: (pos: PreviewPosition | null) => void;
 }) {
   const [step, setStep] = useState<ImportStep>('form');
+
+  let defaultExportDate = initialItem?.exportDate ?? '';
+  if (initialItem && !defaultExportDate) {
+    const d = new Date();
+    d.setDate(d.getDate() + 7);
+    defaultExportDate = d.toISOString().split('T')[0];
+  }
+
   const [form, setForm] = useState({
     containerCode: initialItem?.containerCode ?? initialCode ?? '',
     cargoType: initialItem ? normalizeCargoType(initialItem.cargoType) : 'Hàng Khô',
     sizeType: ((initialItem?.containerType ?? '').toUpperCase().includes('40') ? '40ft' : '20ft') as '20ft' | '40ft',
     weight: initialItem?.weight ?? '',
-    exportDate: '',
+    exportDate: defaultExportDate,
     priority: 'Trung bình',
   });
+
+  useEffect(() => {
+    if (initialItem && initialItem.containerCode) {
+      apiFetch(`/admin/containers?keyword=${encodeURIComponent(initialItem.containerCode)}&page=0&size=1`)
+        .then(res => res.json())
+        .then(json => {
+          const data = json.data ?? json;
+          const content = Array.isArray(data) ? data : (data.content ?? []);
+          if (content.length > 0) {
+            const container = content[0];
+            setForm(f => {
+              const updates = { ...f };
+              if (!initialItem.weight && container.grossWeight != null) {
+                updates.weight = `${container.grossWeight} kg`;
+              }
+              const cType = container.cargoTypeName ?? container.cargoType ?? container.type;
+              if (cType) updates.cargoType = normalizeCargoType(String(cType));
+              
+              const sType = container.containerTypeName ?? container.containerType ?? container.sizeType;
+              if (sType) updates.sizeType = String(sType).toUpperCase().includes('40') ? '40ft' : '20ft';
+              
+              return updates;
+            });
+          }
+        })
+        .catch(() => {});
+    }
+  }, [initialItem]);
+
   const [suggestion, setSuggestion] = useState<SuggestedPosition | null>(null);
   const [manualZone, setManualZone] = useState('Zone A');
   const [manualWarehouse, setManualWH] = useState('Kho Khô');
@@ -480,6 +517,68 @@ function ImportPanel({ onClose, initialCode, initialItem, onPreviewChange }: {
   const [manualPos, setManualPos] = useState('CT01');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Inline waiting list — fetch pending orders directly
+  const [waitingItems, setWaitingItems] = useState<WaitingItem[]>([]);
+  const [waitingLoading, setWaitingLoading] = useState(!initialItem);
+  const [selectedOrder, setSelectedOrder] = useState<WaitingItem | null>(initialItem ?? null);
+
+  useEffect(() => {
+    if (initialItem) return; // already have one
+    let cancelled = false;
+    setWaitingLoading(true);
+    fetchWaitingContainers()
+      .then((list) => { if (!cancelled) setWaitingItems(list); })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setWaitingLoading(false); });
+    return () => { cancelled = true; };
+  }, [initialItem]);
+
+  function pickOrder(item: WaitingItem) {
+    setSelectedOrder(item);
+
+    let finalExportDate = item.exportDate ?? '';
+    if (!finalExportDate) {
+      const d = new Date();
+      d.setDate(d.getDate() + 7);
+      finalExportDate = d.toISOString().split('T')[0];
+    }
+
+    setForm({
+      containerCode: item.containerCode,
+      cargoType: normalizeCargoType(item.cargoType),
+      sizeType: (item.containerType ?? '').toUpperCase().includes('40') ? '40ft' : '20ft',
+      weight: item.weight,
+      exportDate: finalExportDate,
+      priority: 'Trung bình',
+    });
+
+    if (item.containerCode) {
+      apiFetch(`/admin/containers?keyword=${encodeURIComponent(item.containerCode)}&page=0&size=1`)
+        .then(res => res.json())
+        .then(json => {
+          const data = json.data ?? json;
+          const content = Array.isArray(data) ? data : (data.content ?? []);
+          if (content.length > 0) {
+            const container = content[0];
+            setForm(f => {
+              const updates = { ...f };
+              if (!item.weight && container.grossWeight != null) {
+                updates.weight = `${container.grossWeight} kg`;
+              }
+              const cType = container.cargoTypeName ?? container.cargoType ?? container.type;
+              if (cType) updates.cargoType = normalizeCargoType(String(cType));
+              
+              const sType = container.containerTypeName ?? container.containerType ?? container.sizeType;
+              if (sType) updates.sizeType = String(sType).toUpperCase().includes('40') ? '40ft' : '20ft';
+              
+              return updates;
+            });
+          }
+        })
+        .catch(() => {});
+    }
+  }
 
   useEffect(() => { return () => onPreviewChange(null); }, [onPreviewChange]);
 
@@ -521,7 +620,7 @@ function ImportPanel({ onClose, initialCode, initialItem, onPreviewChange }: {
       containerCode: form.containerCode, cargoType: form.cargoType,
       sizeType: suggestion?.sizeType ?? form.sizeType,
       weight: form.weight, exportDate: form.exportDate, priority: form.priority,
-      yardId, slotId, tier: floor, skipContainerCheck: !!initialItem,
+      yardId, slotId, tier: floor, skipContainerCheck: !!selectedOrder,
     };
     try {
       await confirmGateIn(params);
@@ -558,17 +657,66 @@ function ImportPanel({ onClose, initialCode, initialItem, onPreviewChange }: {
         {error && <div style={{ color: '#f87171', fontSize: '0.8rem', marginBottom: '0.75rem' }}>{error}</div>}
         {step === 'form' && (
           <>
-            {initialItem && (
-              <div style={{ fontSize: '0.75rem', background: '#eff6ff', color: '#1d4ed8', borderRadius: '6px', padding: '0.5rem 0.75rem', marginBottom: '0.5rem' }}>
-                Container từ danh sách chờ — thông tin đã điền sẵn
+            {/* Inline waiting orders list */}
+            {!selectedOrder && !initialItem && (
+              <div style={{ marginBottom: '0.75rem' }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: 600, marginBottom: 6, color: '#1e3a5f' }}>
+                  📋 Đơn hàng chờ nhập ({waitingLoading ? '...' : waitingItems.length})
+                </div>
+                {waitingLoading && <div style={{ fontSize: '0.75rem', color: '#9ca3af' }}>Đang tải...</div>}
+                {!waitingLoading && waitingItems.length === 0 && (
+                  <div style={{ fontSize: '0.75rem', color: '#9ca3af', background: '#f9fafb', borderRadius: 6, padding: '0.5rem 0.75rem' }}>
+                    Không có đơn hàng nào đang chờ nhập kho.
+                  </div>
+                )}
+                {!waitingLoading && waitingItems.length > 0 && (
+                  <div style={{ maxHeight: 160, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    {waitingItems.map((item) => (
+                      <button
+                        key={`${item.orderId}-${item.containerCode}`}
+                        onClick={() => pickOrder(item)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 8, width: '100%',
+                          padding: '0.45rem 0.6rem', border: '1px solid #e5e7eb', borderRadius: 6,
+                          background: '#fff', cursor: 'pointer', textAlign: 'left', fontSize: '0.75rem',
+                          transition: 'all 0.15s',
+                        }}
+                        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = '#eff6ff'; (e.currentTarget as HTMLElement).style.borderColor = '#93c5fd'; }}
+                        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = '#fff'; (e.currentTarget as HTMLElement).style.borderColor = '#e5e7eb'; }}
+                      >
+                        <Truck size={14} style={{ color: '#3b82f6', flexShrink: 0 }} />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, color: '#1e3a5f' }}>{item.containerCode}</div>
+                          <div style={{ color: '#6b7280' }}>{item.cargoType} · {item.containerType} · 👤 {item.customerName}</div>
+                        </div>
+                        <ChevronRight size={14} style={{ color: '#9ca3af', flexShrink: 0 }} />
+                      </button>
+                    ))}
+                  </div>
+                )}
+                <div style={{ borderBottom: '1px solid #e5e7eb', margin: '0.75rem 0 0.25rem' }} />
               </div>
             )}
+
+            {/* Selected order info minimal banner */}
+            {selectedOrder && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', padding: '0.5rem 0.75rem', background: '#f3f4f6', borderRadius: '6px' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.75rem', color: '#374151' }}>Đã chọn Đơn hàng #{selectedOrder.orderId}</span>
+                {!initialItem && (
+                  <button
+                    onClick={() => { setSelectedOrder(null); setForm({ containerCode: '', cargoType: 'Hàng Khô', sizeType: '20ft', weight: '', exportDate: '', priority: 'Trung bình' }); }}
+                    style={{ fontSize: '0.7rem', color: '#dc2626', cursor: 'pointer', background: 'none', border: 'none', textDecoration: 'underline' }}
+                  >Bỏ chọn</button>
+                )}
+              </div>
+            )}
+
             <div className="ov-rp-field">
               <label>Mã số container</label>
               <input type="text" value={form.containerCode} placeholder="VD: CTN-2026-1234"
-                readOnly={!!initialItem}
-                style={initialItem ? { background: '#f9fafb', color: '#6b7280', cursor: 'default' } : undefined}
-                onChange={(e) => { if (!initialItem) setForm({ ...form, containerCode: e.target.value }); }}
+                readOnly={!!selectedOrder}
+                style={selectedOrder ? { background: '#f9fafb', color: '#6b7280', cursor: 'default' } : undefined}
+                onChange={(e) => { if (!selectedOrder) setForm({ ...form, containerCode: e.target.value }); }}
                 className="ov-rp-input" />
             </div>
             <div className="ov-rp-field">

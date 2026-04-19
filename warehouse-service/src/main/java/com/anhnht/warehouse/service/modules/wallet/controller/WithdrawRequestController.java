@@ -32,13 +32,13 @@ public class WithdrawRequestController {
     }
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<WithdrawRequestListResponse>> listAll() {
         return ResponseEntity.ok(ApiResponse.success(withdrawRequestService.listAll()));
     }
 
     @PostMapping("/{id}/approve")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<WithdrawRequestResponse>> approve(
             @PathVariable("id") UUID id,
             @Valid @RequestBody ApproveWithdrawRequestDto request) {

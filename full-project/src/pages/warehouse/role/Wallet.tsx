@@ -6,6 +6,8 @@ import { Button } from '../../../components/ui/button';
 import { Badge } from '../../../components/ui/badge';
 import { Input } from '../../../components/ui/input';
 import { Textarea } from '../../../components/ui/textarea';
+import { Popover, PopoverContent, PopoverTrigger } from '../../../components/ui/popover';
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '../../../components/ui/command';
 import {
   Dialog,
   DialogContent,
@@ -30,6 +32,7 @@ import {
   QrCode,
   Copy,
   Check,
+  ChevronsUpDown,
 } from 'lucide-react';
 import { useWarehouseAuth, apiFetch } from '../../../contexts/WarehouseAuthContext';
 import {
@@ -98,6 +101,19 @@ export default function WalletPage() {
   const [bankName, setBankName] = useState('');
   const [withdrawSaving, setWithdrawSaving] = useState(false);
   const [withdrawMessage, setWithdrawMessage] = useState('');
+  const [banks, setBanks] = useState<any[]>([]);
+  const [bankOpen, setBankOpen] = useState(false);
+
+  useEffect(() => {
+    fetch('https://api.vietqr.io/v2/banks')
+      .then((res) => res.json())
+      .then((data) => {
+        if (data.code === '00' && data.data) {
+          setBanks(data.data);
+        }
+      })
+      .catch((err) => console.error('Failed to fetch banks', err));
+  }, []);
 
   // ── QR copied state ──
   const [qrCopied, setQrCopied] = useState(false);
@@ -461,11 +477,10 @@ export default function WalletPage() {
               {
                 icon: ReceiptText,
                 label: 'Lần nạp thành công',
-                value: `${
-                  topupCount !== null
+                value: `${topupCount !== null
                     ? topupCount
                     : recentTopups.filter((t) => t.status === 'SUCCESS').length
-                } lần`,
+                  } lần`,
                 bgColor: 'bg-blue-100 dark:bg-blue-900/30',
                 textColor: 'text-blue-700 dark:text-blue-300',
               },
@@ -643,9 +658,56 @@ export default function WalletPage() {
                     <label className="text-sm font-medium">Lý do rút</label>
                     <Textarea value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Nhập lý do rút tiền" />
                   </div>
-                  <div className="space-y-2">
+                  <div className="space-y-2 relative">
                     <label className="text-sm font-medium">Tên ngân hàng</label>
-                    <Input value={bankName} onChange={(e) => setBankName(e.target.value)} placeholder="VD: Vietcombank" />
+                    <div className="relative">
+                      <Input
+                        value={bankName}
+                        onChange={(e) => { setBankName(e.target.value); setBankOpen(true); }}
+                        onFocus={() => setBankOpen(true)}
+                        placeholder="VD: Vietcombank, gõ để tìm..."
+                        autoComplete="off"
+                      />
+                      <ChevronsUpDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 opacity-50 pointer-events-none" />
+                    </div>
+                    {bankOpen && banks.length > 0 && (
+                      <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-[250px] overflow-y-auto">
+                        {banks
+                          .filter((b) => {
+                            if (!bankName) return true;
+                            const q = bankName.toLowerCase();
+                            return b.shortName.toLowerCase().includes(q) || b.name.toLowerCase().includes(q);
+                          })
+                          .map((b) => (
+                            <button
+                              type="button"
+                              key={b.bin}
+                              className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 ${
+                                bankName === b.shortName ? 'bg-blue-50 dark:bg-blue-900/20 font-medium' : ''
+                              }`}
+                              onMouseDown={(e) => {
+                                e.preventDefault();
+                                setBankName(b.shortName);
+                                setBankOpen(false);
+                              }}
+                            >
+                              <Check
+                                className={`h-4 w-4 shrink-0 ${
+                                  bankName === b.shortName ? 'opacity-100 text-blue-600' : 'opacity-0'
+                                }`}
+                              />
+                              <span className="truncate">{b.shortName} - {b.name}</span>
+                            </button>
+                          ))}
+                        {banks.filter((b) => {
+                          if (!bankName) return true;
+                          const q = bankName.toLowerCase();
+                          return b.shortName.toLowerCase().includes(q) || b.name.toLowerCase().includes(q);
+                        }).length === 0 && (
+                          <div className="px-3 py-4 text-sm text-gray-500 text-center">Không tìm thấy ngân hàng.</div>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="space-y-2">
                     <label className="text-sm font-medium">STK</label>

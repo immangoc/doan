@@ -1,21 +1,22 @@
-import React, { ReactNode, useEffect, useMemo, useState } from 'react';
+import React, { ReactNode, useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   LayoutDashboard,
   Package,
-  Warehouse,
   Users,
   BarChart3,
   Settings,
-  LogOut,
   Menu,
   X,
   Search,
   Calendar,
   FileText,
   DollarSign,
-  ChevronDown,
+  Box,
+  Truck,
+  AlertTriangle,
+  MessageSquare,
 } from 'lucide-react';
 import HungThuyLogo from './HungThuyLogo';
 import { useWarehouseAuth } from '../../contexts/WarehouseAuthContext';
@@ -50,110 +51,57 @@ export default function WarehouseLayout({ children }: WarehouseLayoutProps) {
     const roleBasedDashboards: Record<UserRole, Omit<NavItem, 'roles'>> = {
       admin: { name: 'Dashboard', path: '/warehouse/admin/dashboard', icon: LayoutDashboard },
       planner: { name: 'Dashboard', path: '/warehouse/planner/dashboard', icon: LayoutDashboard },
-      operator: { name: 'Dashboard', path: '/warehouse/operator/dashboard', icon: LayoutDashboard },
+      operator: { name: 'Dashboard', path: '/yard3d/dashboard', icon: LayoutDashboard },
       customer: { name: 'Dashboard', path: '/warehouse/customer/dashboard', icon: LayoutDashboard },
     };
 
     const allItems: NavItem[] = [
       // Dashboard - role specific
       roleBasedDashboards[userRole as keyof typeof roleBasedDashboards],
-      
+
       // Admin items
+      { name: 'Quản lý tài khoản', path: '/warehouse/admin/section/quan-ly-tai-khoan', icon: Users, roles: ['admin'] },
       { name: 'Quản lý Container', path: '/warehouse/containers', icon: Package, roles: ['admin', 'planner', 'operator'] },
-      { name: 'Quản lý Người dùng', path: '/warehouse/users', icon: Users, roles: ['admin'] },
-      { name: 'Báo cáo & Thống kê', path: '/warehouse/reports', icon: BarChart3, roles: ['admin', 'planner'] },
-      { name: 'Cài đặt Kho bãi', path: '/warehouse/config', icon: Warehouse, roles: ['admin'] },
-      { name: 'Cài đặt', path: '/warehouse/settings', icon: Settings, roles: ['admin'] },
-      
+      { name: 'Quản lý Loại Container', path: '/warehouse/admin/section/quan-ly-loai-container', icon: Box, roles: ['admin'] },
+      { name: 'Quản lý Loại hàng', path: '/warehouse/admin/section/quan-ly-loai-hang', icon: Package, roles: ['admin'] },
+      { name: 'Quản lý Lịch trình', path: '/warehouse/admin/section/quan-ly-lich', icon: Calendar, roles: ['admin'] },
+      { name: 'Quản lý Hãng tàu', path: '/warehouse/admin/section/quan-ly-hang-tau', icon: Truck, roles: ['admin'] },
+      { name: 'Quản lý cước phí', path: '/warehouse/admin/section/quan-ly-cuoc-phi-bieu-cuoc', icon: DollarSign, roles: ['admin'] },
+      { name: 'Báo cáo & Thống kê', path: '/warehouse/admin/section/bao-cao-thong-ke', icon: BarChart3, roles: ['admin', 'planner'] },
+      { name: 'Quản trị hệ thống', path: '/warehouse/admin/section/quan-tri-he-thong', icon: Settings, roles: ['admin'] },
+
+      // Operator items
+      { name: 'Báo cáo & Thống kê', path: '/yard3d/bao-cao', icon: BarChart3, roles: ['operator'] },
+      { name: 'Đơn hàng', path: '/yard3d/don-hang', icon: FileText, roles: ['operator'] },
+      { name: 'Loại Container', path: '/yard3d/loai-container', icon: Box, roles: ['operator'] },
+      { name: 'Loại Hàng', path: '/yard3d/loai-hang', icon: Package, roles: ['operator'] },
+      { name: 'Điều độ bãi (3D)', path: '/yard3d/3d', icon: Box, roles: ['operator'] },
+      { name: 'Sơ đồ mặt phẳng', path: '/yard3d/2d', icon: Box, roles: ['operator'] },
+      { name: 'Quản lý nhập bãi', path: '/yard3d/ha-bai', icon: Truck, roles: ['operator'] },
+      { name: 'Quản lý xuất bãi', path: '/yard3d/xuat-bai', icon: Truck, roles: ['operator'] },
+      { name: 'Quản lý kho hỏng', path: '/yard3d/kho', icon: Package, roles: ['operator'] },
+      { name: 'Kiểm soát & Sự cố', path: '/yard3d/kiem-soat', icon: AlertTriangle, roles: ['operator'] },
+      { name: 'Yêu cầu rút tiền', path: '/yard3d/yeu-cau-rut-tien', icon: DollarSign, roles: ['operator'] },
+
       // Planner items
       { name: 'Lập lịch trình', path: '/warehouse/schedule', icon: Calendar, roles: ['planner'] },
-      
+
       // Customer items
       { name: 'Tài khoản', path: '/warehouse/customer/account', icon: Users, roles: ['customer'] },
       { name: 'Container của tôi', path: '/warehouse/customer/my-containers', icon: Package, roles: ['customer'] },
       { name: 'Đơn hàng', path: '/warehouse/customer/orders', icon: FileText, roles: ['customer'] },
       { name: 'Ví', path: '/warehouse/customer/wallet', icon: DollarSign, roles: ['customer'] },
-      { name: 'Tra cứu & tiện ích', path: '/warehouse/customer/payments', icon: DollarSign, roles: ['customer'] },
+      { name: 'Tra cứu & tiện ích', path: '/warehouse/customer/payments', icon: Search, roles: ['customer'] },
     ];
 
     return allItems.filter(item => {
       if (!item) return false;
-      if (!item.roles) return true; // Dashboard items don't have roles
+      if (!item.roles) return true;
       return item.roles.includes(userRole as UserRole);
     });
   };
 
   const navigationItems = getNavigationItems();
-
-  const adminMenuSections = useMemo(() => {
-    const slug = (s: string) => `/warehouse/admin/section/${s}`;
-
-    return [
-      {
-        title: 'Quản lý tài khoản',
-        items: [
-          { name: 'Quản lý tài khoản', path: slug('quan-ly-tai-khoan') },
-        ],
-      },
-      {
-        title: 'Dashboard',
-        items: [
-          { name: 'Dashboard', path: '/warehouse/admin/dashboard' },
-        ],
-      },
-      {
-        title: 'Báo cáo & Thống kê',
-        items: [{ name: 'Báo cáo & thống kê', path: slug('bao-cao-thong-ke') }],
-      },
-      {
-        title: 'Quản lý danh mục',
-        items: [
-          { name: 'Quản lý Container', path: '/warehouse/containers' },
-          { name: 'Quản lý Loại Container (Thêm/sửa/xóa)', path: slug('quan-ly-loai-container') },
-          { name: 'Quản lý Loại hàng (Thêm/sửa/xóa)', path: slug('quan-ly-loai-hang') },
-          { name: 'Quản lý Lịch trình', path: slug('quan-ly-lich') },
-          { name: 'Quản lý Hãng tàu', path: slug('quan-ly-hang-tau') },
-        ],
-      },
-      {
-        title: 'Quản lý cước phí',
-        items: [
-          { name: 'Quản lý cước phí (Cấu hình biểu cước)', path: slug('quan-ly-cuoc-phi-bieu-cuoc') },
-        ],
-      },
-      {
-        title: 'Quản trị hệ thống',
-        items: [
-          { name: 'Quản trị hệ thống', path: slug('quan-tri-he-thong') },
-        ],
-      },
-    ];
-  }, []);
-
-  const isAdmin = userRole === 'admin';
-
-  const [adminOpenSections, setAdminOpenSections] = useState<Record<string, boolean>>({});
-
-  const isPathActive = (path: string) => {
-    if (path === '/warehouse/admin/dashboard') return location.pathname.startsWith('/warehouse/admin/dashboard');
-    return location.pathname === path || location.pathname.startsWith(path + '/');
-  };
-
-  // Mở section chứa route đang active
-  // (Giữ UX đúng yêu cầu: click đầu mục vàng -> hiện chức năng bên trong)
-  useEffect(() => {
-    if (!isAdmin) return;
-    const next: Record<string, boolean> = {};
-    for (const section of adminMenuSections) {
-      next[section.title] = section.items.some((item) => isPathActive(item.path));
-    }
-    // Nếu chưa có active cụ thể thì mở section đầu tiên
-    if (!Object.values(next).some(Boolean) && adminMenuSections.length > 0) {
-      next[adminMenuSections[0].title] = true;
-    }
-    setAdminOpenSections(next);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname, isAdmin, adminMenuSections]);
 
   const getRoleBadge = (role: string) => {
     const badges = {
@@ -233,10 +181,10 @@ export default function WarehouseLayout({ children }: WarehouseLayoutProps) {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
       {/* Sidebar */}
-      <AnimatePresence>
+      <AnimatePresence initial={false}>
         {sidebarOpen && (
           <motion.aside
-            initial={{ x: -280 }}
+            initial={false}
             animate={{ x: 0 }}
             exit={{ x: -280 }}
             transition={{ type: 'spring', damping: 20 }}
@@ -254,101 +202,52 @@ export default function WarehouseLayout({ children }: WarehouseLayoutProps) {
             </div>
 
             {/* Navigation */}
-            <nav className="p-4 space-y-3">
-              {isAdmin ? (
-                <div className="space-y-2">
-                  {adminMenuSections.map((section) => {
-                    const open = !!adminOpenSections[section.title];
-                    return (
-                      <div key={section.title}>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setAdminOpenSections((prev) => ({
-                              ...prev,
-                              [section.title]: !prev[section.title],
-                            }))
-                          }
-                          className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-yellow-300/95 text-gray-900 font-semibold hover:bg-yellow-300 transition-colors"
-                        >
-                          <span className="text-sm">{section.title}</span>
-                          <ChevronDown
-                            size={18}
-                            className={`text-gray-800 transition-transform ${open ? 'rotate-180' : ''}`}
-                          />
-                        </button>
-
-                        <AnimatePresence initial={false}>
-                          {open && (
-                            <motion.div
-                              initial={{ opacity: 0, height: 0 }}
-                              animate={{ opacity: 1, height: 'auto' }}
-                              exit={{ opacity: 0, height: 0 }}
-                              transition={{ duration: 0.2 }}
-                              className="mt-2 space-y-1 pl-2"
-                            >
-                              {section.items.map((item) => (
-                                <Link
-                                  key={item.path}
-                                  to={item.path}
-                                  className={`block px-3 py-2 rounded-lg text-sm transition-colors ${
-                                    isPathActive(item.path)
-                                      ? 'bg-yellow-200 text-gray-900 font-medium'
-                                      : 'text-gray-700 hover:bg-yellow-50 dark:hover:bg-gray-700 dark:text-gray-200'
-                                  }`}
-                                >
-                                  {item.name}
-                                </Link>
-                              ))}
-                            </motion.div>
-                          )}
-                        </AnimatePresence>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                navigationItems.map((item) => {
-                  const isActive = location.pathname === item.path;
-                  return (
-                    <Link
-                      key={item.path}
-                      to={item.path}
-                      className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${
-                        isActive
-                          ? 'bg-blue-900 text-white shadow-lg'
-                          : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
+            <nav className="p-4 space-y-1">
+              {navigationItems.map((item) => {
+                const isActive = location.pathname === item.path || location.pathname.startsWith(item.path + '/');
+                return (
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-lg transition-all ${isActive
+                      ? 'bg-blue-900 text-white shadow-lg'
+                      : 'text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
                       }`}
-                    >
-                      <item.icon size={20} />
-                      <span className="font-medium">{item.name}</span>
-                    </Link>
-                  );
-                })
-              )}
+                  >
+                    <item.icon size={20} />
+                    <span className="font-medium">{item.name}</span>
+                  </Link>
+                );
+              })}
             </nav>
 
             {/* User Info */}
-            <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-              <div className="flex items-center gap-3 mb-3">
-                <div className="w-10 h-10 rounded-full bg-gradient-to-br from-blue-900 to-blue-700 flex items-center justify-center text-white font-bold shadow-md">
+            <div className="absolute bottom-0 left-0 right-0 p-3 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 space-y-2">
+              <button
+                type="button"
+                onClick={() => {
+                  if (userRole === 'customer') navigate('/warehouse/customer/account');
+                  else navigate('/warehouse/account');
+                }}
+                className="w-full flex items-center gap-3 p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors text-left"
+              >
+                <div className="w-9 h-9 rounded-full bg-[#7C3AED] flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
                   {userName.charAt(0).toUpperCase()}
                 </div>
-                <div className="flex-1">
-                  <div className="font-medium text-gray-900 dark:text-white text-sm">
+                <div className="flex-1 min-w-0">
+                  <div className="font-semibold text-gray-900 dark:text-white text-sm truncate">
                     {userName}
                   </div>
-                  <div className={`text-xs text-white ${roleBadge.color} px-2 py-0.5 rounded-full inline-block mt-1`}>
+                  <div className="text-xs text-gray-500 dark:text-gray-400 truncate">
                     {roleBadge.text}
                   </div>
                 </div>
-              </div>
+              </button>
               <button
                 onClick={handleLogout}
-                className="flex items-center gap-2 w-full px-4 py-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors"
+                className="w-full px-3 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 border border-gray-200 dark:border-gray-700 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
               >
-                <LogOut size={18} />
-                <span className="font-medium">Đăng xuất</span>
+                Đăng xuất
               </button>
             </div>
           </motion.aside>
@@ -385,7 +284,18 @@ export default function WarehouseLayout({ children }: WarehouseLayoutProps) {
 
               {/* Notifications */}
               <NotificationsBell />
-              
+
+              {/* Chat Toggle (Internal) */}
+              {(userRole === 'admin' || userRole === 'operator') && (
+                <button
+                  onClick={() => window.dispatchEvent(new Event('toggle-chatbox'))}
+                  className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors relative"
+                  title="Nhắn tin nội bộ"
+                >
+                  <MessageSquare size={20} className="text-gray-600 dark:text-gray-300" />
+                </button>
+              )}
+
               {/* Quick Action Button */}
               {userRole === 'admin' && (
                 <Link to="/warehouse/containers">

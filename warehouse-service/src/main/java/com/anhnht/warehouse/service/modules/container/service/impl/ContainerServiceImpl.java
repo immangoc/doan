@@ -28,25 +28,24 @@ import java.util.List;
 @Transactional(readOnly = true)
 public class ContainerServiceImpl implements ContainerService {
 
-    private static final List<String> TERMINAL_STATUSES =
-            List.of("CANCELLED", "REJECTED", "EXPORTED");
+    private static final List<String> TERMINAL_STATUSES = List.of("CANCELLED", "REJECTED", "EXPORTED");
 
-    private final ContainerRepository              containerRepository;
-    private final ContainerStatusRepository        statusRepository;
+    private final ContainerRepository containerRepository;
+    private final ContainerStatusRepository statusRepository;
     private final ContainerStatusHistoryRepository historyRepository;
-    private final ExportPriorityRepository         priorityRepository;
-    private final ManifestRepository               manifestRepository;
-    private final ContainerTypeRepository          containerTypeRepository;
-    private final CargoTypeRepository              cargoTypeRepository;
-    private final CargoAttributeRepository         cargoAttributeRepository;
-    private final NotificationService              notificationService;
-    private final UserRepository                   userRepository;
-    private final OrderRepository                  orderRepository;
-    private final ContainerPositionRepository      containerPositionRepository;
+    private final ExportPriorityRepository priorityRepository;
+    private final ManifestRepository manifestRepository;
+    private final ContainerTypeRepository containerTypeRepository;
+    private final CargoTypeRepository cargoTypeRepository;
+    private final CargoAttributeRepository cargoAttributeRepository;
+    private final NotificationService notificationService;
+    private final UserRepository userRepository;
+    private final OrderRepository orderRepository;
+    private final ContainerPositionRepository containerPositionRepository;
 
     @Override
     public Page<Container> findAll(String keyword, String statusName, Pageable pageable) {
-        String kw = (keyword   == null || keyword.isBlank())   ? "" : keyword.trim();
+        String kw = (keyword == null || keyword.isBlank()) ? "" : keyword.trim();
         String sn = (statusName == null || statusName.isBlank()) ? "" : statusName.trim();
         return containerRepository.search(kw, sn, pageable);
     }
@@ -150,7 +149,7 @@ public class ContainerServiceImpl implements ContainerService {
                 notificationService.notify(
                         "Container hỏng: " + containerId,
                         "Container " + containerId + " đã được đánh dấu là DAMAGED. " +
-                        (description != null && !description.isBlank() ? "Ghi chú: " + description : ""),
+                                (description != null && !description.isBlank() ? "Ghi chú: " + description : ""),
                         staffIds.toArray(new Integer[0]));
             }
         }
@@ -222,11 +221,33 @@ public class ContainerServiceImpl implements ContainerService {
         if (!"DAMAGED".equalsIgnoreCase(container.getStatus().getStatusName())) {
             throw new BusinessException(ErrorCode.BAD_REQUEST,
                     "Only DAMAGED containers can be marked as repaired. Current: "
-                    + container.getStatus().getStatusName());
+                            + container.getStatus().getStatusName());
         }
         ContainerStatus available = resolveStatus("AVAILABLE");
         container.setStatus(available);
         recordHistory(container, available, "Container marked as repaired");
+        return containerRepository.save(container);
+    }
+
+    @Override
+    @Transactional
+    public Container updateDamageDetails(String containerId,
+            com.anhnht.warehouse.service.modules.container.dto.request.DamageDetailsRequest request) {
+        Container container = findById(containerId);
+        if (!"DAMAGED".equalsIgnoreCase(container.getStatus().getStatusName())) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST,
+                    "Only DAMAGED containers can have damage details updated. Current: "
+                            + container.getStatus().getStatusName());
+        }
+        if (request.getRepairStatus() != null) {
+            container.setRepairStatus(request.getRepairStatus());
+        }
+        if (request.getRepairDate() != null) {
+            container.setRepairDate(request.getRepairDate());
+        }
+        if (request.getCompensationCost() != null) {
+            container.setCompensationCost(request.getCompensationCost());
+        }
         return containerRepository.save(container);
     }
 

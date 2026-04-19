@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { Routes, Route, Navigate } from 'react-router';
 import { AuthProvider } from './contexts/AuthContext';
 import { WarehouseOverview } from './pages/WarehouseOverview';
@@ -12,12 +12,49 @@ import { fetchAllYards } from './services/yardService';
 import { processApiYards, setYardData } from './store/yardStore';
 import { fetchAndSetOccupancy } from './services/containerPositionService';
 
+// Admin management pages (shared with operator)
+import AdminDashboardPage from '../pages/warehouse/admin/Dashboard';
+import BaoCaoThongKePage from '../pages/warehouse/admin/BaoCaoThongKe';
+import DonHangPage from '../pages/warehouse/admin/DonHang';
+import QuanLyLoaiContainerPage from '../pages/warehouse/admin/QuanLyLoaiContainer';
+import QuanLyLoaiHangPage from '../pages/warehouse/admin/QuanLyLoaiHang';
+import WithdrawalRequestsPage from '../pages/warehouse/admin/WithdrawalRequests';
+
+import { DashboardLayout } from './components/layout/DashboardLayout';
+
+// CSS for admin management pages
+import '../styles/warehouse-management.css';
+
 // Scoped CSS variables (no global resets — those come from TailwindCSS)
 import './yard3d.css';
 
+/** Wraps a management page inside the wm-shell styling context */
+function WmPage({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="wm-shell" style={{ height: 'auto', overflow: 'visible', background: 'transparent' }}>
+      <div style={{ flex: 1 }}>
+        <div style={{ padding: 0 }}>
+          <div className="page">{children}</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function currentRole(): string {
+  try {
+    const raw = localStorage.getItem('ht_user');
+    if (!raw) return '';
+    const u = JSON.parse(raw);
+    return (u.role || '').toString().toUpperCase();
+  } catch { return ''; }
+}
+
 export default function YardApp() {
-  // Override global body styles while YardApp is mounted
+  // Override global body styles while YardApp is mounted — but skip for operators
+  // since they view yard3d pages embedded inside WarehouseLayout which manages body.
   useEffect(() => {
+    if (currentRole() === 'OPERATOR') return;
     document.body.classList.add('yard3d-active-body');
     return () => {
       document.body.classList.remove('yard3d-active-body');
@@ -48,6 +85,13 @@ export default function YardApp() {
         <Route path="xuat-bai" element={<XuatBai />} />
         <Route path="kho" element={<Kho />} />
         <Route path="kiem-soat" element={<KiemSoat />} />
+        {/* Management pages (shared with admin) */}
+        <Route path="dashboard" element={<DashboardLayout><WmPage><AdminDashboardPage /></WmPage></DashboardLayout>} />
+        <Route path="bao-cao" element={<DashboardLayout><WmPage><BaoCaoThongKePage /></WmPage></DashboardLayout>} />
+        <Route path="don-hang" element={<DashboardLayout><WmPage><DonHangPage /></WmPage></DashboardLayout>} />
+        <Route path="loai-container" element={<DashboardLayout><WmPage><QuanLyLoaiContainerPage /></WmPage></DashboardLayout>} />
+        <Route path="loai-hang" element={<DashboardLayout><WmPage><QuanLyLoaiHangPage /></WmPage></DashboardLayout>} />
+        <Route path="yeu-cau-rut-tien" element={<DashboardLayout><WmPage><WithdrawalRequestsPage /></WmPage></DashboardLayout>} />
       </Routes>
     </AuthProvider>
   );

@@ -7,6 +7,21 @@
   position: relative;
 }
 
+/* Embedded mode: yard3d content rendered inside another layout (e.g. WarehouseLayout
+   for operators). Drops fullscreen constraints so the host layout controls scroll. */
+.app-container.yard3d-embedded {
+  display: block;
+  height: auto;
+  width: 100%;
+  min-height: calc(100vh - var(--topbar-height, 64px));
+  overflow: visible;
+}
+
+.app-container.yard3d-embedded .page-content {
+  overflow: visible;
+  min-height: 0;
+}
+
 .app-container .sidebar-wrapper {
   width: var(--sidebar-width);
   flex-shrink: 0;

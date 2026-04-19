@@ -56,8 +56,8 @@ export function Topbar({ onMenuToggle }: TopbarProps) {
             <Bell size={20} />
             <span className="notif-badge">3</span>
           </button>
-          <button 
-            className="icon-btn" 
+          <button
+            className="icon-btn"
             aria-label="Messages"
             onClick={() => window.dispatchEvent(new Event('ht-chat-toggle'))}
           >

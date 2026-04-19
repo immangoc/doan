@@ -55,10 +55,13 @@ export default function QuanLyTaiKhoan() {
         body: JSON.stringify({ fullName, email, phone }),
       });
       const d = await res.json();
-      if (!res.ok) throw new Error(d.message || 'Lỗi cập nhật');
+      if (!res.ok) {
+        const errorDetails = d.errors ? Object.values(d.errors).join(', ') : '';
+        throw new Error(errorDetails || d.message || 'Lỗi cập nhật');
+      }
       setProfileMsg('Đã cập nhật thông tin thành công.');
     } catch (e: any) {
-      setProfileMsg(e.message || 'Lỗi cập nhật hồ sơ');
+      setProfileMsg(`Lỗi: ${e.message || 'cập nhật hồ sơ thất bại'}`);
     } finally {
       setSavingProfile(false);
     }
@@ -68,6 +71,10 @@ export default function QuanLyTaiKhoan() {
     setPwMsg('');
     if (!oldPassword || !newPassword || !confirmPassword) {
       setPwMsg('Vui lòng nhập đầy đủ thông tin mật khẩu.');
+      return;
+    }
+    if (newPassword.length < 8) {
+      setPwMsg('Lỗi: Mật khẩu mới phải có ít nhất 8 ký tự.');
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -82,13 +89,16 @@ export default function QuanLyTaiKhoan() {
         body: JSON.stringify({ oldPassword, newPassword }),
       });
       const d = await res.json();
-      if (!res.ok) throw new Error(d.message || 'Lỗi đổi mật khẩu');
+      if (!res.ok) {
+        const errorDetails = d.errors ? Object.values(d.errors).join(', ') : '';
+        throw new Error(errorDetails || d.message || 'Lỗi đổi mật khẩu');
+      }
       setPwMsg('Đổi mật khẩu thành công.');
       setOldPassword('');
       setNewPassword('');
       setConfirmPassword('');
     } catch (e: any) {
-      setPwMsg(e.message || 'Lỗi đổi mật khẩu');
+      setPwMsg(`Lỗi: ${e.message || 'đổi mật khẩu thất bại'}`);
     } finally {
       setSavingPw(false);
     }
