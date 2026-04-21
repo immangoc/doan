@@ -291,9 +291,6 @@ export function Kho() {
               onKeyDown={(e) => e.key === 'Enter' && applyFilter()}
             />
           </div>
-          <div className="mgmt-select" style={{ display: 'flex', alignItems: 'center', padding: '0 12px', background: '#f8fafc', color: '#374151', fontSize: '0.82rem' }}>
-            Chỉ hiển thị container damaged
-          </div>
           <select
             className="mgmt-select"
             value={pendingFilter.containerType ?? ''}

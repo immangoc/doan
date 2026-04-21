@@ -30,7 +30,7 @@ public class GateOutController {
     // ============================================================
 
     @PostMapping("/gate-out")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<GateOutReceiptResponse>> processGateOut(
             @Valid @RequestBody GateOutRequest request) {
         Integer operatorId = SecurityUtils.getCurrentUserId();
@@ -39,7 +39,7 @@ public class GateOutController {
     }
 
     @GetMapping("/gate-out")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<PageResponse<GateOutReceiptResponse>>> getGateOutReceipts(
             @RequestParam(defaultValue = "0")           int page,
             @RequestParam(defaultValue = "20")          int size,
@@ -53,7 +53,7 @@ public class GateOutController {
     }
 
     @GetMapping("/gate-out/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<GateOutReceiptResponse>> getGateOutReceipt(
             @PathVariable Integer id) {
         return ResponseEntity.ok(ApiResponse.success(
@@ -61,7 +61,7 @@ public class GateOutController {
     }
 
     @GetMapping("/gate-out/{id}/invoice")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<StorageInvoiceResponse>> getInvoice(
             @PathVariable Integer id) {
         return ResponseEntity.ok(ApiResponse.success(gateOutService.getInvoice(id)));
@@ -72,7 +72,7 @@ public class GateOutController {
     // ============================================================
 
     @GetMapping("/containers/{containerId}/storage-bill")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<StorageBillResponse>> getStorageBill(
             @PathVariable String containerId) {
         return ResponseEntity.ok(ApiResponse.success(

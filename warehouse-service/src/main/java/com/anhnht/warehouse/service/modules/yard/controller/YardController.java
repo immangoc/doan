@@ -27,14 +27,14 @@ public class YardController {
     // ============================================================
 
     @GetMapping("/yard-types")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<List<YardTypeResponse>>> getYardTypes() {
         return ResponseEntity.ok(ApiResponse.success(
                 yardMapper.toYardTypeResponses(yardService.getAllYardTypes())));
     }
 
     @GetMapping("/block-types")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<List<BlockTypeResponse>>> getBlockTypes() {
         return ResponseEntity.ok(ApiResponse.success(
                 yardMapper.toBlockTypeResponses(yardService.getAllBlockTypes())));
@@ -45,14 +45,14 @@ public class YardController {
     // ============================================================
 
     @GetMapping("/yards")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<List<YardResponse>>> getYards() {
         return ResponseEntity.ok(ApiResponse.success(
                 yardMapper.toYardResponses(yardService.getAllYards())));
     }
 
     @GetMapping("/yards/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<YardResponse>> getYard(@PathVariable Integer id) {
         return ResponseEntity.ok(ApiResponse.success(
                 yardMapper.toYardResponse(yardService.findYardById(id))));
@@ -87,7 +87,7 @@ public class YardController {
     // ============================================================
 
     @GetMapping("/yards/{yardId}/zones")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<List<YardZoneResponse>>> getZones(
             @PathVariable Integer yardId) {
         return ResponseEntity.ok(ApiResponse.success(
@@ -95,7 +95,7 @@ public class YardController {
     }
 
     @GetMapping("/zones/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<YardZoneResponse>> getZone(@PathVariable Integer id) {
         return ResponseEntity.ok(ApiResponse.success(
                 yardMapper.toYardZoneResponse(yardService.findZoneById(id))));
@@ -131,7 +131,7 @@ public class YardController {
     // ============================================================
 
     @GetMapping("/zones/{zoneId}/blocks")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<List<BlockResponse>>> getBlocks(
             @PathVariable Integer zoneId) {
         return ResponseEntity.ok(ApiResponse.success(
@@ -139,7 +139,7 @@ public class YardController {
     }
 
     @GetMapping("/blocks/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<BlockResponse>> getBlock(@PathVariable Integer id) {
         return ResponseEntity.ok(ApiResponse.success(
                 yardMapper.toBlockResponse(yardService.findBlockById(id))));
@@ -175,7 +175,7 @@ public class YardController {
     // ============================================================
 
     @GetMapping("/blocks/{blockId}/slots")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<List<SlotResponse>>> getSlots(
             @PathVariable Integer blockId) {
         return ResponseEntity.ok(ApiResponse.success(
@@ -183,7 +183,7 @@ public class YardController {
     }
 
     @GetMapping("/slots/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<SlotResponse>> getSlot(@PathVariable Integer id) {
         return ResponseEntity.ok(ApiResponse.success(
                 yardMapper.toSlotResponse(yardService.findSlotById(id))));

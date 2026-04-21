@@ -87,9 +87,10 @@ public class AuthFacade {
         var roleNames = user.getRoles().stream()
                 .map(Role::getRoleName)
                 .toList();
-        if (roleNames.contains(RoleCode.ADMIN))    return RoleCode.ADMIN;
-        if (roleNames.contains(RoleCode.PLANNER))  return RoleCode.PLANNER;
-        if (roleNames.contains(RoleCode.OPERATOR)) return RoleCode.OPERATOR;
+        if (roleNames.contains(RoleCode.ADMIN))      return RoleCode.ADMIN;
+        if (roleNames.contains(RoleCode.PLANNER))    return RoleCode.PLANNER;
+        if (roleNames.contains(RoleCode.OPERATOR))   return RoleCode.OPERATOR;
+        if (roleNames.contains(RoleCode.YARD_STAFF)) return RoleCode.YARD_STAFF;
         return RoleCode.CUSTOMER;
     }
 }

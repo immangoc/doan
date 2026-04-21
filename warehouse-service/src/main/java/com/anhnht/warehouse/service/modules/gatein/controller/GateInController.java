@@ -33,7 +33,7 @@ public class GateInController {
     // ============================================================
 
     @PostMapping("/gate-in")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<GateInReceiptResponse>> processGateIn(
             @Valid @RequestBody GateInRequest request) {
         Integer operatorId = SecurityUtils.getCurrentUserId();
@@ -42,7 +42,7 @@ public class GateInController {
     }
 
     @GetMapping("/gate-in")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<PageResponse<GateInReceiptResponse>>> getGateInReceipts(
             @RequestParam(defaultValue = "0")          int page,
             @RequestParam(defaultValue = "20")         int size,
@@ -72,7 +72,7 @@ public class GateInController {
     }
 
     @GetMapping("/gate-in/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<GateInReceiptResponse>> getGateInReceipt(
             @PathVariable Integer id) {
         return ResponseEntity.ok(ApiResponse.success(
@@ -84,7 +84,7 @@ public class GateInController {
     // ============================================================
 
     @PostMapping("/containers/{containerId}/position")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<ContainerPositionResponse>> assignPosition(
             @PathVariable String containerId,
             @Valid @RequestBody ContainerPositionRequest request) {
@@ -93,7 +93,7 @@ public class GateInController {
     }
 
     @GetMapping("/containers/{containerId}/position")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<ContainerPositionResponse>> getPosition(
             @PathVariable String containerId) {
         return ResponseEntity.ok(ApiResponse.success(
@@ -105,7 +105,7 @@ public class GateInController {
     // ============================================================
 
     @GetMapping("/containers/{containerId}/storage")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<List<YardStorageResponse>>> getStorageHistory(
             @PathVariable String containerId) {
         return ResponseEntity.ok(ApiResponse.success(

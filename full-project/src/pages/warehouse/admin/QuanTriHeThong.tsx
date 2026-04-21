@@ -59,6 +59,18 @@ export default function QuanTriHeThong() {
 
   const [detailUser, setDetailUser] = useState<UserItem | null>(null);
 
+  const fetchRoles = async (): Promise<RoleItem[]> => {
+    try {
+      const res = await fetch(`${API_BASE}/admin/roles`, { headers });
+      const d = await res.json();
+      const list: RoleItem[] = d.data || [];
+      setRoles(list);
+      return list;
+    } catch {
+      return [];
+    }
+  };
+
   const fetchData = async (pg = 0) => {
     setLoading(true);
     setError('');
@@ -80,14 +92,17 @@ export default function QuanTriHeThong() {
 
   useEffect(() => {
     fetchData(0);
-    fetch(`${API_BASE}/admin/roles`, { headers })
-      .then((r) => r.json())
-      .then((d) => setRoles(d.data || []))
-      .catch(() => {});
+    fetchRoles();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const openEdit = (user: UserItem) => {
+  useEffect(() => {
+    if (tab === 'users') fetchRoles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab]);
+
+  const openEdit = async (user: UserItem) => {
+    const latest = await fetchRoles();
     setEditItem(user);
     setForm({
       username: user.username || '',
@@ -95,7 +110,7 @@ export default function QuanTriHeThong() {
       email: user.email || '',
       password: '',
       phone: user.phone || '',
-      roleName: user.roles?.[0]?.roleName || roles[0]?.roleName || '',
+      roleName: user.roles?.[0]?.roleName || latest[0]?.roleName || '',
     });
     setFormError('');
     setOpen(true);

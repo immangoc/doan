@@ -14,6 +14,7 @@ import './Sidebar.css';
 const ROLE_LABELS: Record<string, string> = {
   ADMIN: 'Quản trị viên',
   OPERATOR: 'Vận hành',
+  YARD_STAFF: 'Nhân viên kho bãi',
   CUSTOMER: 'Khách hàng',
 };
 

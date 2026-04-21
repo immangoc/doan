@@ -4,7 +4,7 @@ import { useWarehouseAuth } from '../../contexts/WarehouseAuthContext';
 
 interface ProtectedRouteProps {
   children: ReactNode;
-  allowedRoles?: Array<'admin' | 'planner' | 'operator' | 'customer'>;
+  allowedRoles?: Array<'admin' | 'planner' | 'operator' | 'yard_staff' | 'customer'>;
 }
 
 export default function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
@@ -30,10 +30,11 @@ export default function ProtectedRoute({ children, allowedRoles }: ProtectedRout
   // Có role restriction và user không đủ quyền → redirect đến dashboard đúng role
   if (allowedRoles && !allowedRoles.includes(user.role)) {
     const dashboardByRole: Record<string, string> = {
-      admin:    '/warehouse/admin/dashboard',
-      planner:  '/warehouse/planner/dashboard',
-      operator: '/warehouse/operator/dashboard',
-      customer: '/warehouse/customer/dashboard',
+      admin:      '/warehouse/admin/dashboard',
+      planner:    '/warehouse/planner/dashboard',
+      operator:   '/warehouse/operator/dashboard',
+      yard_staff: '/warehouse/yard-staff/dashboard',
+      customer:   '/warehouse/customer/dashboard',
     };
     return <Navigate to={dashboardByRole[user.role] || '/warehouse/login'} replace />;
   }

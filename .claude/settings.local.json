@@ -34,7 +34,9 @@
       "Bash(./node_modules/.bin/vite build *)",
       "Bash(xargs -n1 basename)",
       "Bash(./mvnw -q -DskipTests compile)",
-      "Bash(./mvnw -DskipTests compile)"
+      "Bash(./mvnw -DskipTests compile)",
+      "Bash(npx --no-install tsc --noEmit -p .)",
+      "Bash(node_modules/.bin/vite --port 3000 --host)"
     ]
   }
 }

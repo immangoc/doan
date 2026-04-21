@@ -40,7 +40,7 @@ export default function WarehouseLayout({ children }: WarehouseLayoutProps) {
 
   // Navigation items based on role
   const getNavigationItems = () => {
-    type UserRole = 'admin' | 'planner' | 'operator' | 'customer';
+    type UserRole = 'admin' | 'planner' | 'operator' | 'yard_staff' | 'customer';
     type NavItem = {
       name: string;
       path: string;
@@ -49,10 +49,11 @@ export default function WarehouseLayout({ children }: WarehouseLayoutProps) {
     };
 
     const roleBasedDashboards: Record<UserRole, Omit<NavItem, 'roles'>> = {
-      admin: { name: 'Dashboard', path: '/warehouse/admin/dashboard', icon: LayoutDashboard },
-      planner: { name: 'Dashboard', path: '/warehouse/planner/dashboard', icon: LayoutDashboard },
-      operator: { name: 'Dashboard', path: '/yard3d/dashboard', icon: LayoutDashboard },
-      customer: { name: 'Dashboard', path: '/warehouse/customer/dashboard', icon: LayoutDashboard },
+      admin:      { name: 'Dashboard', path: '/warehouse/admin/dashboard',      icon: LayoutDashboard },
+      planner:    { name: 'Dashboard', path: '/warehouse/planner/dashboard',    icon: LayoutDashboard },
+      operator:   { name: 'Dashboard', path: '/yard3d/dashboard',               icon: LayoutDashboard },
+      yard_staff: { name: 'Dashboard', path: '/warehouse/yard-staff/dashboard', icon: LayoutDashboard },
+      customer:   { name: 'Dashboard', path: '/warehouse/customer/dashboard',   icon: LayoutDashboard },
     };
 
     const allItems: NavItem[] = [
@@ -61,7 +62,7 @@ export default function WarehouseLayout({ children }: WarehouseLayoutProps) {
 
       // Admin items
       { name: 'Quản lý tài khoản', path: '/warehouse/admin/section/quan-ly-tai-khoan', icon: Users, roles: ['admin'] },
-      { name: 'Quản lý Container', path: '/warehouse/containers', icon: Package, roles: ['admin', 'planner', 'operator'] },
+      { name: 'Quản lý Container', path: '/warehouse/containers', icon: Package, roles: ['admin', 'planner', 'operator', 'yard_staff'] },
       { name: 'Quản lý Loại Container', path: '/warehouse/admin/section/quan-ly-loai-container', icon: Box, roles: ['admin'] },
       { name: 'Quản lý Loại hàng', path: '/warehouse/admin/section/quan-ly-loai-hang', icon: Package, roles: ['admin'] },
       { name: 'Quản lý Lịch trình', path: '/warehouse/admin/section/quan-ly-lich', icon: Calendar, roles: ['admin'] },
@@ -75,13 +76,21 @@ export default function WarehouseLayout({ children }: WarehouseLayoutProps) {
       { name: 'Đơn hàng', path: '/yard3d/don-hang', icon: FileText, roles: ['operator'] },
       { name: 'Loại Container', path: '/yard3d/loai-container', icon: Box, roles: ['operator'] },
       { name: 'Loại Hàng', path: '/yard3d/loai-hang', icon: Package, roles: ['operator'] },
-      { name: 'Điều độ bãi (3D)', path: '/yard3d/3d', icon: Box, roles: ['operator'] },
+      { name: 'Sơ đồ bãi 3D', path: '/yard3d/3d', icon: Box, roles: ['operator'] },
       { name: 'Sơ đồ mặt phẳng', path: '/yard3d/2d', icon: Box, roles: ['operator'] },
       { name: 'Quản lý nhập bãi', path: '/yard3d/ha-bai', icon: Truck, roles: ['operator'] },
       { name: 'Quản lý xuất bãi', path: '/yard3d/xuat-bai', icon: Truck, roles: ['operator'] },
       { name: 'Quản lý kho hỏng', path: '/yard3d/kho', icon: Package, roles: ['operator'] },
       { name: 'Kiểm soát & Sự cố', path: '/yard3d/kiem-soat', icon: AlertTriangle, roles: ['operator'] },
       { name: 'Yêu cầu rút tiền', path: '/yard3d/yeu-cau-rut-tien', icon: DollarSign, roles: ['operator'] },
+
+      // Yard staff items (Nhân viên kho bãi)
+      { name: 'Sơ đồ bãi 3D',       path: '/yard3d/3d',          icon: Box,           roles: ['yard_staff'] },
+      { name: 'Sơ đồ mặt phẳng',    path: '/yard3d/2d',          icon: Box,           roles: ['yard_staff'] },
+      { name: 'Hạ bãi',             path: '/yard3d/ha-bai',      icon: Truck,         roles: ['yard_staff'] },
+      { name: 'Xuất bãi',           path: '/yard3d/xuat-bai',    icon: Truck,         roles: ['yard_staff'] },
+      { name: 'Kho hỏng',           path: '/yard3d/kho',         icon: Package,       roles: ['yard_staff'] },
+      { name: 'Kiểm soát & Sự cố',  path: '/yard3d/kiem-soat',   icon: AlertTriangle, roles: ['yard_staff'] },
 
       // Planner items
       { name: 'Lập lịch trình', path: '/warehouse/schedule', icon: Calendar, roles: ['planner'] },
@@ -105,10 +114,11 @@ export default function WarehouseLayout({ children }: WarehouseLayoutProps) {
 
   const getRoleBadge = (role: string) => {
     const badges = {
-      admin: { text: 'Quản trị viên', color: 'bg-red-500' },
-      planner: { text: 'Kế hoạch', color: 'bg-blue-500' },
-      operator: { text: 'Vận hành', color: 'bg-green-500' },
-      customer: { text: 'Khách hàng', color: 'bg-purple-500' },
+      admin:      { text: 'Quản trị viên',      color: 'bg-red-500' },
+      planner:    { text: 'Kế hoạch',           color: 'bg-blue-500' },
+      operator:   { text: 'Vận hành',           color: 'bg-green-500' },
+      yard_staff: { text: 'Nhân viên kho bãi',  color: 'bg-amber-500' },
+      customer:   { text: 'Khách hàng',         color: 'bg-purple-500' },
     };
     return badges[role as keyof typeof badges] || badges.customer;
   };

@@ -28,10 +28,11 @@ export default function WarehouseLogin() {
     try {
       const userData = await login(email.trim(), password);
       const routes: Record<string, string> = {
-        admin:    '/warehouse/admin/dashboard',
-        planner:  '/warehouse/planner/dashboard',
-        operator: '/warehouse/operator/dashboard',
-        customer: '/warehouse/customer/dashboard',
+        admin:      '/warehouse/admin/dashboard',
+        planner:    '/warehouse/planner/dashboard',
+        operator:   '/warehouse/operator/dashboard',
+        yard_staff: '/warehouse/yard-staff/dashboard',
+        customer:   '/warehouse/customer/dashboard',
       };
       navigate(routes[userData.role] || '/warehouse');
     } catch (err: any) {

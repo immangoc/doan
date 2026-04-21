@@ -22,7 +22,7 @@ public class DashboardController {
      * System-wide dashboard for admins and operators.
      */
     @GetMapping("/admin/dashboard")
-    @PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR', 'YARD_STAFF')")
     public ResponseEntity<ApiResponse<AdminDashboardResponse>> adminDashboard() {
         return ResponseEntity.ok(ApiResponse.success(dashboardService.getAdminDashboard()));
     }

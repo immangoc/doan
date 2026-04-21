@@ -7,6 +7,7 @@ import WarehouseContainerManagement from './pages/warehouse/ContainerManagement'
 import UserManagement from './pages/warehouse/UserManagement';
 import PlannerDashboard from './pages/warehouse/role/PlannerDashboard';
 import OperatorDashboard from './pages/warehouse/role/OperatorDashboard';
+import YardStaffDashboard from './pages/warehouse/role/YardStaffDashboard';
 import CustomerDashboard from './pages/warehouse/role/CustomerDashboard';
 import ProtectedRoute from './components/warehouse/ProtectedRoute';
 import WarehouseLayout from './components/warehouse/WarehouseLayout';
@@ -68,7 +69,7 @@ export default function App() {
           <Route
             path="/warehouse/containers"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'planner', 'operator']}>
+              <ProtectedRoute allowedRoles={['admin', 'planner', 'operator', 'yard_staff']}>
                 <WarehouseContainerManagement />
               </ProtectedRoute>
             }
@@ -124,6 +125,14 @@ export default function App() {
             }
           />
           <Route
+            path="/warehouse/yard-staff/dashboard"
+            element={
+              <ProtectedRoute allowedRoles={['yard_staff']}>
+                <YardStaffDashboard />
+              </ProtectedRoute>
+            }
+          />
+          <Route
             path="/warehouse/customer/dashboard"
             element={
               <ProtectedRoute allowedRoles={['customer']}>
@@ -174,7 +183,7 @@ export default function App() {
           <Route
             path="/warehouse/account"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'planner', 'operator']}>
+              <ProtectedRoute allowedRoles={['admin', 'planner', 'operator', 'yard_staff']}>
                 <WarehouseLayout>
                   <QuanLyTaiKhoanPage />
                 </WarehouseLayout>
@@ -185,7 +194,7 @@ export default function App() {
           <Route
             path="/yard3d/*"
             element={
-              <ProtectedRoute allowedRoles={['admin', 'operator']}>
+              <ProtectedRoute allowedRoles={['admin', 'operator', 'yard_staff']}>
                 <YardApp />
               </ProtectedRoute>
             }

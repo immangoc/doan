@@ -46,7 +46,7 @@ public class ContainerController {
     private final OrderRepository orderRepository;
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<PageResponse<ContainerResponse>>> getContainers(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String statusName,
@@ -122,7 +122,7 @@ public class ContainerController {
     }
 
     @GetMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<ContainerResponse>> getContainer(@PathVariable String id) {
         ContainerResponse r = containerMapper.toContainerResponse(containerService.findById(id));
         positionRepository.findByContainerContainerId(id).ifPresent(cp -> {
@@ -171,7 +171,7 @@ public class ContainerController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<ContainerResponse>> updateContainer(
             @PathVariable String id,
             @Valid @RequestBody ContainerRequest request) {
@@ -180,7 +180,7 @@ public class ContainerController {
     }
 
     @GetMapping("/{id}/status-history")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<List<ContainerStatusHistoryResponse>>> getStatusHistory(
             @PathVariable String id) {
         return ResponseEntity.ok(ApiResponse.success(
@@ -188,7 +188,7 @@ public class ContainerController {
     }
 
     @PutMapping("/{id}/export-priority")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<ExportPriorityResponse>> setExportPriority(
             @PathVariable String id,
             @Valid @RequestBody ExportPriorityRequest request) {
@@ -197,7 +197,7 @@ public class ContainerController {
     }
 
     @GetMapping("/{id}/export-priority")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<ExportPriorityResponse>> getExportPriority(@PathVariable String id) {
         return ResponseEntity.ok(ApiResponse.success(
                 containerMapper.toExportPriorityResponse(containerService.getExportPriority(id))));
@@ -215,7 +215,7 @@ public class ContainerController {
      * Marks a DAMAGED container as AVAILABLE (repaired).
      */
     @PutMapping("/{id}/repair")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<ContainerResponse>> markRepaired(@PathVariable String id) {
         return ResponseEntity.ok(ApiResponse.success(
                 containerMapper.toContainerResponse(containerService.markRepaired(id))));
@@ -227,7 +227,7 @@ public class ContainerController {
      * relocates it to a free slot in the damaged yard.
      */
     @PutMapping("/{id}/damage")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<ContainerResponse>> reportDamage(@PathVariable String id) {
         return ResponseEntity.ok(ApiResponse.success(
                 containerMapper.toContainerResponse(damageWorkflowService.moveToDamagedYard(id))));
@@ -239,7 +239,7 @@ public class ContainerController {
      * on a DAMAGED container.
      */
     @PutMapping("/{id}/damage-details")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<ContainerResponse>> updateDamageDetails(
             @PathVariable String id,
             @Valid @RequestBody com.anhnht.warehouse.service.modules.container.dto.request.DamageDetailsRequest request) {
