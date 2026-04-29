@@ -1,5 +1,0 @@
-{
-    "java.compile.nullAnalysis.mode": "automatic",
-    "java.configuration.updateBuildConfiguration": "interactive",
-    "java.jdt.ls.java.home": "C:/Program Files/Java/openlogic-openjdk-21.0.3+9-windows-x64"
-}
