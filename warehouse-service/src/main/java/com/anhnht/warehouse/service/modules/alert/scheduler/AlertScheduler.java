@@ -73,8 +73,9 @@ public class AlertScheduler {
                 String desc = String.format("Container %s is OVERDUE (expected exit: %s). Immediate action required.",
                         containerId, exitDate);
                 alertService.createAlert(findZoneForStorage(storage), "CRITICAL", desc);
-                notifyAdmins(adminIds, AppConstant.ALERT_OVERDUE,
-                        String.format("Container %s is overdue since %s", containerId, exitDate));
+                notifyAdmins(adminIds, "Container quá ngày nhập/xuất",
+                        String.format("Container %s đã quá ngày nhập/xuất. Vui lòng liên hệ khách hàng để xử lý.",
+                                containerId));
 
             } else if (!exitDate.isAfter(urgentCutoff)) {
                 // URGENT — exit within DEADLINE_URGENT_DAYS days
@@ -97,6 +98,17 @@ public class AlertScheduler {
         }
 
         log.info("[AlertScheduler] Exit deadline check completed. Processed {} records.", upcoming.size());
+
+        // ── Container lưu bãi quá hạn (>= LONG_STORAGE_DAYS ngày) ─────────────
+        LocalDate longStorageCutoff = today.minusDays(AppConstant.LONG_STORAGE_DAYS);
+        List<YardStorage> longStorage = yardStorageRepository.findLongStorageContainers(longStorageCutoff);
+        if (!longStorage.isEmpty()) {
+            long count = longStorage.size();
+            notifyAdmins(adminIds, "Container lưu bãi quá hạn",
+                    String.format("Có %d container đang lưu bãi quá hạn trên %d ngày. Cần thông báo cho chủ hàng.",
+                            count, AppConstant.LONG_STORAGE_DAYS));
+            log.info("[AlertScheduler] {} containers stored > {} days.", count, AppConstant.LONG_STORAGE_DAYS);
+        }
     }
 
     /**
@@ -126,8 +138,16 @@ public class AlertScheduler {
                 String desc = String.format("Zone '%s' occupancy is CRITICAL: %.1f%% (%.0f/%d slots occupied).",
                         zone.getZoneName(), occupancy * 100, (double) occupied, capacity);
                 alertService.createAlert(zone, "CRITICAL", desc);
-                notifyAdmins(adminIds, alertType,
-                        String.format("Zone %s at %.1f%% capacity", zone.getZoneName(), occupancy * 100));
+                if (isColdZone && occupancy >= AppConstant.OCC_COLD_CRITICAL_THRESHOLD) {
+                    // Kho lạnh đạt 95% — cảnh báo riêng cho yard manager.
+                    notifyAdmins(adminIds, "Báo động khu bãi hàng lạnh",
+                            String.format("Khu vực bãi hàng lạnh đã đạt %.0f%% công suất. " +
+                                    "Cần ngưng nhận thêm container hoặc lên phương án đảo bãi.",
+                                    occupancy * 100));
+                } else {
+                    notifyAdmins(adminIds, alertType,
+                            String.format("Zone %s at %.1f%% capacity", zone.getZoneName(), occupancy * 100));
+                }
 
             } else if (occupancy >= AppConstant.OCC_WARN_THRESHOLD) {
                 String desc = String.format("Zone '%s' occupancy WARNING: %.1f%% (%.0f/%d slots occupied).",

@@ -646,7 +646,18 @@ export function Kho() {
                         )}
                       </td>
                       <td>{formatDate(r.repairDate ?? '')}</td>
-                      <td>{r.compensationCost != null ? formatCurrency(String(r.compensationCost)) : '—'}</td>
+                      <td>
+                        {r.compensationCost != null ? (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <span>{formatCurrency(String(r.compensationCost))}</span>
+                            {r.compensationRefunded && (
+                              <span className="mgmt-badge mgmt-badge-success" style={{ fontSize: '0.65rem', padding: '0.05rem 0.35rem' }}>
+                                ✓ Đã hoàn ví
+                              </span>
+                            )}
+                          </div>
+                        ) : '—'}
+                      </td>
                       <td>{r.reportedBy || '—'}</td>
                       <td>{formatDate(r.reportedAt ?? '')}</td>
                       <td>

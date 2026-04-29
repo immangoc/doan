@@ -51,4 +51,12 @@ public interface YardStorageRepository extends JpaRepository<YardStorage, Intege
            "WHERE s.container.containerId = :containerId AND s.storageEndDate IS NOT NULL " +
            "ORDER BY s.storageEndDate ASC")
     Optional<LocalDate> findExpectedExitDate(@Param("containerId") String containerId);
+
+    /** Scheduler: active storage records where container has been stored since before
+     *  cutoffDate (i.e. ≥ LONG_STORAGE_DAYS days). Container must still be in yard. */
+    @EntityGraph(attributePaths = {"container", "container.status", "container.owner", "yard"})
+    @Query("SELECT s FROM YardStorage s " +
+           "WHERE s.storageStartDate IS NOT NULL AND s.storageStartDate <= :cutoffDate " +
+           "  AND s.container.status.statusName IN ('IN_YARD', 'GATE_IN')")
+    List<YardStorage> findLongStorageContainers(@Param("cutoffDate") LocalDate cutoffDate);
 }

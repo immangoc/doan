@@ -52,4 +52,10 @@ public final class AppConstant {
     public static final String ALERT_OVERDUE       = "OVERDUE";
     public static final String ALERT_ZONE_WARNING  = "ZONE_WARNING";
     public static final String ALERT_ZONE_CRITICAL = "ZONE_CRITICAL";
+
+    // Occupancy — cold storage critical threshold (stricter than dry/other)
+    public static final double OCC_COLD_CRITICAL_THRESHOLD = 0.95;
+
+    // Long storage threshold (days)
+    public static final int LONG_STORAGE_DAYS = 30;
 }

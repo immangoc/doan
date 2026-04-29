@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useSyncExternalStore, useCallback } from '
 import {
   Search, Plus, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Compass,
   Package, Calendar, Truck, Snowflake, AlertTriangle, Layers, Info,
-  Shuffle, RefreshCw, LogOut, X, FileText, LayoutDashboard,
+  Shuffle, LogOut, X, FileText,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router';
@@ -1215,35 +1215,11 @@ export function Warehouse3D() {
           >
             <Shuffle size={17} /><span>Tối ưu</span>
           </button>
-          <button
-            className="w3d-import-btn"
-            style={{ background: '#eff6ff', color: '#1d4ed8', border: '1px solid #bfdbfe' }}
-            onClick={() => navigate('/yard/tong-quan')}
-            title="Xem tổng quan kho bãi"
-          >
-            <LayoutDashboard size={17} /><span>Tổng quan</span>
-          </button>
-          <button
-            className="w3d-import-btn"
-            style={{ background: '#f3f4f6', color: '#374151', border: '1px solid #d1d5db' }}
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            title="Làm mới dữ liệu"
-          >
-            <RefreshCw size={17} className={isRefreshing ? 'refresh-spinning' : ''} /><span>Làm mới</span>
-          </button>
+        
         </div>
 
         {/* ── Warehouse type tabs ── */}
         <div className="w3d-wh-tabs">
-          <button
-            className={`w3d-wh-tab ${activeWH === 'overview' ? 'w3d-wh-tab-active' : ''}`}
-            style={{ '--tab-color': '#1e3a8a' } as React.CSSProperties}
-            onClick={() => setActiveWH('overview')}
-          >
-            <LayoutDashboard size={15} />
-            <span>Tổng</span>
-          </button>
           {WH_TABS.map((wh) => (
             <button
               key={wh.id}

@@ -7,8 +7,9 @@ import { GhostContainer } from './GhostContainer';
 import { WARNING_THRESHOLD, WH_MAP } from '../../data/warehouse';
 import type { WHType, ZoneInfo, PreviewPosition } from '../../data/warehouse';
 import { subscribe, getImportedContainers } from '../../data/containerStore';
-import { subscribeYard, getYardData, getZoneNames, getZoneGrid, getZoneTotalSlots, getZoneDims } from '../../store/yardStore';
+import { subscribeYard, getYardData, getZoneNames, getZoneGrid, getZoneTotalSlots, getZoneDims, countZoneFilledSlots } from '../../store/yardStore';
 import { subscribeOccupancy, getOccupancyData, getSlotOccupancy, countOccupiedZoneSlots, isOccupancyFetched } from '../../store/occupancyStore';
+import { subscribeDamage, getPendingByCodeMap } from '../../store/damageStore';
 
 export interface OverviewSceneHandle {
   zoomIn: () => void;
@@ -79,9 +80,10 @@ function ZoneBlock({ position, zoneName, whType, onClick, highlightId, previewPo
   const occupancyLoaded = isOccupancyFetched();
 
   const totalSlots = getZoneTotalSlots(allYards, whType, zoneName);
-  const filledCount = countOccupiedZoneSlots(occupancyMap, whType, zoneName);
+  const filledCount = occupancyLoaded ? countOccupiedZoneSlots(occupancyMap, whType, zoneName) : countZoneFilledSlots(allYards, whType, zoneName);
   const isWarning = totalSlots > 0 && filledCount / totalSlots >= WARNING_THRESHOLD;
   const grid = getZoneGrid(allYards, whType, zoneName);
+  const damagePending = useSyncExternalStore(subscribeDamage, getPendingByCodeMap);
 
   const allImported = useSyncExternalStore(subscribe, getImportedContainers);
   const importedForZone = useMemo(
@@ -111,7 +113,6 @@ function ZoneBlock({ position, zoneName, whType, onClick, highlightId, previewPo
 
     const { rows: gridRows, cols: gridCols, maxTier } = getZoneDims(allYards, whType, zoneName);
     const midCol = Math.floor(gridCols / 2);
-    const numGroups = Math.floor(gridRows / 2);
     const maxLevels = maxTier || 3;
 
     if (occupancyLoaded) {
@@ -121,7 +122,7 @@ function ZoneBlock({ position, zoneName, whType, onClick, highlightId, previewPo
             if (!grid[row]?.[col]) continue;
             const occ = getSlotOccupancy(occupancyMap, whType, zoneName, row, col, tier);
             if (!occ) continue;
-            const is40ft = col >= midCol;
+            const is40ft = occ.sizeType === '40ft';
             const y = (tier - 1) * CTN_H + CTN_H / 2;
             const x = colX(col);
             if (is40ft) {
@@ -129,7 +130,7 @@ function ZoneBlock({ position, zoneName, whType, onClick, highlightId, previewPo
               const nextRow = Math.min(baseRow + 1, gridRows - 1);
               const z = (rowZ(baseRow) + rowZ(nextRow)) / 2;
               items.push({
-                key: `real-40-${tier}-${row}-${col}`,
+                key: `real-40-${tier}-${baseRow}-${col}`,
                 pos: [x, y, z],
                 sizeType: '40ft',
                 id: occ.containerCode || `CTN-${whType}-${zoneName}-${tier}-${row}-${col}`,
@@ -141,9 +142,9 @@ function ZoneBlock({ position, zoneName, whType, onClick, highlightId, previewPo
                 weight: occ.weight,
                 gateInDate: occ.gateInDate,
                 storageDuration: occ.storageDuration,
-                whName: wh.name,
-                blockName: zoneName,
-                statusText: 'Trong kho',
+                whName: occ.whName ?? wh.name,
+                blockName: occ.blockName ?? zoneName,
+                statusText: occ.statusText ?? 'Trong kho',
                 isOverdue: occ.isOverdue,
               });
             } else {
@@ -211,6 +212,7 @@ function ZoneBlock({ position, zoneName, whType, onClick, highlightId, previewPo
           blockName={ctn.blockName}
           statusText={ctn.statusText}
           isOverdue={ctn.isOverdue}
+          isDamageReported={damagePending.has(ctn.id)}
           onDamageClick={onDamageContainer}
         />
       ))}
@@ -245,7 +247,9 @@ function ZoneBlock({ position, zoneName, whType, onClick, highlightId, previewPo
         );
       })}
 
-      {previewPosition && previewPosition.zone.trim().toLowerCase() === zoneName.trim().toLowerCase() && (() => {
+      {previewPosition && (() => {
+        const zoneMatch = previewPosition.zone.trim().toLowerCase() === zoneName.trim().toLowerCase();
+        if (!zoneMatch) return null;
         const is40ft = previewPosition.sizeType === '40ft';
         const ghostY = (previewPosition.floor - 1) * CTN_H + CTN_H / 2;
         let ghostX: number;
@@ -262,7 +266,9 @@ function ZoneBlock({ position, zoneName, whType, onClick, highlightId, previewPo
         return <GhostContainer position={[ghostX, ghostY, ghostZ]} sizeType={previewPosition.sizeType} color={wh.color} label={previewPosition.containerCode ?? 'Vị trí gợi ý'} />;
       })()}
 
-      {isWarning && <WarningBorder centerX={centerX} centerZ={centerZ} width={TOTAL_X + 3} height={TOTAL_Z + 3} />}
+      {isWarning && (
+        <WarningBorder centerX={centerX} centerZ={centerZ} width={TOTAL_X + 3} height={TOTAL_Z + 3} />
+      )}
     </group>
   );
 }

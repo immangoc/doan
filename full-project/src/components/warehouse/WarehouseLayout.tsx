@@ -293,7 +293,9 @@ export default function WarehouseLayout({ children }: WarehouseLayoutProps) {
               </div>
 
               {/* Notifications */}
-              <NotificationsBell />
+              <div className="flex items-center gap-2">
+                <NotificationsBell />
+              </div>
 
               {/* Chat Toggle (Internal) */}
               {(userRole === 'admin' || userRole === 'operator') && (

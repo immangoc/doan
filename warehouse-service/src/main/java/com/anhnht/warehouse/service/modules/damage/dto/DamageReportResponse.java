@@ -34,4 +34,6 @@ public class DamageReportResponse {
     private String        repairStatus;
     private LocalDateTime repairDate;
     private java.math.BigDecimal compensationCost;
+    private Boolean       compensationRefunded;
+    private LocalDateTime compensationRefundedAt;
 }

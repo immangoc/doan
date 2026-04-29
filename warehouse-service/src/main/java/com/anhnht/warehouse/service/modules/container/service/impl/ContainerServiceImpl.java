@@ -15,14 +15,20 @@ import com.anhnht.warehouse.service.modules.gatein.repository.ContainerPositionR
 import com.anhnht.warehouse.service.modules.user.repository.UserRepository;
 import com.anhnht.warehouse.service.modules.vessel.entity.Manifest;
 import com.anhnht.warehouse.service.modules.vessel.repository.ManifestRepository;
+import com.anhnht.warehouse.service.modules.wallet.service.WalletService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.LocalDateTime;
+
 import java.util.List;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -42,6 +48,7 @@ public class ContainerServiceImpl implements ContainerService {
     private final UserRepository userRepository;
     private final OrderRepository orderRepository;
     private final ContainerPositionRepository containerPositionRepository;
+    private final WalletService walletService;
 
     @Override
     public Page<Container> findAll(String keyword, String statusName, String yardName, Pageable pageable) {
@@ -240,6 +247,9 @@ public class ContainerServiceImpl implements ContainerService {
                     "Only DAMAGED containers can have damage details updated. Current: "
                             + container.getStatus().getStatusName());
         }
+
+        String oldRepairStatus = container.getRepairStatus();
+
         if (request.getRepairStatus() != null) {
             container.setRepairStatus(request.getRepairStatus());
         }
@@ -249,7 +259,62 @@ public class ContainerServiceImpl implements ContainerService {
         if (request.getCompensationCost() != null) {
             container.setCompensationCost(request.getCompensationCost());
         }
+
+        // Auto-refund compensation to owner's wallet on first transition to REPAIRED.
+        boolean transitioningToRepaired =
+                "REPAIRED".equalsIgnoreCase(container.getRepairStatus())
+                        && !"REPAIRED".equalsIgnoreCase(oldRepairStatus);
+        if (transitioningToRepaired) {
+            refundCompensation(container);
+        }
+
         return containerRepository.save(container);
+    }
+
+    /**
+     * Hoàn compensation_cost vào ví của chủ container khi container hỏng được sửa xong.
+     * Idempotent: chỉ chạy 1 lần, có flag compensation_refunded chống double-credit.
+     */
+    private void refundCompensation(Container container) {
+        if (Boolean.TRUE.equals(container.getCompensationRefunded())) {
+            log.info("[Damage] container={} compensation already refunded, skip.",
+                    container.getContainerId());
+            return;
+        }
+        BigDecimal amount = container.getCompensationCost();
+        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
+            log.info("[Damage] container={} no compensation amount set, skip refund.",
+                    container.getContainerId());
+            return;
+        }
+        if (container.getOwner() == null || container.getOwner().getUserId() == null) {
+            log.warn("[Damage] container={} has no owner, cannot refund compensation.",
+                    container.getContainerId());
+            return;
+        }
+
+        Integer ownerId = container.getOwner().getUserId();
+        String note = String.format("Hoàn tiền đền bù container hỏng %s đã sửa xong",
+                container.getContainerId());
+        walletService.creditWalletForRefund(ownerId, amount, note);
+        container.setCompensationRefunded(true);
+        container.setCompensationRefundedAt(LocalDateTime.now());
+
+        // Notify owner
+        try {
+            notificationService.notify(
+                    "Đã hoàn tiền đền bù container hỏng",
+                    String.format("Container %s đã được sửa xong. Số tiền %s VND đã được hoàn vào ví của bạn.",
+                            container.getContainerId(),
+                            amount.stripTrailingZeros().toPlainString()),
+                    ownerId);
+        } catch (Exception e) {
+            log.warn("[Damage] container={} notify owner failed: {}",
+                    container.getContainerId(), e.getMessage());
+        }
+
+        log.info("[Damage] container={} refunded {} VND to owner userId={}",
+                container.getContainerId(), amount, ownerId);
     }
 
     private void recordHistory(Container container, ContainerStatus status, String description) {

@@ -403,6 +403,8 @@ public class DamageReportServiceImpl implements DamageReportService {
                 .repairStatus(c.getRepairStatus())
                 .repairDate(c.getRepairDate())
                 .compensationCost(c.getCompensationCost())
+                .compensationRefunded(c.getCompensationRefunded())
+                .compensationRefundedAt(c.getCompensationRefundedAt())
                 .build();
     }
 

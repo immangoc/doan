@@ -66,4 +66,10 @@ public class Container extends BaseEntity {
 
     @Column(name = "compensation_cost", precision = 15, scale = 2)
     private BigDecimal compensationCost;
+
+    @Column(name = "compensation_refunded", nullable = false)
+    private Boolean compensationRefunded = false;
+
+    @Column(name = "compensation_refunded_at")
+    private LocalDateTime compensationRefundedAt;
 }

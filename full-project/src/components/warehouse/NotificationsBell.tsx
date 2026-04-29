@@ -13,10 +13,39 @@ type Notification = {
   createdAt: string;
 };
 
+type BackendNotification = {
+  notificationId?: number;
+  title?: string;
+  description?: string;
+  isRead?: boolean;
+  createdAt?: string;
+};
+
+function translateNotificationLabel(text: string) {
+  const t = text.toLowerCase();
+  const replacements: Array<[RegExp, string]> = [
+    [/notification/g, 'thông báo'],
+    [/alert/g, 'cảnh báo'],
+    [/warning/g, 'cảnh báo'],
+    [/critical/g, 'nghiêm trọng'],
+    [/read all/g, 'đọc tất cả'],
+    [/mark.*read/g, 'đánh dấu đã đọc'],
+    [/my notifications/g, 'thông báo của tôi'],
+    [/unread count/g, 'chưa đọc'],
+    [/exit deadline/g, 'hạn xuất'],
+    [/late check[- ]?in/g, 'nhập bãi trễ'],
+    [/zone occupancy/g, 'lấp đầy khu'],
+  ];
+  let out = text;
+  for (const [pattern, value] of replacements) out = out.replace(pattern, value);
+  if (!out.trim()) return text || 'Không có nội dung';
+  return out;
+}
+
 function inferType(title: string): Notification['type'] {
   const t = title.toLowerCase();
-  if (t.includes('từ chối') || t.includes('lỗi') || t.includes('thất bại')) return 'error';
-  if (t.includes('cảnh báo') || t.includes('quá hạn') || t.includes('đầy')) return 'warning';
+  if (t.includes('từ chối') || t.includes('lỗi') || t.includes('thất bại') || t.includes('hư hỏng') || t.includes('bị hủy') || t.includes('error')) return 'error';
+  if (t.includes('cảnh báo') || t.includes('quá hạn') || t.includes('đầy') || t.includes('báo động') || t.includes('quá ngày') || t.includes('lưu bãi quá') || t.includes('warning') || t.includes('critical')) return 'warning';
   return 'info';
 }
 
@@ -74,14 +103,14 @@ export default function NotificationsBell() {
       const res = await fetch(`${API_BASE}/notifications/my?page=0&size=30&sort=createdAt,desc`, { headers });
       const d = await res.json();
       if (!res.ok) throw new Error(d.message || 'Lỗi lấy thông báo');
-      const items = (d.data?.content || d.data || []) as { notificationId: number; title: string; description: string; isRead: boolean; createdAt: string }[];
-      setNotifications(items.map((n) => ({
-        id: n.notificationId,
-        title: n.title,
-        message: n.description,
-        type: inferType(n.title),
-        read: n.isRead,
-        createdAt: n.createdAt,
+      const raw = (d.data?.content || d.data || []) as BackendNotification[];
+      setNotifications(raw.map((n) => ({
+        id: Number(n.notificationId ?? 0),
+        title: translateNotificationLabel(String(n.title ?? '')),
+        message: translateNotificationLabel(String(n.description ?? '')),
+        type: inferType(String(n.title ?? '')),
+        read: Boolean(n.isRead),
+        createdAt: String(n.createdAt ?? ''),
       })));
     } catch (e: any) {
       setError(e.message || 'Lỗi không xác định');
@@ -157,112 +186,114 @@ export default function NotificationsBell() {
     return () => document.removeEventListener('mousedown', onDocDown);
   }, [open]);
 
+  const triggerButton = (
+    <button
+      ref={buttonRef}
+      className="relative h-10 w-10 flex items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 shadow-sm transition-colors hover:bg-gray-50 hover:text-blue-700 dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+      onClick={() => setOpen((o) => !o)}
+      aria-label="Thông báo"
+      type="button"
+    >
+      <Bell size={18} />
+      {unreadCount > 0 && (
+        <span className="absolute right-1 top-1 h-2.5 w-2.5 rounded-full border-2 border-white bg-red-500 dark:border-gray-800" />
+      )}
+    </button>
+  );
+
   if (!accessToken) {
-    return (
-      <button
-        className="relative p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-        aria-label="Thông báo"
-      >
-        <Bell size={20} />
-      </button>
-    );
+    return triggerButton;
   }
 
   return (
     <div className="relative">
-      <button
-        ref={buttonRef}
-        className="relative p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors"
-        onClick={() => setOpen((o) => !o)}
-        aria-label="Thông báo"
-      >
-        <Bell size={20} />
-        {unreadCount > 0 && (
-          <span className="absolute top-0.5 right-0.5 w-2 h-2 bg-blue-500 rounded-full" />
-        )}
-      </button>
+      {triggerButton}
 
       {open && (
         <div
           ref={panelRef}
-          className="absolute right-0 mt-2 w-[420px] max-w-[92vw] bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl shadow-xl z-50 overflow-hidden"
+          className="absolute right-0 top-full mt-3 w-[392px] max-w-[92vw] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_18px_60px_rgba(15,23,42,0.18)] dark:border-slate-700 dark:bg-slate-900 z-50"
         >
-          <div className="p-3 border-b border-gray-100 dark:border-gray-700">
+          <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-3 dark:border-slate-800 dark:from-slate-900 dark:to-slate-900">
             <div className="flex items-center justify-between gap-3">
               <div className="flex items-center gap-2">
-                <Bell size={18} className="text-blue-600" />
-                <div className="font-semibold text-sm">Thông báo</div>
-                {unreadCount > 0 && <Badge className="ml-1 bg-blue-50 text-blue-700">{unreadCount}</Badge>}
+                <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-300">
+                  <Bell size={16} />
+                </div>
+                <div>
+                  <div className="font-semibold text-sm text-slate-900 dark:text-slate-100">Thông báo</div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400">{unreadCount > 0 ? `${unreadCount} chưa đọc` : 'Không có thông báo chưa đọc'}</div>
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <Button
                   size="sm"
                   variant={onlyUnread ? 'default' : 'outline'}
-                  className={onlyUnread ? 'bg-blue-600 hover:bg-blue-700 text-white' : ''}
+                  className={onlyUnread ? 'h-8 rounded-full bg-blue-600 px-3 text-xs text-white hover:bg-blue-700' : 'h-8 rounded-full px-3 text-xs'}
                   onClick={() => setOnlyUnread((v) => !v)}
                 >
                   {onlyUnread ? 'Chưa đọc' : 'Tất cả'}
                 </Button>
-                <Button size="sm" variant="outline" onClick={markAllRead}>
+                <Button size="sm" variant="outline" onClick={markAllRead} className="h-8 rounded-full px-3 text-xs">
                   Đọc tất cả
                 </Button>
               </div>
             </div>
           </div>
 
-          <div className="max-h-[420px] overflow-y-auto">
+          <div className="max-h-[460px] overflow-y-auto bg-slate-50/40 dark:bg-slate-950/20">
             {loading && (
-              <div className="p-4 text-sm text-gray-600 dark:text-gray-300">Đang tải...</div>
+              <div className="px-4 py-6 text-sm text-slate-500 dark:text-slate-400">Đang tải...</div>
             )}
 
             {!loading && error && (
-              <div className="p-4 text-sm text-red-600 dark:text-red-300">{error}</div>
+              <div className="px-4 py-6 text-sm text-red-600 dark:text-red-300">{error}</div>
             )}
 
             {!loading && filtered.length === 0 && (
-              <div className="p-4 text-sm text-gray-600 dark:text-gray-300">Không có thông báo phù hợp.</div>
+              <div className="px-4 py-6 text-sm text-slate-500 dark:text-slate-400">Không có thông báo phù hợp.</div>
             )}
 
             {!loading &&
               filtered.map((n) => (
                 <button
                   key={n.id}
-                  className={`w-full text-left px-3 py-3 border-b border-gray-50 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/40 flex items-start gap-3 ${
-                    selected?.id === n.id ? 'bg-gray-50 dark:bg-gray-700/50' : ''
+                  className={`flex w-full items-start gap-3 border-b border-slate-100 px-4 py-3 text-left transition-colors hover:bg-blue-50/70 dark:border-slate-800 dark:hover:bg-slate-800/60 ${
+                    selected?.id === n.id ? 'bg-blue-50/80 dark:bg-slate-800/80' : 'bg-transparent'
                   }`}
                   onClick={() => onSelect(n)}
                 >
                   <span className="mt-1">
                     {!n.read ? (
-                      <span className="inline-block w-2 h-2 rounded-full bg-blue-500" />
+                      <span className="inline-block h-2.5 w-2.5 rounded-full bg-blue-500 ring-4 ring-blue-500/10" />
                     ) : (
-                      <span className="inline-block w-2 h-2 rounded-full bg-gray-300 dark:bg-gray-600" />
+                      <span className="inline-block h-2.5 w-2.5 rounded-full bg-slate-300 dark:bg-slate-600" />
                     )}
                   </span>
-                  <div className="flex-1">
+                  <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-3">
-                      <div className="font-semibold text-sm truncate">{n.title}</div>
-                      <Badge className={typeBadgeClass(n.type)}>{n.type}</Badge>
+                      <div className="truncate text-sm font-semibold text-slate-900 dark:text-slate-100">{n.title}</div>
+                      <Badge className={`${typeBadgeClass(n.type)} rounded-full px-2 py-0.5 text-[10px] uppercase tracking-wide`}>{n.type}</Badge>
                     </div>
-                    <div className="text-xs text-gray-600 dark:text-gray-300 mt-1 line-clamp-2">{n.message}</div>
-                    <div className="text-[11px] text-gray-500 mt-2 flex items-center gap-2">
-                      <Clock size={14} />
+                    <div className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600 dark:text-slate-300">{n.message}</div>
+                    <div className="mt-2 flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400">
+                      <Clock size={13} />
                       {formatTime(n.createdAt)}
                     </div>
                   </div>
-                  {n.read ? <CheckCircle2 size={16} className="text-green-600 mt-1" /> : null}
+                  {n.read ? <CheckCircle2 size={16} className="mt-1 text-emerald-600" /> : null}
                 </button>
               ))}
           </div>
 
           {selected && (
-            <div className="p-3 border-t border-gray-100 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/20">
+            <div className="border-t border-slate-100 bg-white px-4 py-3 dark:border-slate-800 dark:bg-slate-900">
               <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="font-semibold text-sm">{selected.title}</div>
-                  <div className="text-sm mt-1 text-gray-700 dark:text-gray-200 whitespace-pre-line">{selected.message}</div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-semibold text-slate-900 dark:text-slate-100">{selected.title}</div>
+                  <div className="mt-1 whitespace-pre-line text-sm leading-6 text-slate-700 dark:text-slate-200">{selected.message}</div>
                 </div>
-                <Button size="sm" variant="ghost" onClick={() => setSelected(null)}>
+                <Button size="sm" variant="ghost" onClick={() => setSelected(null)} className="h-8 w-8 rounded-full p-0 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800">
                   <X size={16} />
                 </Button>
               </div>
