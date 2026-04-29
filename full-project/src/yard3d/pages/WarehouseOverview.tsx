@@ -279,8 +279,14 @@ function ExportPanel({ onClose }: { onClose: () => void }) {
     setGateOutLoading(true);
     setGateOutError(null);
     try {
-      await performGateOut(selectedExport.containerId, note);
+      const result = await performGateOut(selectedExport.containerId, note);
       setContainers((prev) => prev.filter((c) => c.containerId !== selectedExport.containerId));
+
+      // Show relocation info if any containers were moved
+      if (result.relocationMessage) {
+        alert(result.relocationMessage);
+      }
+
       onClose();
     } catch (e) {
       setGateOutError(e instanceof Error ? e.message : 'Xuất kho thất bại');

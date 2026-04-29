@@ -40,10 +40,15 @@ function fmtMoney(raw: unknown): string {
   return n.toLocaleString('vi-VN') + ' đ';
 }
 
+export interface GateOutManagementResult {
+  gateOutId: number;
+  relocationMessage?: string;
+}
+
 /**
- * POST /admin/gate-out → refresh occupancy → return gateOutId for invoice fetch.
+ * POST /admin/gate-out → refresh occupancy → return gateOutId + relocation info.
  */
-export async function performGateOutForManagement(containerId: string): Promise<number> {
+export async function performGateOutForManagement(containerId: string): Promise<GateOutManagementResult> {
   const res = await apiFetch('/admin/gate-out', {
     method: 'POST',
     body: JSON.stringify({ containerId }),
@@ -57,9 +62,10 @@ export async function performGateOutForManagement(containerId: string): Promise<
   const json: Rec = await res.json();
   const data: Rec = json.data ?? json;
   const gateOutId = Number(data.gateOutId ?? data.id ?? 0);
+  const relocationMessage = data.relocationMessage ?? undefined;
 
   await refreshOccupancy();
-  return gateOutId;
+  return { gateOutId, relocationMessage };
 }
 
 /**

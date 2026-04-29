@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, FileText, LogOut, Plus } from 'lucide-react';
+import { AlertCircle, AlertTriangle, FileText, LogOut, Plus } from 'lucide-react';
 import WarehouseLayout from '../../../../components/warehouse/WarehouseLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/card';
 import { Button } from '../../../../components/ui/button';
@@ -8,12 +8,27 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '.
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '../../../../components/ui/dialog';
 import { useWarehouseAuth, API_BASE } from '../../../../contexts/WarehouseAuthContext';
 
+type RelocationMoveItem = {
+  containerId: string;
+  fromZone: string;
+  fromRow: number;
+  fromBay: number;
+  fromTier: number;
+  toZone: string;
+  toRow: number;
+  toBay: number;
+  toTier: number;
+  purpose: string;
+};
+
 type GateOutItem = {
   gateOutId: number;
   containerId: string;
   gateOutTime?: string;
   createdByUsername?: string;
   note?: string;
+  relocationMessage?: string;
+  relocationMoves?: RelocationMoveItem[];
 };
 
 type StorageBill = {
@@ -68,6 +83,7 @@ export default function AdminGateOutSection() {
   const [showCreate, setShowCreate] = useState(false);
   const [showBillPreview, setShowBillPreview] = useState(false);
   const [showInvoice, setShowInvoice] = useState(false);
+  const [showRelocationInfo, setShowRelocationInfo] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
   const [form, setForm] = useState({ containerId: '', note: '' });
@@ -76,6 +92,7 @@ export default function AdminGateOutSection() {
   const [invoice, setInvoice] = useState<Invoice | null>(null);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [selectedGateOut, setSelectedGateOut] = useState<GateOutItem | null>(null);
+  const [relocationResult, setRelocationResult] = useState<{ message?: string; moves?: RelocationMoveItem[] } | null>(null);
 
   const fetchItems = async (p = page) => {
     setLoading(true);
@@ -144,6 +161,16 @@ export default function AdminGateOutSection() {
       if (!res.ok) throw new Error(data.message || 'Lỗi xử lý gate-out');
       setShowCreate(false);
       fetchItems(0);
+
+      // Show relocation info if any containers were moved
+      const result = data.data;
+      if (result?.relocationMessage || (result?.relocationMoves && result.relocationMoves.length > 0)) {
+        setRelocationResult({
+          message: result.relocationMessage,
+          moves: result.relocationMoves,
+        });
+        setShowRelocationInfo(true);
+      }
     } catch (e: any) {
       alert(e.message);
     } finally {
@@ -205,14 +232,15 @@ export default function AdminGateOutSection() {
                   <TableHead>Thời gian gate-out</TableHead>
                   <TableHead>Người tạo</TableHead>
                   <TableHead>Ghi chú</TableHead>
+                  <TableHead>Đảo chuyển</TableHead>
                   <TableHead className="text-right">Hóa đơn</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell colSpan={6} className="text-center py-10 text-gray-500">Đang tải...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} className="text-center py-10 text-gray-500">Đang tải...</TableCell></TableRow>
                 ) : items.length === 0 ? (
-                  <TableRow><TableCell colSpan={6} className="text-center py-10 text-gray-500">Không có dữ liệu</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} className="text-center py-10 text-gray-500">Không có dữ liệu</TableCell></TableRow>
                 ) : items.map((item) => (
                   <TableRow key={item.gateOutId}>
                     <TableCell className="text-gray-500 text-sm">{item.gateOutId}</TableCell>
@@ -220,6 +248,25 @@ export default function AdminGateOutSection() {
                     <TableCell>{item.gateOutTime ? new Date(item.gateOutTime).toLocaleString('vi-VN') : '—'}</TableCell>
                     <TableCell>{item.createdByUsername || '—'}</TableCell>
                     <TableCell className="text-gray-500">{item.note || '—'}</TableCell>
+                    <TableCell>
+                      {item.relocationMessage ? (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-amber-600 hover:text-amber-700"
+                          onClick={() => {
+                            setRelocationResult({ message: item.relocationMessage, moves: item.relocationMoves });
+                            setShowRelocationInfo(true);
+                          }}
+                          title="Xem chi tiết đảo chuyển"
+                        >
+                          <AlertTriangle className="w-4 h-4 mr-1" />
+                          {item.relocationMoves?.length || 0}
+                        </Button>
+                      ) : (
+                        <span className="text-gray-400 text-sm">—</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">
                       <Button variant="ghost" size="sm" onClick={() => openInvoice(item)} title="Xem hóa đơn">
                         <FileText className="w-4 h-4" />
@@ -341,6 +388,51 @@ export default function AdminGateOutSection() {
           <DialogHeader><DialogTitle>Chi phí lưu kho</DialogTitle></DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowBillPreview(false)}>Đóng</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Relocation Info Dialog */}
+      <Dialog open={showRelocationInfo} onOpenChange={setShowRelocationInfo}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-500" />
+              Thông báo đảo chuyển container
+            </DialogTitle>
+            <DialogDescription>
+              Hệ thống đã tự động đảo chuyển các container chặn phía trên để thực hiện thao tác.
+            </DialogDescription>
+          </DialogHeader>
+          {relocationResult?.message && (
+            <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-lg p-4 text-sm whitespace-pre-wrap">
+              {relocationResult.message}
+            </div>
+          )}
+          {relocationResult?.moves && relocationResult.moves.length > 0 && (
+            <div className="max-h-64 overflow-y-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Container</TableHead>
+                    <TableHead>Từ vị trí</TableHead>
+                    <TableHead>Đến vị trí</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {relocationResult.moves.map((m, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="font-mono text-sm">{m.containerId}</TableCell>
+                      <TableCell className="text-sm">{m.fromZone} R{m.fromRow}B{m.fromBay} T{m.fromTier}</TableCell>
+                      <TableCell className="text-sm font-semibold text-green-700 dark:text-green-400">{m.toZone} R{m.toRow}B{m.toBay} T{m.toTier}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowRelocationInfo(false)}>Đóng</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

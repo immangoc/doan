@@ -174,12 +174,31 @@ export async function fetchStorageBill(containerId: string): Promise<StorageBill
   };
 }
 
+export interface RelocationMoveInfo {
+  containerId: string;
+  fromZone: string;
+  fromRow: number;
+  fromBay: number;
+  fromTier: number;
+  toZone: string;
+  toRow: number;
+  toBay: number;
+  toTier: number;
+  purpose: string;
+}
+
+export interface GateOutResult {
+  relocationMessage?: string;
+  relocationMoves?: RelocationMoveInfo[];
+}
+
 /**
  * POST /admin/gate-out with containerId + optional note.
  * On success, refreshes the 3D occupancy grid (errors during refresh are swallowed
  * so the caller doesn't see a success mutation followed by a UI failure).
+ * Returns relocation info if any containers were moved.
  */
-export async function performGateOut(containerId: string, note?: string): Promise<void> {
+export async function performGateOut(containerId: string, note?: string): Promise<GateOutResult> {
   const body: Rec = { containerId };
   if (note && note.trim()) body.note = note.trim();
 
@@ -201,11 +220,25 @@ export async function performGateOut(containerId: string, note?: string): Promis
     throw new Error(message);
   }
 
+  let result: GateOutResult = {};
+  try {
+    const json: Rec = await res.json();
+    const data = json.data ?? json;
+    result = {
+      relocationMessage: data?.relocationMessage ?? undefined,
+      relocationMoves: data?.relocationMoves ?? undefined,
+    };
+  } catch {
+    // ignore parse errors
+  }
+
   try {
     await refreshOccupancy();
   } catch {
     // DB update already succeeded — don't surface a UI-refresh error to the user.
   }
+
+  return result;
 }
 
 // ─── Waiting list ─────────────────────────────────────────────────────────────

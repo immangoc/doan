@@ -27,6 +27,7 @@ import com.anhnht.warehouse.service.modules.optimization.dto.response.SlotRecomm
 import com.anhnht.warehouse.service.modules.optimization.service.OptimizationService;
 import com.anhnht.warehouse.service.modules.yard.dto.request.RelocationRequest;
 import com.anhnht.warehouse.service.modules.yard.repository.SlotRepository;
+import com.anhnht.warehouse.service.modules.yard.service.StackingRelocationHelper;
 import com.anhnht.warehouse.service.modules.yard.service.RelocationService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -67,6 +68,7 @@ public class DamageReportServiceImpl implements DamageReportService {
     private final RelocationPlanner                  planner;
     private final OptimizationService                optimizationService;
     private final ObjectMapper                       objectMapper;
+    private final StackingRelocationHelper           stackingHelper;
 
     // ─── Pha 1 ──────────────────────────────────────────────────────────────
 
@@ -157,7 +159,32 @@ public class DamageReportServiceImpl implements DamageReportService {
         report.setReportStatus(STATUS_RELOCATING);
         reportRepository.save(report);
 
-        for (RelocationMove move : plan.getMoves()) {
+        // ★ Resolve blockers using StackingRelocationHelper (proper gravity handling)
+        List<RelocationMove> blockerMoves = stackingHelper.resolveBlockers(
+                containerId, "BLOCKER_OF_DAMAGED");
+
+        // Record blocker moves in history
+        for (RelocationMove bm : blockerMoves) {
+            ContainerPosition blockerPos = positionRepository
+                    .findByContainerContainerId(bm.getContainerId()).orElse(null);
+            if (blockerPos != null) {
+                ContainerPositionHistory hist = new ContainerPositionHistory();
+                hist.setContainer(blockerPos.getContainer());
+                hist.setFromSlot(slotRepository.findById(bm.getFromSlotId()).orElse(null));
+                hist.setFromTier(bm.getFromTier());
+                hist.setToSlot(slotRepository.findById(bm.getToSlotId()).orElse(null));
+                hist.setToTier(bm.getToTier());
+                hist.setReason(bm.getPurpose());
+                hist.setDamageReport(report);
+                historyRepository.save(hist);
+            }
+        }
+
+        // Execute the target container move to damaged yard (last move in plan)
+        List<RelocationMove> targetMoves = plan.getMoves().stream()
+                .filter(m -> "DAMAGE_RELOCATION".equals(m.getPurpose()))
+                .toList();
+        for (RelocationMove move : targetMoves) {
             executeMove(move, report);
         }
 
@@ -190,14 +217,23 @@ public class DamageReportServiceImpl implements DamageReportService {
             });
         });
 
+        // Merge all moves for plan JSON
+        List<RelocationMove> allMoves = new java.util.ArrayList<>(blockerMoves);
+        allMoves.addAll(targetMoves);
+
         report.setReportStatus(STATUS_STORED);
         report.setCompletedAt(LocalDateTime.now());
-        report.setPlanJson(serialize(plan.getMoves()));
+        report.setPlanJson(serialize(allMoves));
         reportRepository.save(report);
 
-        log.info("[Damage] container={} moved to damaged yard, {} relocations",
-                containerId, plan.getMoves().size() - 1);
-        return toResponse(report);
+        log.info("[Damage] container={} moved to damaged yard, {} blocker relocations",
+                containerId, blockerMoves.size());
+
+        DamageReportResponse response = toResponse(report);
+        if (!blockerMoves.isEmpty()) {
+            response.setRelocationMessage(buildRelocationMessage(blockerMoves, "chuyển vào kho hỏng"));
+        }
+        return response;
     }
 
     // ─── Cancel ─────────────────────────────────────────────────────────────
@@ -273,7 +309,31 @@ public class DamageReportServiceImpl implements DamageReportService {
         Integer fromSlotId = before.getSlot().getSlotId();
         Integer fromTier   = before.getTier();
 
-        // Relocate
+        // ★ Resolve blockers above the container in damaged yard before returning
+        List<RelocationMove> blockerMoves = stackingHelper.resolveBlockers(
+                containerId, "BLOCKER_OF_RETURN");
+
+        // Record blocker moves in history
+        DamageReport report = reportRepository.findFirstByContainerContainerIdAndReportStatusIn(
+                containerId, List.of(STATUS_STORED, STATUS_PENDING, STATUS_RELOCATING)).orElse(null);
+
+        for (RelocationMove bm : blockerMoves) {
+            ContainerPosition blockerPos = positionRepository
+                    .findByContainerContainerId(bm.getContainerId()).orElse(null);
+            if (blockerPos != null) {
+                ContainerPositionHistory bHist = new ContainerPositionHistory();
+                bHist.setContainer(blockerPos.getContainer());
+                bHist.setFromSlot(slotRepository.findById(bm.getFromSlotId()).orElse(null));
+                bHist.setFromTier(bm.getFromTier());
+                bHist.setToSlot(slotRepository.findById(bm.getToSlotId()).orElse(null));
+                bHist.setToTier(bm.getToTier());
+                bHist.setReason(bm.getPurpose());
+                bHist.setDamageReport(report);
+                historyRepository.save(bHist);
+            }
+        }
+
+        // Relocate the container back to the original yard
         RelocationRequest moveReq = new RelocationRequest();
         moveReq.setContainerId(containerId);
         moveReq.setTargetSlotId(top.getSlotId());
@@ -296,8 +356,6 @@ public class DamageReportServiceImpl implements DamageReportService {
         });
 
         // Đóng damage_report STORED hiện tại sang RETURNED
-        DamageReport report = reportRepository.findFirstByContainerContainerIdAndReportStatusIn(
-                containerId, List.of(STATUS_STORED, STATUS_PENDING, STATUS_RELOCATING)).orElse(null);
         if (report != null) {
             report.setReportStatus(STATUS_RETURNED);
             report.setCompletedAt(LocalDateTime.now());
@@ -315,13 +373,17 @@ public class DamageReportServiceImpl implements DamageReportService {
         hist.setDamageReport(report);
         historyRepository.save(hist);
 
-        log.info("[Damage] container={} returned to {} ({}) slot={} tier={} ml_score={}",
+        log.info("[Damage] container={} returned to {} ({}) slot={} tier={} ml_score={}, {} blocker relocations",
                 containerId, top.getYardName(), top.getZoneName(),
-                top.getSlotId(), top.getRecommendedTier(), top.getMlScore());
+                top.getSlotId(), top.getRecommendedTier(), top.getMlScore(), blockerMoves.size());
 
-        return report != null ? toResponse(report) : DamageReportResponse.builder()
+        DamageReportResponse response = report != null ? toResponse(report) : DamageReportResponse.builder()
                 .containerId(containerId).containerCode(containerId)
                 .reportStatus(STATUS_RETURNED).build();
+        if (!blockerMoves.isEmpty()) {
+            response.setRelocationMessage(buildRelocationMessage(blockerMoves, "chuyển về kho gốc"));
+        }
+        return response;
     }
 
     // ─── Helpers ────────────────────────────────────────────────────────────
@@ -418,5 +480,24 @@ public class DamageReportServiceImpl implements DamageReportService {
         if (json == null || json.isBlank()) return Collections.emptyList();
         try { return objectMapper.readValue(json, new TypeReference<List<String>>() {}); }
         catch (Exception e) { return Collections.emptyList(); }
+    }
+
+    /**
+     * Builds a human-readable Vietnamese message about relocation moves for the user.
+     */
+    private String buildRelocationMessage(List<RelocationMove> moves, String action) {
+        if (moves == null || moves.isEmpty()) return null;
+        StringBuilder sb = new StringBuilder();
+        sb.append("⚠️ Để ").append(action).append(", hệ thống đã đảo chuyển ")
+          .append(moves.size()).append(" container chặn:\n");
+        for (int i = 0; i < moves.size(); i++) {
+            RelocationMove m = moves.get(i);
+            sb.append(String.format("  %d. %s: %s R%dB%d Tier%d → %s R%dB%d Tier%d\n",
+                    i + 1,
+                    m.getContainerId(),
+                    m.getFromZone(), m.getFromRow(), m.getFromBay(), m.getFromTier(),
+                    m.getToZone(),   m.getToRow(),   m.getToBay(),   m.getToTier()));
+        }
+        return sb.toString().trim();
     }
 }

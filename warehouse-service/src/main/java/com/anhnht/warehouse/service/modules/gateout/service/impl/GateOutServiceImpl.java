@@ -8,6 +8,7 @@ import com.anhnht.warehouse.service.modules.billing.repository.FeeConfigReposito
 import com.anhnht.warehouse.service.modules.booking.service.OrderService;
 import com.anhnht.warehouse.service.modules.container.entity.Container;
 import com.anhnht.warehouse.service.modules.container.service.ContainerService;
+import com.anhnht.warehouse.service.modules.damage.dto.RelocationMove;
 import com.anhnht.warehouse.service.modules.gatein.entity.YardStorage;
 import com.anhnht.warehouse.service.modules.gatein.repository.ContainerPositionRepository;
 import com.anhnht.warehouse.service.modules.gatein.repository.GateInReceiptRepository;
@@ -21,7 +22,11 @@ import com.anhnht.warehouse.service.modules.gateout.repository.GateOutReceiptRep
 import com.anhnht.warehouse.service.modules.gateout.repository.StorageInvoiceRepository;
 import com.anhnht.warehouse.service.modules.gateout.service.GateOutService;
 import com.anhnht.warehouse.service.modules.user.repository.UserRepository;
+import com.anhnht.warehouse.service.modules.yard.service.StackingRelocationHelper;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -34,6 +39,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.Set;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -52,6 +58,8 @@ public class GateOutServiceImpl implements GateOutService {
     private final UserRepository              userRepository;
     private final FeeConfigRepository         feeConfigRepository;
     private final GateInReceiptRepository     gateInReceiptRepository;
+    private final StackingRelocationHelper    stackingHelper;
+    private final ObjectMapper                objectMapper;
 
     @Override
     @Transactional
@@ -97,6 +105,24 @@ public class GateOutServiceImpl implements GateOutService {
                 if (yard  != null) receipt.setLastYardName(yard.getYardName());
             }
         });
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // ★ Resolve blockers: relocate any containers stacked above this one
+        // ═══════════════════════════════════════════════════════════════════════
+        List<RelocationMove> relocationMoves = stackingHelper.resolveBlockers(
+                containerId, "BLOCKER_OF_GATE_OUT");
+
+        if (!relocationMoves.isEmpty()) {
+            String message = buildRelocationMessage(relocationMoves, "xuất kho");
+            receipt.setRelocationMessage(message);
+            try {
+                receipt.setRelocationPlanJson(objectMapper.writeValueAsString(relocationMoves));
+            } catch (JsonProcessingException e) {
+                log.warn("Failed to serialize relocation plan", e);
+            }
+            log.info("[GateOut] container={} required {} blocker relocations before gate-out",
+                    containerId, relocationMoves.size());
+        }
 
         GateOutReceipt saved = receiptRepository.save(receipt);
 
@@ -297,5 +323,26 @@ public class GateOutServiceImpl implements GateOutService {
                 .isOverdue(isOverdue)
                 .overdueDays(overdueDays)
                 .build();
+    }
+
+    // ──────────────────────────────────────────── relocation message builder
+
+    /**
+     * Builds a human-readable Vietnamese message about relocation moves for the user.
+     */
+    static String buildRelocationMessage(List<RelocationMove> moves, String action) {
+        if (moves == null || moves.isEmpty()) return null;
+        StringBuilder sb = new StringBuilder();
+        sb.append("⚠️ Để ").append(action).append(", hệ thống đã đảo chuyển ")
+          .append(moves.size()).append(" container chặn:\n");
+        for (int i = 0; i < moves.size(); i++) {
+            RelocationMove m = moves.get(i);
+            sb.append(String.format("  %d. %s: %s R%dB%d Tier%d → %s R%dB%d Tier%d\n",
+                    i + 1,
+                    m.getContainerId(),
+                    m.getFromZone(), m.getFromRow(), m.getFromBay(), m.getFromTier(),
+                    m.getToZone(),   m.getToRow(),   m.getToBay(),   m.getToTier()));
+        }
+        return sb.toString().trim();
     }
 }

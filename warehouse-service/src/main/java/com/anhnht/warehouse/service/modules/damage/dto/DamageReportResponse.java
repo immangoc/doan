@@ -3,11 +3,13 @@ package com.anhnht.warehouse.service.modules.damage.dto;
 import io.swagger.v3.oas.annotations.media.Schema;
 import lombok.Builder;
 import lombok.Getter;
+import lombok.Setter;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
 @Getter
+@Setter
 @Builder
 @Schema(name = "DamageReportResponse")
 public class DamageReportResponse {
@@ -36,4 +38,14 @@ public class DamageReportResponse {
     private java.math.BigDecimal compensationCost;
     private Boolean       compensationRefunded;
     private LocalDateTime compensationRefundedAt;
+
+    /**
+     * Thông báo vị trí đảo chuyển cho người dùng (nếu có container chặn).
+     */
+    private String relocationMessage;
+
+    /**
+     * Danh sách các container đã được đảo chuyển.
+     */
+    private List<RelocationMove> relocationMoves;
 }

@@ -56,6 +56,12 @@ public class GateOutReceipt {
     @Column(name = "last_tier")
     private Integer lastTier;
 
+    @Column(name = "relocation_plan_json", columnDefinition = "TEXT")
+    private String relocationPlanJson;
+
+    @Column(name = "relocation_message", length = 1000)
+    private String relocationMessage;
+
     @PrePersist
     protected void onCreate() {
         if (gateOutTime == null) gateOutTime = LocalDateTime.now();

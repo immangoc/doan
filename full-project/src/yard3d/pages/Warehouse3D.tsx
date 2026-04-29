@@ -859,10 +859,16 @@ function ExportPanel({ onClose, onDone, warehouseType }: {
     if (!confirmTarget) return;
     setGateOutLoading(true); setGateOutError(null);
     try {
-      const gateOutId = await performGateOutForManagement(confirmTarget.containerId);
+      const result = await performGateOutForManagement(confirmTarget.containerId);
       setAllContainers((prev) => prev.filter((c) => c.containerId !== confirmTarget.containerId));
       setConfirmTarget(null);
-      try { setInvoice(await fetchGateOutInvoice(gateOutId)); } catch { /* non-critical */ }
+
+      // Show relocation info if any containers were moved
+      if (result.relocationMessage) {
+        alert(result.relocationMessage);
+      }
+
+      try { setInvoice(await fetchGateOutInvoice(result.gateOutId)); } catch { /* non-critical */ }
       onDone();
     } catch (e) {
       setGateOutError(e instanceof Error ? e.message : 'Xuất kho thất bại');
