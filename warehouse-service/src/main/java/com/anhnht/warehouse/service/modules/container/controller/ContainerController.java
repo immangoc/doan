@@ -15,6 +15,7 @@ import com.anhnht.warehouse.service.modules.container.service.ContainerService;
 import com.anhnht.warehouse.service.modules.container.service.DamageWorkflowService;
 import com.anhnht.warehouse.service.modules.gatein.entity.ContainerPosition;
 import com.anhnht.warehouse.service.modules.gatein.repository.ContainerPositionRepository;
+import com.anhnht.warehouse.service.modules.gatein.repository.YardStorageRepository;
 import com.anhnht.warehouse.service.modules.gateout.entity.GateOutReceipt;
 import com.anhnht.warehouse.service.modules.gateout.repository.GateOutReceiptRepository;
 import jakarta.validation.Valid;
@@ -25,12 +26,15 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
+import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
+@Tag(name = "Container", description = "Quản lý container trong kho")
 @RestController
 @RequestMapping("/admin/containers")
 @RequiredArgsConstructor
@@ -44,12 +48,14 @@ public class ContainerController {
     private final GateOutReceiptRepository gateOutReceiptRepository;
     private final DamageWorkflowService damageWorkflowService;
     private final OrderRepository orderRepository;
+    private final YardStorageRepository yardStorageRepository;
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<PageResponse<ContainerResponse>>> getContainers(
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String statusName,
+            @RequestParam(required = false) String yardName,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "containerId") String sortBy,
@@ -57,7 +63,7 @@ public class ContainerController {
 
         Pageable pageable = PageableUtils.of(page, size, sortBy, direction);
         Page<ContainerResponse> responsePage = containerService
-                .findAll(keyword, statusName, pageable)
+                .findAll(keyword, statusName, yardName, pageable)
                 .map(containerMapper::toContainerResponse);
 
         // Batch-fetch positions and enrich responses (single extra query, no N+1)
@@ -79,6 +85,12 @@ public class ContainerController {
                             g -> g,
                             (a, b) -> a));
 
+            Map<String, LocalDate> expectedExitMap = yardStorageRepository
+                    .findExpectedExitDates(ids).stream()
+                    .collect(Collectors.toMap(
+                            row -> (String) row[0],
+                            row -> (LocalDate) row[1]));
+
             responsePage.getContent().forEach(r -> {
                 ContainerPosition cp = posMap.get(r.getContainerId());
                 if (cp != null && cp.getSlot() != null) {
@@ -98,6 +110,7 @@ public class ContainerController {
                             r.setYardType(yard.getYardType().getYardTypeName());
                     }
                 }
+                r.setExpectedExitDate(expectedExitMap.get(r.getContainerId()));
                 // For gated-out containers, fill position from snapshot on GateOutReceipt
                 GateOutReceipt g = gateOutMap.get(r.getContainerId());
                 if (g != null) {
@@ -119,6 +132,27 @@ public class ContainerController {
         }
 
         return ResponseEntity.ok(ApiResponse.success(PageResponse.of(responsePage)));
+    }
+
+    /**
+     * Container IDs whose storageEndDate has passed and are still in yard.
+     * Used by the 3D yard view to render a red blinking outline on overdue containers.
+     */
+    @GetMapping("/overdue")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
+    public ResponseEntity<ApiResponse<List<String>>> getOverdueContainerIds() {
+        LocalDate today = LocalDate.now();
+        List<String> ids = yardStorageRepository.findWithExitOnOrBefore(today.minusDays(1)).stream()
+                .filter(s -> {
+                    String status = s.getContainer().getStatus() != null
+                            ? s.getContainer().getStatus().getStatusName() : "";
+                    return !"GATE_OUT".equalsIgnoreCase(status)
+                            && !"EXPORTED".equalsIgnoreCase(status);
+                })
+                .map(s -> s.getContainer().getContainerId())
+                .distinct()
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(ApiResponse.success(ids));
     }
 
     @GetMapping("/{id}")

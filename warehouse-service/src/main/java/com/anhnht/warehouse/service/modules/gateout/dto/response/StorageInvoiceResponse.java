@@ -12,7 +12,13 @@ public class StorageInvoiceResponse {
 
     private Integer       invoiceId;
     private String        containerId;
+    private String        containerCode;
+    private String        cargoTypeName;
+    private String        containerTypeName;
     private Integer       gateOutId;
+
+    private LocalDateTime gateInTime;
+    private LocalDateTime gateOutTime;
 
     private Integer       storageDays;
     private BigDecimal    dailyRate;

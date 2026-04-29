@@ -42,11 +42,13 @@ public class StackingAlgorithm {
      * @param containerId    nullable — used in response metadata only
      * @param cargoTypeName  exact cargo type name from DB
      * @param grossWeight    container gross weight (nullable)
+     * @param sizeType       '20ft' or '40ft' — passed to ML service
      * @return placement recommendation with top-5 slots
      */
     public PlacementRecommendation recommend(String containerId,
                                              String cargoTypeName,
-                                             BigDecimal grossWeight) {
+                                             BigDecimal grossWeight,
+                                             String sizeType) {
         long start = System.currentTimeMillis();
 
         // Module 0 — Pre-filter
@@ -54,8 +56,8 @@ public class StackingAlgorithm {
         List<SlotCandidate> candidates = preFilter.filter(yardTypeName, grossWeight);
         log.debug("[Algorithm] Pre-filter passed: {} candidates", candidates.size());
 
-        // Module A — Heuristic scoring
-        scoring.score(candidates);
+        // Module A — ML scoring (with heuristic fallback)
+        scoring.score(candidates, containerId, cargoTypeName, grossWeight, sizeType);
 
         // Module B — BFS relocation
         relocationBfs.evaluate(candidates);

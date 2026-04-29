@@ -106,6 +106,7 @@ function ZoneBlock({ position, zoneName, whType, onClick, highlightId, previewPo
       whName?: string;
       blockName?: string;
       statusText?: string;
+      isOverdue?: boolean;
     }[] = [];
 
     const { rows: gridRows, cols: gridCols, maxTier } = getZoneDims(allYards, whType, zoneName);
@@ -143,6 +144,7 @@ function ZoneBlock({ position, zoneName, whType, onClick, highlightId, previewPo
                 whName: wh.name,
                 blockName: zoneName,
                 statusText: 'Trong kho',
+                isOverdue: occ.isOverdue,
               });
             } else {
               items.push({
@@ -161,6 +163,7 @@ function ZoneBlock({ position, zoneName, whType, onClick, highlightId, previewPo
                 whName: wh.name,
                 blockName: zoneName,
                 statusText: 'Trong kho',
+                isOverdue: occ.isOverdue,
               });
             }
           }
@@ -207,6 +210,7 @@ function ZoneBlock({ position, zoneName, whType, onClick, highlightId, previewPo
           whName={ctn.whName}
           blockName={ctn.blockName}
           statusText={ctn.statusText}
+          isOverdue={ctn.isOverdue}
           onDamageClick={onDamageContainer}
         />
       ))}

@@ -527,7 +527,8 @@ function ImportPanel({ onClose, initialCode, onPreviewChange, manualClickInfo, o
   const [manualZone, setManualZone] = useState('Zone A');
   const [manualWarehouse, setManualWH] = useState('Kho Khô');
   const [manualFloor, setManualFloor] = useState('1');
-  const [manualPos, setManualPos] = useState('CT01');
+  const [manualRow, setManualRow] = useState('1');
+  const [manualCol, setManualCol] = useState('1');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [alertMsg, setAlertMsg] = useState<string | null>(null);
@@ -637,7 +638,8 @@ function ImportPanel({ onClose, initialCode, onPreviewChange, manualClickInfo, o
       const reverseName = whNameMap[manualClickInfo.whType] || 'Kho hàng khô';
       setManualWH(reverseName);
       setManualFloor(String(manualClickInfo.floor!));
-      setManualPos(manualClickInfo.label);
+      setManualRow(String(manualClickInfo.row! + 1));
+      setManualCol(String(manualClickInfo.col! + 1));
 
       setSuggestion({
         whType: manualClickInfo.whType as any,
@@ -668,7 +670,8 @@ function ImportPanel({ onClose, initialCode, onPreviewChange, manualClickInfo, o
         setManualZone(sug.zone);
         setManualWH(sug.whName);
         setManualFloor(String(sug.floor));
-        setManualPos(sug.slot);
+        setManualRow(String(sug.row + 1));
+        setManualCol(String(sug.col + 1));
         onPreviewChange({
           whType: sug.whType,
           zone: sug.zone,
@@ -725,18 +728,24 @@ function ImportPanel({ onClose, initialCode, onPreviewChange, manualClickInfo, o
     }
   }
 
-  function handleManualPositionChange(newZone: string, newFloor: string, newWH: string) {
+  function handleManualPositionChange(newZone: string, newFloor: string, newWH: string, newRowStr: string, newColStr: string) {
     const whType = cargoTypeToWHType(newWH === 'Kho hàng lạnh' ? 'Hàng Lạnh'
       : newWH === 'Kho hàng dễ vỡ' ? 'Hàng dễ vỡ'
         : newWH === 'Kho hỏng' ? 'Hàng hỏng'
           : newWH === 'Kho khác' ? 'Khác' : 'Hàng Khô');
 
+    let col = parseInt(newColStr) - 1;
+    if (form.sizeType === '40ft' && col < 4) {
+      col = 4;
+      setManualCol('5');
+    }
+
     onPreviewChange({
       whType,
       zone: newZone,
       floor: parseInt(newFloor),
-      row: suggestion?.row ?? 0,
-      col: suggestion?.col ?? 0,
+      row: parseInt(newRowStr) - 1,
+      col,
       sizeType: suggestion?.sizeType ?? form.sizeType,
       containerCode: form.containerCode || 'Container mới',
     });
@@ -909,9 +918,11 @@ function ImportPanel({ onClose, initialCode, onPreviewChange, manualClickInfo, o
               <>
                 <div className="rp-manual-title">Điều chỉnh vị trí thủ công</div>
                 {[
-                  { label: 'Khu nhập', value: manualZone, setter: (v: string) => { setManualZone(v); handleManualPositionChange(v, manualFloor, manualWarehouse); }, options: manualWarehouse === 'Kho hỏng' ? ['Zone A', 'Zone B'] : ['Zone A', 'Zone B', 'Zone C'] },
-                  { label: 'Kho nhập', value: manualWarehouse, setter: (v: string) => { setManualWH(v); handleManualPositionChange(manualZone, manualFloor, v); }, options: ['Kho hàng khô', 'Kho hàng lạnh', 'Kho hàng dễ vỡ', 'Kho hỏng', 'Kho khác'] },
-                  { label: 'Tầng', value: manualFloor, setter: (v: string) => { setManualFloor(v); handleManualPositionChange(manualZone, v, manualWarehouse); }, options: ['1', '2', '3'] },
+                  { label: 'Khu nhập', value: manualZone, setter: (v: string) => { setManualZone(v); handleManualPositionChange(v, manualFloor, manualWarehouse, manualRow, manualCol); }, options: manualWarehouse === 'Kho hỏng' ? ['Zone A', 'Zone B'] : ['Zone A', 'Zone B', 'Zone C'] },
+                  { label: 'Kho nhập', value: manualWarehouse, setter: (v: string) => { setManualWH(v); handleManualPositionChange(manualZone, manualFloor, v, manualRow, manualCol); }, options: ['Kho hàng khô', 'Kho hàng lạnh', 'Kho hàng dễ vỡ', 'Kho hỏng', 'Kho khác'] },
+                  { label: 'Tầng', value: manualFloor, setter: (v: string) => { setManualFloor(v); handleManualPositionChange(manualZone, v, manualWarehouse, manualRow, manualCol); }, options: ['1', '2', '3', '4'] },
+                  { label: 'Dãy (Row)', value: manualRow, setter: (v: string) => { setManualRow(v); handleManualPositionChange(manualZone, manualFloor, manualWarehouse, v, manualCol); }, options: ['1', '2', '3', '4'] },
+                  { label: 'Ô (Col)', value: manualCol, setter: (v: string) => { setManualCol(v); handleManualPositionChange(manualZone, manualFloor, manualWarehouse, manualRow, v); }, options: form.sizeType === '40ft' ? ['5', '6', '7', '8'] : ['1', '2', '3', '4', '5', '6', '7', '8'] },
                 ].map(({ label, value, setter, options }) => (
                   <div key={label} className="rp-field">
                     <label>{label}</label>
@@ -922,11 +933,6 @@ function ImportPanel({ onClose, initialCode, onPreviewChange, manualClickInfo, o
                     </div>
                   </div>
                 ))}
-                <div className="rp-field">
-                  <label>Vị trí</label>
-                  <input type="text" value={manualPos}
-                    onChange={(e) => setManualPos(e.target.value)} />
-                </div>
                 <button className="btn-primary rp-submit-btn" onClick={handleConfirmImport} disabled={loading}>
                   {loading ? 'Đang xử lý...' : 'Xác nhận nhập'}
                 </button>
@@ -942,31 +948,40 @@ function ImportPanel({ onClose, initialCode, onPreviewChange, manualClickInfo, o
 // ─── Export panel ────────────────────────────────────────────────────────────
 function ExportPanel2D({ onClose, onDone }: { onClose: () => void; onDone: () => void }) {
   const [keyword, setKeyword] = useState('');
-  const [containers, setContainers] = useState<InYardContainer[]>([]);
+  const [allContainers, setAllContainers] = useState<InYardContainer[]>([]);
   const [fetchLoading, setFetchLoading] = useState(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<InYardContainer | null>(null);
   const [gateOutLoading, setGateOutLoading] = useState(false);
   const [gateOutError, setGateOutError] = useState<string | null>(null);
   const [invoice, setInvoice] = useState<GateOutInvoice | null>(null);
+  const [showAll, setShowAll] = useState(false);
 
-  const load = useCallback((kw: string) => {
+  const today = new Date().toISOString().split('T')[0];
+  const containers = allContainers.filter((c) => {
+    if (keyword.trim() && !c.containerCode.toLowerCase().includes(keyword.toLowerCase())) return false;
+    if (showAll) return true;
+    if (!c.expectedExitDate) return false;
+    return c.expectedExitDate <= today;
+  });
+  const dueCount = allContainers.filter((c) => c.expectedExitDate && c.expectedExitDate <= today).length;
+
+  const load = useCallback(() => {
     setFetchLoading(true); setFetchError(null);
-    searchInYardContainers(kw)
-      .then(setContainers)
+    searchInYardContainers('')
+      .then(setAllContainers)
       .catch((e) => setFetchError(e instanceof Error ? e.message : 'Lỗi tải dữ liệu'))
       .finally(() => setFetchLoading(false));
   }, []);
 
-  useEffect(() => { load(''); }, [load]);
-  useEffect(() => { const t = setTimeout(() => load(keyword), 300); return () => clearTimeout(t); }, [keyword, load]);
+  useEffect(() => { load(); }, [load]);
 
   async function handleGateOut() {
     if (!confirmTarget) return;
     setGateOutLoading(true); setGateOutError(null);
     try {
       const gateOutId = await performGateOutForManagement(confirmTarget.containerId);
-      setContainers((prev) => prev.filter((c) => c.containerId !== confirmTarget.containerId));
+      setAllContainers((prev) => prev.filter((c) => c.containerId !== confirmTarget.containerId));
       setConfirmTarget(null);
       try { setInvoice(await fetchGateOutInvoice(gateOutId)); } catch { /* non-critical */ }
       onDone();
@@ -986,19 +1001,24 @@ function ExportPanel2D({ onClose, onDone }: { onClose: () => void; onDone: () =>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, color: '#16a34a', fontWeight: 600 }}>
             <FileText size={18} /> Xuất kho thành công!
           </div>
-          {[
-            ['Hóa đơn #', String(invoice.invoiceId)],
-            ['Mã container', invoice.containerCode],
-            ['Loại hàng', invoice.cargoType],
-            ['Thời gian nhập', invoice.gateInTime || '—'],
-            ['Thời gian xuất', invoice.gateOutTime || '—'],
-            ['Số ngày lưu', `${invoice.storageDays} ngày`],
-            ['Phí / ngày', invoice.feePerDay],
-            ['Tổng cộng', invoice.totalAmount],
-          ].map(([label, value]) => (
-            <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #f1f5f9', fontSize: '0.82rem' }}>
-              <span style={{ color: '#64748b' }}>{label}</span>
-              <span style={{ fontWeight: 600 }}>{value}</span>
+          {([
+            ['Hóa đơn #', String(invoice.invoiceId), false],
+            ['Mã container', invoice.containerCode, false],
+            ['Loại hàng', invoice.cargoType, false],
+            ['Loại container', invoice.containerType, false],
+            ['Thời gian nhập', invoice.gateInTime, false],
+            ['Thời gian xuất', invoice.gateOutTime, false],
+            ['Số ngày lưu', `${invoice.storageDays} ngày`, false],
+            ['Phí / ngày', invoice.feePerDay, false],
+            ['Phí cơ bản', invoice.baseFee, false],
+            ...(invoice.isOverdue
+              ? [[`Phí trễ hạn (${invoice.overdueDays} ngày)`, invoice.overduePenalty, false] as [string, string, boolean]]
+              : []),
+            ['Tổng cộng', invoice.totalAmount, true],
+          ] as [string, string, boolean][]).map(([label, value, total]) => (
+            <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #f1f5f9', fontSize: total ? '0.92rem' : '0.82rem' }}>
+              <span style={{ color: total ? '#0f172a' : '#64748b', fontWeight: total ? 700 : 400 }}>{label}</span>
+              <span style={{ fontWeight: total ? 800 : 600, color: total ? '#16a34a' : undefined }}>{value}</span>
             </div>
           ))}
           <button className="btn-primary rp-submit-btn" style={{ marginTop: 16 }} onClick={() => { setInvoice(null); onClose(); }}>Đóng</button>
@@ -1011,10 +1031,10 @@ function ExportPanel2D({ onClose, onDone }: { onClose: () => void; onDone: () =>
     <div className="w2d-right-panel">
       <div className="rp-import-header">
         <button className="rp-back-btn" onClick={onClose}><ChevronLeft size={18} /></button>
-        <h2 className="rp-import-title">Xuất kho</h2>
+        <h2 className="rp-import-title">Xuất kho <span style={{ fontSize: '0.72rem', color: '#9ca3af', fontWeight: 400 }}>({containers.length}{showAll ? ` / ${allContainers.length}` : ' cần xuất hôm nay'})</span></h2>
       </div>
       <div className="rp-import-body">
-        <div style={{ position: 'relative', marginBottom: 10 }}>
+        <div style={{ position: 'relative', marginBottom: 8 }}>
           <Search size={13} style={{ position: 'absolute', left: 9, top: '50%', transform: 'translateY(-50%)', color: '#9ca3af' }} />
           <input
             type="text"
@@ -1024,22 +1044,40 @@ function ExportPanel2D({ onClose, onDone }: { onClose: () => void; onDone: () =>
             style={{ width: '100%', paddingLeft: 28, paddingRight: 8, paddingTop: 7, paddingBottom: 7, border: '1px solid #e5e7eb', borderRadius: 8, fontSize: '0.8rem', boxSizing: 'border-box' }}
           />
         </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.74rem', color: '#475569', marginBottom: 10, cursor: 'pointer', userSelect: 'none' }}>
+          <input type="checkbox" checked={showAll} onChange={(e) => setShowAll(e.target.checked)} />
+          Hiện tất cả container trong bãi ({allContainers.length})
+          {!showAll && dueCount > 0 && (
+            <span style={{ marginLeft: 'auto', color: '#dc2626', fontWeight: 600 }}>{dueCount} đến hạn</span>
+          )}
+        </label>
         {fetchLoading && <p style={{ fontSize: '0.8rem', color: '#9ca3af', textAlign: 'center', padding: '1rem 0' }}>Đang tải...</p>}
         {fetchError && <p style={{ fontSize: '0.8rem', color: '#f87171', textAlign: 'center', padding: '1rem 0' }}>{fetchError}</p>}
         {!fetchLoading && !fetchError && containers.length === 0 && (
-          <p style={{ fontSize: '0.8rem', color: '#9ca3af', textAlign: 'center', padding: '1rem 0' }}>Không có container trong bãi.</p>
+          <p style={{ fontSize: '0.8rem', color: '#9ca3af', textAlign: 'center', padding: '1rem 0' }}>
+            {showAll ? 'Không có container trong bãi.' : 'Hôm nay không có container nào đến hạn xuất.'}
+          </p>
         )}
-        {containers.map((c) => (
-          <button key={c.containerId} className="waiting-item" onClick={() => { setConfirmTarget(c); setGateOutError(null); }}>
-            <div className="waiting-icon" style={{ background: '#fef2f2', color: '#dc2626' }}><LogOut size={16} /></div>
-            <div style={{ flex: 1, textAlign: 'left' }}>
-              <span className="waiting-code">{c.containerCode}</span>
-              <div style={{ fontSize: '0.72rem', color: '#6b7280', marginTop: 2 }}>
-                {[c.cargoType, c.containerType, c.whName, c.zone].filter(Boolean).join(' · ')}
+        {containers.map((c) => {
+          const overdue = !!c.expectedExitDate && c.expectedExitDate < today;
+          const dueToday = c.expectedExitDate === today;
+          return (
+            <button key={c.containerId} className="waiting-item" onClick={() => { setConfirmTarget(c); setGateOutError(null); }}>
+              <div className="waiting-icon" style={{ background: '#fef2f2', color: '#dc2626' }}><LogOut size={16} /></div>
+              <div style={{ flex: 1, textAlign: 'left' }}>
+                <span className="waiting-code">{c.containerCode}</span>
+                <div style={{ fontSize: '0.72rem', color: '#6b7280', marginTop: 2 }}>
+                  {[c.cargoType, c.containerType, c.whName, c.zone].filter(Boolean).join(' · ')}
+                </div>
+                {c.expectedExitDate && (
+                  <div style={{ fontSize: '0.7rem', marginTop: 3, color: overdue ? '#dc2626' : dueToday ? '#d97706' : '#64748b', fontWeight: overdue || dueToday ? 600 : 400 }}>
+                    {overdue ? `Quá hạn từ ${c.expectedExitDate}` : dueToday ? 'Đến hạn hôm nay' : `Hạn xuất: ${c.expectedExitDate}`}
+                  </div>
+                )}
               </div>
-            </div>
-          </button>
-        ))}
+            </button>
+          );
+        })}
       </div>
 
       {confirmTarget && (

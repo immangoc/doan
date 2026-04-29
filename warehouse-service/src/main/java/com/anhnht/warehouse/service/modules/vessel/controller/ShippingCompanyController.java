@@ -12,7 +12,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
+@Tag(name = "Hãng tàu", description = "Quản lý thông tin hãng tàu")
 @RestController
 @RequestMapping("/admin/shipping-companies")
 @RequiredArgsConstructor

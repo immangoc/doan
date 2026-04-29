@@ -13,7 +13,11 @@ public interface YardZoneRepository extends JpaRepository<YardZone, Integer> {
     List<YardZone> findAll();
 
     @EntityGraph(attributePaths = {"yard", "yard.yardType"})
-    List<YardZone> findAllByYardYardId(Integer yardId);
+    List<YardZone> findAllByYardYardIdOrderByZoneNameAsc(Integer yardId);
+
+    default List<YardZone> findAllByYardYardId(Integer yardId) {
+        return findAllByYardYardIdOrderByZoneNameAsc(yardId);
+    }
 
     @EntityGraph(attributePaths = {"yard", "yard.yardType"})
     Optional<YardZone> findById(Integer zoneId);

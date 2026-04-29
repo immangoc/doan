@@ -41,16 +41,17 @@ function WHIcon({ type, size = 18 }: { type: WHType; size?: number }) {
 
 // ─── KPI Big Card ─────────────────────────────────────────────────────────────
 function KpiCard({
-  label, value, sub, icon, color, bg,
+  label, value, sub, icon, color, bg, alert,
 }: {
   label: string; value: number | string; sub?: string;
   icon: React.ReactNode; color: string; bg: string; trend?: 'up' | 'down' | 'neutral';
+  alert?: boolean;
 }) {
   return (
-    <div className="ov-kpi-card">
+    <div className={`ov-kpi-card${alert ? ' ov-kpi-card-alert' : ''}`}>
       <div className="ov-kpi-body">
         <div className="ov-kpi-label">{label}</div>
-        <div className="ov-kpi-value">{value}</div>
+        <div className="ov-kpi-value" style={alert ? { color: '#dc2626' } : undefined}>{value}</div>
         {sub && <div className="ov-kpi-sub">{sub}</div>}
       </div>
       <div className="ov-kpi-icon-wrap" style={{ background: bg }}>
@@ -514,7 +515,8 @@ function ImportPanel({ onClose, initialCode, initialItem, onPreviewChange }: {
   const [manualZone, setManualZone] = useState('Zone A');
   const [manualWarehouse, setManualWH] = useState('Kho Khô');
   const [manualFloor, setManualFloor] = useState('1');
-  const [manualPos, setManualPos] = useState('CT01');
+  const [manualRow, setManualRow] = useState('1');
+  const [manualCol, setManualCol] = useState('1');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -593,7 +595,8 @@ function ImportPanel({ onClose, initialCode, initialItem, onPreviewChange }: {
         setManualZone(sug.zone);
         setManualWH(sug.whName);
         setManualFloor(String(sug.floor));
-        setManualPos(sug.slot);
+        setManualRow(String(sug.row + 1));
+        setManualCol(String(sug.col + 1));
         onPreviewChange({
           whType: sug.whType, zone: sug.zone, floor: sug.floor,
           row: sug.row, col: sug.col, sizeType: sug.sizeType,
@@ -789,9 +792,11 @@ function ImportPanel({ onClose, initialCode, initialItem, onPreviewChange }: {
               <>
                 <div className="ov-rp-manual-title">Điều chỉnh vị trí thủ công</div>
                 {[
-                  { label: 'Khu nhập', value: manualZone, setter: (v: string) => { setManualZone(v); handleManualPositionChange(v, manualFloor, manualWarehouse); }, options: manualWarehouse === 'Kho hỏng' ? ['Zone A', 'Zone B'] : ['Zone A', 'Zone B', 'Zone C'] },
-                  { label: 'Kho nhập', value: manualWarehouse, setter: (v: string) => { setManualWH(v); handleManualPositionChange(manualZone, manualFloor, v); }, options: ['Kho hàng khô', 'Kho hàng lạnh', 'Kho hàng dễ vỡ', 'Kho hỏng', 'Kho khác'] },
-                  { label: 'Tầng', value: manualFloor, setter: (v: string) => { setManualFloor(v); handleManualPositionChange(manualZone, v, manualWarehouse); }, options: ['1', '2', '3'] },
+                  { label: 'Khu nhập', value: manualZone, setter: (v: string) => { setManualZone(v); handleManualPositionChange(v, manualFloor, manualWarehouse, manualRow, manualCol); }, options: manualWarehouse === 'Kho hỏng' ? ['Zone A', 'Zone B'] : ['Zone A', 'Zone B', 'Zone C'] },
+                  { label: 'Kho nhập', value: manualWarehouse, setter: (v: string) => { setManualWH(v); handleManualPositionChange(manualZone, manualFloor, v, manualRow, manualCol); }, options: ['Kho hàng khô', 'Kho hàng lạnh', 'Kho hàng dễ vỡ', 'Kho hỏng', 'Kho khác'] },
+                  { label: 'Tầng', value: manualFloor, setter: (v: string) => { setManualFloor(v); handleManualPositionChange(manualZone, v, manualWarehouse, manualRow, manualCol); }, options: ['1', '2', '3', '4'] },
+                  { label: 'Dãy (Row)', value: manualRow, setter: (v: string) => { setManualRow(v); handleManualPositionChange(manualZone, manualFloor, manualWarehouse, v, manualCol); }, options: ['1', '2', '3', '4'] },
+                  { label: 'Ô (Col)', value: manualCol, setter: (v: string) => { setManualCol(v); handleManualPositionChange(manualZone, manualFloor, manualWarehouse, manualRow, v); }, options: form.sizeType === '40ft' ? ['5', '6', '7', '8'] : ['1', '2', '3', '4', '5', '6', '7', '8'] },
                 ].map(({ label, value, setter, options }) => (
                   <div key={label} className="ov-rp-field">
                     <label>{label}</label>
@@ -802,10 +807,6 @@ function ImportPanel({ onClose, initialCode, initialItem, onPreviewChange }: {
                     </div>
                   </div>
                 ))}
-                <div className="ov-rp-field">
-                  <label>Vị trí</label>
-                  <input type="text" value={manualPos} onChange={(e) => setManualPos(e.target.value)} className="ov-rp-input" />
-                </div>
                 <button className="btn-primary ov-rp-submit-btn" onClick={handleConfirmImport} disabled={loading}>{loading ? 'Đang xử lý...' : 'Xác nhận nhập'}</button>
               </>
             )}
@@ -897,8 +898,10 @@ export function WarehouseOverview() {
             sub={`Tổng đơn: ${kpi.totalOrders}`}
             icon={<Clock size={20} />} color="#d97706" bg="#fef3c7" />
           <KpiCard label="Container quá hạn" value={kpi.overdueContainers}
+            sub="Cần xử lý ngay"
             icon={<AlertTriangle size={20} />} color="#dc2626" bg="#fee2e2"
-            trend={kpi.overdueContainers > 0 ? 'down' : 'neutral'} />
+            trend={kpi.overdueContainers > 0 ? 'down' : 'neutral'}
+            alert={kpi.overdueContainers > 0} />
           <KpiCard label="Cảnh báo hệ thống" value={kpi.openAlerts}
             sub={`${kpi.criticalAlerts} nghiêm trọng`}
             icon={<Bell size={20} />} color="#7c3aed" bg="#ede9fe"

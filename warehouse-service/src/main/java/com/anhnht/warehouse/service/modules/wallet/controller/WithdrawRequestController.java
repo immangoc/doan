@@ -14,7 +14,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.UUID;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
+@Tag(name = "Yêu cầu rút tiền", description = "Quản lý yêu cầu rút tiền")
 @RestController
 @RequestMapping("/wallet/withdraw-requests")
 @RequiredArgsConstructor

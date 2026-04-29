@@ -14,7 +14,6 @@ type FeeConfig = {
   freeStorageDays?: number;
   overduePenaltyRate?: number;
   coldStorageSurcharge?: number;
-  hazmatSurcharge?: number;
   liftingFeePerMove?: number;
   storageMultiplier?: number;
   weightMultiplier?: number;

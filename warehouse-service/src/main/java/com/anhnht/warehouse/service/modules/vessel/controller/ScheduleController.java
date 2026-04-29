@@ -12,7 +12,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
+@Tag(name = "Lịch trình", description = "Quản lý lịch trình tàu")
 @RestController
 @RequestMapping("/admin/schedules")
 @RequiredArgsConstructor

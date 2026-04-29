@@ -10,6 +10,7 @@ import com.anhnht.warehouse.service.modules.container.entity.Container;
 import com.anhnht.warehouse.service.modules.container.service.ContainerService;
 import com.anhnht.warehouse.service.modules.gatein.entity.YardStorage;
 import com.anhnht.warehouse.service.modules.gatein.repository.ContainerPositionRepository;
+import com.anhnht.warehouse.service.modules.gatein.repository.GateInReceiptRepository;
 import com.anhnht.warehouse.service.modules.gatein.repository.YardStorageRepository;
 import com.anhnht.warehouse.service.modules.gateout.dto.request.GateOutRequest;
 import com.anhnht.warehouse.service.modules.gateout.dto.response.StorageBillResponse;
@@ -50,6 +51,7 @@ public class GateOutServiceImpl implements GateOutService {
     private final OrderService                orderService;
     private final UserRepository              userRepository;
     private final FeeConfigRepository         feeConfigRepository;
+    private final GateInReceiptRepository     gateInReceiptRepository;
 
     @Override
     @Transactional
@@ -210,10 +212,29 @@ public class GateOutServiceImpl implements GateOutService {
         StorageInvoice invoice = invoiceRepository.findByGateOutReceiptGateOutId(gateOutId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.NOT_FOUND,
                         "Invoice not found for gate-out: " + gateOutId));
+
+        Container container = invoice.getContainer();
+        GateOutReceipt receipt = invoice.getGateOutReceipt();
+
+        String cargoTypeName = container.getCargoType() != null
+                ? container.getCargoType().getCargoTypeName() : null;
+        String containerTypeName = container.getContainerType() != null
+                ? container.getContainerType().getContainerTypeName() : null;
+
+        var gateInTime = gateInReceiptRepository
+                .findFirstByContainerContainerIdOrderByGateInTimeDesc(container.getContainerId())
+                .map(g -> g.getGateInTime())
+                .orElse(null);
+
         return StorageInvoiceResponse.builder()
                 .invoiceId(invoice.getInvoiceId())
-                .containerId(invoice.getContainer().getContainerId())
-                .gateOutId(invoice.getGateOutReceipt().getGateOutId())
+                .containerId(container.getContainerId())
+                .containerCode(container.getContainerId())
+                .cargoTypeName(cargoTypeName)
+                .containerTypeName(containerTypeName)
+                .gateOutId(receipt.getGateOutId())
+                .gateInTime(gateInTime)
+                .gateOutTime(receipt.getGateOutTime())
                 .storageDays(invoice.getStorageDays())
                 .dailyRate(invoice.getDailyRate())
                 .baseFee(invoice.getBaseFee())

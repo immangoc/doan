@@ -36,7 +36,26 @@
       "Bash(./mvnw -q -DskipTests compile)",
       "Bash(./mvnw -DskipTests compile)",
       "Bash(npx --no-install tsc --noEmit -p .)",
-      "Bash(node_modules/.bin/vite --port 3000 --host)"
+      "Bash(node_modules/.bin/vite --port 3000 --host)",
+      "Bash(./mvnw clean *)",
+      "Bash(./mvnw -DskipTests clean compile)",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\('/Users/mangoc/Downloads/wms/warehouse-service/ml_service_app.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(./mvnw -DskipTests test-compile)",
+      "Bash(./mvnw test *)",
+      "Bash(python3 -c \"import ast; ast.parse\\(open\\('/Users/mangoc/Downloads/wms/warehouse-service/ml_service_app.py'\\).read\\(\\)\\); ast.parse\\(open\\('/Users/mangoc/Downloads/wms/warehouse-service/train_warehouse_ranker.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python3 -c \"import lightgbm, fastapi, pandas, sklearn, joblib; print\\('libs ok'\\)\")",
+      "Bash(./mvnw -q -DskipTests test-compile)",
+      "Bash(lsof -iTCP:8080 -sTCP:LISTEN)",
+      "Bash(ps -p 30441 -o command=)",
+      "Bash(timeout 120 npx vite build)",
+      "Bash(npx vite *)",
+      "Bash(mvn -q -o compile)",
+      "Bash(echo \"Exit: $?\")",
+      "Bash(awk '{print $3}')",
+      "Bash(echo \"BE Exit: $?\")",
+      "Bash(./mvnw -q compile -DskipTests)",
+      "Bash(chmod +x /Users/mangoc/Downloads/wms-1/wms/warehouse-service/mvnw)",
+      "Bash(./mvnw -q clean compile -DskipTests)"
     ]
   }
 }

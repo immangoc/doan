@@ -67,10 +67,10 @@ public class GateInServiceImpl implements GateInService {
                     "Container " + containerId + " chưa có đơn hàng. Khách hàng phải tạo đơn hàng và được duyệt trước khi nhập kho.");
         }
         var orderStatusName = linkedOrder.getStatus().getStatusName();
-        var validImportStatuses = List.of("APPROVED", "WAITING_CHECKIN", "LATE_CHECKIN");
+        var validImportStatuses = List.of("APPROVED", "WAITING_CHECKIN", "LATE_CHECKIN", "READY_FOR_IMPORT");
         if (!validImportStatuses.contains(orderStatusName)) {
             throw new BusinessException(ErrorCode.BAD_REQUEST,
-                    "Đơn hàng #" + linkedOrder.getOrderId() + " chưa được duyệt (trạng thái: " + orderStatusName + "). Chỉ nhập kho khi đơn hàng đã APPROVED/WAITING_CHECKIN/LATE_CHECKIN.");
+                    "Đơn hàng #" + linkedOrder.getOrderId() + " chưa được duyệt (trạng thái: " + orderStatusName + "). Chỉ nhập kho khi đơn hàng đã APPROVED/WAITING_CHECKIN/LATE_CHECKIN/READY_FOR_IMPORT.");
         }
 
         Container container = containerService.findById(containerId);

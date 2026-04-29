@@ -22,10 +22,12 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
  * Public endpoints — no authentication required (permitted in SecurityConfig).
  */
+@Tag(name = "Tra cứu công khai", description = "API tra cứu không cần đăng nhập")
 @RestController
 @RequestMapping("/public")
 @RequiredArgsConstructor

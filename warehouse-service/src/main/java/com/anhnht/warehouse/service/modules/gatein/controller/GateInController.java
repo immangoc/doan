@@ -19,7 +19,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
+@Tag(name = "Nhập kho (Gate-In)", description = "Quản lý quy trình nhập container vào kho")
 @RestController
 @RequestMapping("/admin")
 @RequiredArgsConstructor

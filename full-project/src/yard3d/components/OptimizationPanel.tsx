@@ -87,10 +87,6 @@ export function OptimizationPanel({
     () => listContainersFromMap(occupancyMap, warehouseType),
     [occupancyMap, warehouseType],
   );
-  const swapCandidates = useMemo(
-    () => containers.filter((c) => c.containerId !== source?.containerId),
-    [containers, source?.containerId],
-  );
 
   const [step, setStep]               = useState<OptStep>('select');
   const [source, setSource]           = useState<ContainerEntry | null>(null);
@@ -100,6 +96,11 @@ export function OptimizationPanel({
   const [loading, setLoading]         = useState(false);
   const [error, setError]             = useState<string | null>(null);
   const [success, setSuccess]         = useState<string | null>(null);
+
+  const swapCandidates = useMemo(
+    () => containers.filter((c) => c.containerId !== source?.containerId),
+    [containers, source?.containerId],
+  );
 
   function clearAndClose() {
     onPreviewChange(null);

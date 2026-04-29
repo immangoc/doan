@@ -44,4 +44,7 @@ public interface GateInReceiptRepository extends JpaRepository<GateInReceipt, In
     Optional<GateInReceipt> findByIdWithDetails(@Param("id") Integer id);
 
     boolean existsByContainerContainerId(String containerId);
+
+    /** Latest gate-in time for a container (handles re-imports by taking the most recent). */
+    Optional<GateInReceipt> findFirstByContainerContainerIdOrderByGateInTimeDesc(String containerId);
 }

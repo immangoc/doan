@@ -11,6 +11,7 @@ import {
 import type { WHType, ZoneInfo, PreviewPosition } from '../../data/warehouse';
 import { subscribeYard, getYardData, getZoneNames, countZoneFilledSlots, getZoneTotalSlots, getZoneDims } from '../../store/yardStore';
 import { subscribeOccupancy, getOccupancyData, getSlotOccupancy, countOccupiedZoneSlots, isOccupancyFetched } from '../../store/occupancyStore';
+import { subscribeDamage, getPendingByCodeMap } from '../../store/damageStore';
 
 export type { WHType, ZoneInfo };
 
@@ -89,6 +90,7 @@ function ZoneBlock({ position, zoneName, whType, onClick, highlightId, previewPo
   const wh = WH_MAP[whType];
   const allYards = useSyncExternalStore(subscribeYard, getYardData);
   const occupancyMap = useSyncExternalStore(subscribeOccupancy, getOccupancyData);
+  const damagePending = useSyncExternalStore(subscribeDamage, getPendingByCodeMap);
   const occupancyLoaded = isOccupancyFetched();
 
   const totalSlots = getZoneTotalSlots(allYards, whType, zoneName);
@@ -108,28 +110,38 @@ function ZoneBlock({ position, zoneName, whType, onClick, highlightId, previewPo
       weight?: string;
       gateInDate?: string;
       storageDuration?: string;
+      isOverdue?: boolean;
     }[] = [];
 
     const { rows: gridRows, cols: gridCols, maxTier } = getZoneDims(allYards, whType, zoneName);
-    const midCol = Math.floor(gridCols / 2);
-    const numGroups = Math.floor(gridRows / 2);
     const maxLevels = maxTier || 3;
 
     if (occupancyLoaded) {
+      // Dedup: một container 40ft có thể có 2 entries trong occupancy (anchor row +
+      // continuation row) nếu data từng được seed cho cả 2 slot. Giữ 1 entry duy
+      // nhất per containerCode để tránh render trùng.
+      const seen40ft = new Set<string>();
+
       for (let tier = 1; tier <= maxLevels; tier++) {
         for (let row = 0; row < gridRows; row++) {
           for (let col = 0; col < gridCols; col++) {
             const occ = getSlotOccupancy(occupancyMap, whType, zoneName, row, col, tier);
             if (!occ) continue;
-            const is40ft = col >= midCol;
+
+            // ── Source of truth: occ.sizeType (lấy từ container.container_type ở DB).
+            const is40ft = occ.sizeType === '40ft';
             const y = (tier - 1) * CTN_H + CTN_H / 2;
             const x = colX(col);
+
             if (is40ft) {
+              if (seen40ft.has(occ.containerCode)) continue;
+              seen40ft.add(occ.containerCode);
+
               const baseRow = row % 2 === 0 ? row : row - 1;
               const nextRow = Math.min(baseRow + 1, gridRows - 1);
               const z = (rowZ(baseRow) + rowZ(nextRow)) / 2;
               items.push({
-                key: `real-40-${tier}-${row}-${col}`,
+                key: `real-40-${tier}-${baseRow}-${col}`,
                 pos: [x, y, z],
                 sizeType: '40ft',
                 id: occ.containerCode,
@@ -144,6 +156,7 @@ function ZoneBlock({ position, zoneName, whType, onClick, highlightId, previewPo
                 whName: occ.whName ?? wh.name,
                 blockName: occ.blockName ?? zoneName,
                 statusText: occ.statusText ?? 'Trong kho',
+                isOverdue: occ.isOverdue,
               });
             } else {
               items.push({
@@ -162,6 +175,7 @@ function ZoneBlock({ position, zoneName, whType, onClick, highlightId, previewPo
                 whName: wh.name,
                 blockName: zoneName,
                 statusText: 'Trong kho',
+                isOverdue: occ.isOverdue,
               });
             }
           }
@@ -207,6 +221,8 @@ function ZoneBlock({ position, zoneName, whType, onClick, highlightId, previewPo
           storageDuration={ctn.storageDuration}
           whName={wh.name}
           blockName={zoneName}
+          isOverdue={ctn.isOverdue}
+          isDamageReported={damagePending.has(ctn.id)}
           onDamageClick={onDamageContainer}
         />
       ))}

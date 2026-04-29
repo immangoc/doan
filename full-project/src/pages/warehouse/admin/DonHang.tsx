@@ -22,6 +22,7 @@ const STATUS_BADGE: Record<string, string> = {
   APPROVED:         'badge-info',
   WAITING_CHECKIN:  'badge-info',
   LATE_CHECKIN:     'badge-danger',
+  READY_FOR_IMPORT: 'badge-info',
   IMPORTED:         'badge-success',
   STORED:           'badge-success',
   EXPORTED:         'badge-success',
@@ -35,8 +36,9 @@ const STATUS_BADGE: Record<string, string> = {
 const STATUS_LABEL: Record<string, string> = {
   PENDING:          'Chờ duyệt',
   APPROVED:         'Đã duyệt',
-  WAITING_CHECKIN:  'Chờ nhận hàng',
+  WAITING_CHECKIN:  'Chờ nhập kho',
   LATE_CHECKIN:     'Trễ check-in',
+  READY_FOR_IMPORT: 'Chờ nhập kho',
   IMPORTED:         'Đã nhập kho',
   STORED:           'Đang lưu kho',
   EXPORTED:         'Đã xuất kho',
@@ -46,6 +48,8 @@ const STATUS_LABEL: Record<string, string> = {
   ACTIVE:           'Hoạt động',
   COMPLETED:        'Hoàn tất',
 };
+
+const CHECKIN_TRANSITIONS = ['WAITING_CHECKIN', 'LATE_CHECKIN'] as const;
 
 export default function DonHang() {
   const { accessToken } = useWarehouseAuth();
@@ -154,6 +158,25 @@ export default function DonHang() {
     }
   };
 
+  const handleChangeStatus = async (orderId: number, statusName: string) => {
+    if (!window.confirm(`Chuyển đơn sang trạng thái "${STATUS_LABEL[statusName] || statusName}"?`)) return;
+    try {
+      const res = await fetch(`${API_BASE}/admin/orders/${orderId}/status`, {
+        method: 'PUT', headers,
+        body: JSON.stringify({ statusName }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Lỗi cập nhật trạng thái');
+      setActionMsg(`Đã chuyển trạng thái sang ${STATUS_LABEL[statusName] || statusName}.`);
+      fetchOrders(page);
+      // Reload detail to reflect new status
+      setDetailOrder((prev) => prev ? { ...prev, statusName } : prev);
+      window.dispatchEvent(new CustomEvent('wms:notification-refresh'));
+    } catch (e: any) {
+      setActionMsg(e.message || 'Lỗi');
+    }
+  };
+
   const handleAdminCancel = async (orderId: number) => {
     const reason = window.prompt('Lý do hủy (tùy chọn):') ?? '';
     if (reason === null) return; // user pressed Cancel on prompt
@@ -216,6 +239,12 @@ export default function DonHang() {
             <option value="">Tất cả</option>
             <option value="PENDING">Chờ duyệt</option>
             <option value="APPROVED">Đã duyệt</option>
+            <option value="WAITING_CHECKIN">Chờ nhập kho</option>
+            <option value="LATE_CHECKIN">Trễ check-in</option>
+            <option value="IMPORTED">Đã nhập kho</option>
+            <option value="STORED">Đang lưu kho</option>
+            <option value="EXPORTED">Đã xuất kho</option>
+            <option value="CANCEL_REQUESTED">Yêu cầu hủy</option>
             <option value="REJECTED">Từ chối</option>
             <option value="CANCELLED">Hủy</option>
           </select>
@@ -267,7 +296,7 @@ export default function DonHang() {
         )}
 
         {totalPages > 1 && (
-          <div style={{ display: 'flex', gap: 8, padding: '12px 0', justifyContent: 'flex-end' }}>
+          <div style={{ display: 'flex', gap: 8, padding: '12px 0', paddingRight: 140, justifyContent: 'flex-start' }}>
             <button className="btn btn-secondary btn-sm" disabled={page === 0} onClick={() => fetchOrders(page - 1)}>←</button>
             <span style={{ lineHeight: '28px', fontSize: 13 }}>{page + 1} / {totalPages}</span>
             <button className="btn btn-secondary btn-sm" disabled={page >= totalPages - 1} onClick={() => fetchOrders(page + 1)}>→</button>
@@ -329,6 +358,33 @@ export default function DonHang() {
                     </div>
                   )}
                 </div>
+                {/* Status transitions for orders past approval, before gate-in.
+                    READY_FOR_IMPORT is treated as an alias of WAITING_CHECKIN ("Chờ nhập kho"). */}
+                {(['WAITING_CHECKIN', 'LATE_CHECKIN', 'READY_FOR_IMPORT'] as const).includes(detailOrder.statusName as never) && (
+                  <div style={{ marginBottom: 12, padding: 12, borderRadius: 8, background: 'var(--bg2)' }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Chuyển trạng thái check-in</div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {CHECKIN_TRANSITIONS.map((s) => {
+                        const isCurrent = detailOrder.statusName === s
+                          || (s === 'WAITING_CHECKIN' && detailOrder.statusName === 'READY_FOR_IMPORT');
+                        return (
+                          <button
+                            key={s}
+                            type="button"
+                            className={`btn btn-sm ${isCurrent ? 'btn-primary' : 'btn-secondary'}`}
+                            disabled={isCurrent}
+                            onClick={() => handleChangeStatus(detailOrder.orderId, s)}
+                          >
+                            {STATUS_LABEL[s]}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>
+                      Đơn ở trạng thái <strong>Chờ nhập kho</strong> sẽ xuất hiện trong danh sách container chờ nhập trên sơ đồ 3D.
+                    </div>
+                  </div>
+                )}
                 <div className="form-actions">
                   <button type="button" className="btn btn-secondary" onClick={() => { setDetailOrder(null); setActionMsg(''); }}>Đóng</button>
                   {detailOrder.statusName === 'PENDING' && (

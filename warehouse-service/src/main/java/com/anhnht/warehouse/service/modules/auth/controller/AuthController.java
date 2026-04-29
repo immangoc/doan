@@ -12,7 +12,9 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.util.StringUtils;
 import org.springframework.web.bind.annotation.*;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
+@Tag(name = "Xác thực", description = "Đăng nhập, đăng ký, quản lý token")
 @RestController
 @RequestMapping("/auth")
 @RequiredArgsConstructor

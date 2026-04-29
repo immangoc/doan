@@ -24,7 +24,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
+@Tag(name = "Ví điện tử", description = "Quản lý ví và nạp tiền")
 @RestController
 @RequestMapping("/wallets")
 @RequiredArgsConstructor

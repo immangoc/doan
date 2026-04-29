@@ -44,10 +44,11 @@ public class ContainerServiceImpl implements ContainerService {
     private final ContainerPositionRepository containerPositionRepository;
 
     @Override
-    public Page<Container> findAll(String keyword, String statusName, Pageable pageable) {
+    public Page<Container> findAll(String keyword, String statusName, String yardName, Pageable pageable) {
         String kw = (keyword == null || keyword.isBlank()) ? "" : keyword.trim();
         String sn = (statusName == null || statusName.isBlank()) ? "" : statusName.trim();
-        return containerRepository.search(kw, sn, pageable);
+        String yn = (yardName == null || yardName.isBlank()) ? "" : yardName.trim();
+        return containerRepository.search(kw, sn, yn, pageable);
     }
 
     @Override

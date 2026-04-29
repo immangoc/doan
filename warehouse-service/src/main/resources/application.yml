@@ -57,10 +57,12 @@ app:
     topic:
       yard-events: ${APP_KAFKA_TOPIC_YARD_EVENTS:yard-events}
 
-vnpay:
-  tmn-code: ${VNPAY_TMN_CODE:8WGPR2X7}
-  hash-secret: ${VNPAY_HASH_SECRET:T2XNHM65FD67Q5927E1523F3S3YPFH7T}
-  url: ${VNPAY_URL:https://sandbox.vnpayment.vn/paymentv2/vpcpay.html}
+ml:
+  service:
+    url: ${ML_SERVICE_URL:http://localhost:8000}
+    enabled: ${ML_SERVICE_ENABLED:true}
+    connect-timeout-ms: ${ML_SERVICE_CONNECT_TIMEOUT_MS:300}
+    read-timeout-ms: ${ML_SERVICE_READ_TIMEOUT_MS:800}
 
 jwt:
   secret: ${JWT_SECRET:change-me-secret-change-me-secret}

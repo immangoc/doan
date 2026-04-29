@@ -30,11 +30,20 @@ public class PreFilterModule {
      * Hard-coded cargo type name → yard type name mapping.
      * Keys are lowercase for case-insensitive matching.
      */
-    private static final Map<String, String> CARGO_TO_YARD = Map.of(
-            "hàng khô",       "dry",
-            "hàng lạnh",      "cold",
-            "hàng dễ vỡ",     "fragile",
-            "hàng nguy hiểm", "hazard"
+    private static final Map<String, String> CARGO_TO_YARD = Map.ofEntries(
+            Map.entry("hàng khô",       "dry"),
+            Map.entry("hàng lạnh",      "cold"),
+            Map.entry("hàng dễ vỡ",     "fragile"),
+            // V38 renamed "Hàng Nguy Hiểm" → "Hàng Khác". Keep both keys
+            // so old data still resolves; the hazard yard itself was
+            // removed in V13 so we route to the "other" yard.
+            Map.entry("hàng khác",      "other"),
+            Map.entry("khác",           "other"),
+            Map.entry("hàng nguy hiểm", "other"),
+            // "Hàng hỏng" goes to the damaged yard. Container damage flow
+            // bypasses the placement algorithm, but if a request still
+            // arrives here we honor the mapping rather than 400.
+            Map.entry("hàng hỏng",      "damaged")
     );
 
     private final SlotRepository slotRepository;
@@ -44,6 +53,10 @@ public class PreFilterModule {
      * Throws CARGO_ZONE_MISMATCH if cargo type is unknown.
      */
     public String resolveYardType(String cargoTypeName) {
+        if (cargoTypeName == null) {
+            throw new BusinessException(ErrorCode.CARGO_ZONE_MISMATCH,
+                    "Cargo type is required for yard mapping");
+        }
         String yardType = CARGO_TO_YARD.get(cargoTypeName.toLowerCase().trim());
         if (yardType == null) {
             throw new BusinessException(ErrorCode.CARGO_ZONE_MISMATCH,
@@ -80,7 +93,8 @@ public class PreFilterModule {
             if (newGrossWeight != null &&
                 newGrossWeight.doubleValue() / 1000.0 > AppConstant.MAX_STACK_WEIGHT_TONS) {
                 throw new BusinessException(ErrorCode.BAD_REQUEST,
-                        "Container gross weight exceeds maximum stack weight: " + newGrossWeight);
+                        "Trọng lượng container (" + newGrossWeight + " kg) vượt quá giới hạn "
+                                + (long) AppConstant.MAX_STACK_WEIGHT_TONS + " tấn.");
             }
 
             int zoneId       = slot.getBlock().getZone().getZoneId();

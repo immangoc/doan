@@ -14,7 +14,9 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
+@Tag(name = "Nhật ký hệ thống", description = "Xem log hoạt động hệ thống")
 @RestController
 @RequestMapping("/admin/system-logs")
 @RequiredArgsConstructor

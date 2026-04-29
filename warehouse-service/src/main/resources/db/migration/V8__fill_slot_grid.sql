@@ -8,15 +8,15 @@
 --
 -- Fix: add missing slots so every block has row_no 1-4 × bay_no 1-8 = 32 slots.
 -- max_tier per block type:
---   Dry (A*)  → 5   Cold (B*)  → 4   Fragile (C*)  → 3   Hazard (D*)  → 3
+--   Dry (A*)  → 4   Cold (B*)  → 4   Fragile (C*)  → 3   Hazard (D*)  → 3
 -- Existing slots are preserved via NOT EXISTS guard.
 -- =============================================================
 SET client_encoding = 'UTF8';
 
--- ─── Dry zone blocks (max_tier = 5) ─────────────────────────────────────────
+-- ─── Dry zone blocks (max_tier = 4) ─────────────────────────────────────────
 
 INSERT INTO slots (block_id, row_no, bay_no, max_tier)
-SELECT b.block_id, r.row_no, c.bay_no, 5
+SELECT b.block_id, r.row_no, c.bay_no, 4
 FROM blocks b
 CROSS JOIN generate_series(1, 4) AS r(row_no)
 CROSS JOIN generate_series(1, 8) AS c(bay_no)
@@ -27,7 +27,7 @@ WHERE b.block_name = 'A1-BLK1'
   );
 
 INSERT INTO slots (block_id, row_no, bay_no, max_tier)
-SELECT b.block_id, r.row_no, c.bay_no, 5
+SELECT b.block_id, r.row_no, c.bay_no, 4
 FROM blocks b
 CROSS JOIN generate_series(1, 4) AS r(row_no)
 CROSS JOIN generate_series(1, 8) AS c(bay_no)
@@ -38,7 +38,7 @@ WHERE b.block_name = 'A2-BLK1'
   );
 
 INSERT INTO slots (block_id, row_no, bay_no, max_tier)
-SELECT b.block_id, r.row_no, c.bay_no, 5
+SELECT b.block_id, r.row_no, c.bay_no, 4
 FROM blocks b
 CROSS JOIN generate_series(1, 4) AS r(row_no)
 CROSS JOIN generate_series(1, 8) AS c(bay_no)
@@ -49,7 +49,7 @@ WHERE b.block_name = 'A3-BLK1'
   );
 
 INSERT INTO slots (block_id, row_no, bay_no, max_tier)
-SELECT b.block_id, r.row_no, c.bay_no, 5
+SELECT b.block_id, r.row_no, c.bay_no, 4
 FROM blocks b
 CROSS JOIN generate_series(1, 4) AS r(row_no)
 CROSS JOIN generate_series(1, 8) AS c(bay_no)

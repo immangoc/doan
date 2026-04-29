@@ -1,8 +1,13 @@
 import { useState, useEffect } from 'react';
-import { Search, ChevronLeft, ChevronRight, X, Wrench, FileEdit, CheckCircle } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, X, Wrench, FileEdit, CheckCircle, Eye, ArrowRight, ArrowLeft, Trash2, Sparkles } from 'lucide-react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
-import { fetchContainers, fetchStatusHistory, updateDamageDetails, markRepaired } from '../services/containerService';
-import type { Container, StatusHistoryEntry, ContainerFilter, DamageDetailsPayload } from '../services/containerService';
+import { fetchStatusHistory, updateDamageDetails } from '../services/containerService';
+import type { StatusHistoryEntry, DamageDetailsPayload } from '../services/containerService';
+import {
+  previewMove, moveToDamagedYard, cancelDamage, fetchAllDamages, returnToYard, previewReturnToYard,
+  type DamageReport, type RelocationPlan, type MoveToDamagedYardPayload, type ReturnPreview,
+} from '../services/damageService';
+import { clearPendingOptimistic } from '../store/damageStore';
 import './management.css';
 
 const TYPE_OPTIONS = ['', '20ft', '40ft'];
@@ -42,21 +47,21 @@ function formatCurrency(val: string): string {
 }
 
 // ─── Damage Details Modal ──────────────────────────────────────────────────────
-function DamageDetailsModal({ container, onClose, onSaved }: {
-  container: Container;
+function DamageDetailsModal({ report, onClose, onSaved }: {
+  report: DamageReport;
   onClose: () => void;
   onSaved: () => void;
 }) {
-  const [repairStatus, setRepairStatus] = useState(container.repairStatus || '');
+  const [repairStatus, setRepairStatus] = useState(report.repairStatus || '');
   const [repairDate, setRepairDate] = useState(() => {
-    if (!container.repairDate) return '';
-    const d = new Date(container.repairDate);
+    if (!report.repairDate) return '';
+    const d = new Date(report.repairDate);
     if (isNaN(d.getTime())) return '';
     return d.toISOString().slice(0, 16);
   });
   const [compensationCost, setCompensationCost] = useState(
-    container.compensationCost && Number(container.compensationCost) > 0
-      ? String(Number(container.compensationCost))
+    report.compensationCost && Number(report.compensationCost) > 0
+      ? String(Number(report.compensationCost))
       : ''
   );
   const [saving, setSaving] = useState(false);
@@ -70,7 +75,7 @@ function DamageDetailsModal({ container, onClose, onSaved }: {
       if (repairStatus) payload.repairStatus = repairStatus;
       if (repairDate) payload.repairDate = new Date(repairDate).toISOString();
       if (compensationCost) payload.compensationCost = Number(compensationCost);
-      await updateDamageDetails(container.containerCode, payload);
+      await updateDamageDetails(report.containerCode, payload);
       onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Lỗi cập nhật');
@@ -85,7 +90,7 @@ function DamageDetailsModal({ container, onClose, onSaved }: {
         <div className="mgmt-modal-header">
           <h3 className="mgmt-modal-title">
             <FileEdit size={16} style={{ marginRight: 6, verticalAlign: 'middle' }} />
-            Cập nhật thông tin hỏng — {container.containerCode}
+            Cập nhật thông tin hỏng — {report.containerCode}
           </h3>
           <button className="mgmt-modal-close" onClick={onClose}><X size={16} /></button>
         </div>
@@ -209,62 +214,327 @@ function HistoryPanel({ containerCode, onClose }: {
   );
 }
 
+// ─── Move-to-damaged-yard Modal ─────────────────────────────────────────────
+function MoveToDamagedYardModal({ report, busy, onClose, onSubmit }: {
+  report: DamageReport;
+  busy: boolean;
+  onClose: () => void;
+  onSubmit: (payload: MoveToDamagedYardPayload) => void;
+}) {
+  const [repairDate, setRepairDate] = useState(() => {
+    const d = new Date();
+    d.setDate(d.getDate() + 14);
+    return d.toISOString().slice(0, 10); // yyyy-MM-dd
+  });
+  const [compensation, setCompensation] = useState<string>('');
+  const [note, setNote] = useState('');
+
+  function submit() {
+    onSubmit({
+      expectedRepairDate: repairDate || undefined,
+      compensationCost:   compensation ? Number(compensation) : undefined,
+      repairNote:         note.trim() || undefined,
+    });
+  }
+
+  return (
+    <div
+      onClick={busy ? undefined : onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ background: '#fff', borderRadius: 12, padding: 24, minWidth: 360, maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#1e3a8a' }}>Chuyển vào kho hỏng</h3>
+          <button onClick={onClose} disabled={busy} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: 14 }}>
+          Container <strong>{report.containerCode}</strong> sẽ được đảo ra khỏi vị trí hiện tại và chuyển vào kho hỏng.
+          Vui lòng nhập thời gian sửa chữa dự kiến và tiền hoàn cho khách (nếu có).
+        </p>
+
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: 'block', fontSize: '0.82rem', color: '#374151', fontWeight: 500, marginBottom: 4 }}>
+            Ngày dự kiến sửa xong
+          </label>
+          <input
+            type="date"
+            value={repairDate}
+            onChange={(e) => setRepairDate(e.target.value)}
+            style={{ width: '100%', padding: '0.5rem 0.6rem', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.88rem' }}
+          />
+        </div>
+
+        <div style={{ marginBottom: 12 }}>
+          <label style={{ display: 'block', fontSize: '0.82rem', color: '#374151', fontWeight: 500, marginBottom: 4 }}>
+            Tiền hoàn cho khách (VND)
+          </label>
+          <input
+            type="number"
+            min="0"
+            step="100000"
+            value={compensation}
+            onChange={(e) => setCompensation(e.target.value)}
+            placeholder="VD: 5000000"
+            style={{ width: '100%', padding: '0.5rem 0.6rem', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.88rem' }}
+          />
+        </div>
+
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ display: 'block', fontSize: '0.82rem', color: '#374151', fontWeight: 500, marginBottom: 4 }}>
+            Ghi chú (tùy chọn)
+          </label>
+          <textarea
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="VD: Đã liên hệ chủ hàng, đồng ý hoàn 5tr."
+            rows={2}
+            style={{ width: '100%', padding: '0.5rem 0.6rem', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.88rem', fontFamily: 'inherit', resize: 'vertical' }}
+          />
+        </div>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={onClose}
+            disabled={busy}
+            style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: '1px solid #e5e7eb', background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}
+          >
+            Hủy
+          </button>
+          <button
+            onClick={submit}
+            disabled={busy}
+            style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: 'none', background: '#1e3a8a', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}
+          >
+            {busy ? 'Đang xử lý...' : 'Xác nhận chuyển'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Return Preview Modal ───────────────────────────────────────────────────
+function ReturnPreviewModal({ report, preview, busy, onClose, onConfirm }: {
+  report:  DamageReport;
+  preview: ReturnPreview;
+  busy:    boolean;
+  onClose: () => void;
+  onConfirm: () => void;
+}) {
+  const mlPct    = preview.mlScore != null    ? `${(preview.mlScore * 100).toFixed(1)}%`    : '—';
+  const finalPct = preview.finalScore != null ? `${(preview.finalScore * 100).toFixed(1)}%` : '—';
+  const movesPct = preview.movesNorm != null  ? `${(preview.movesNorm * 100).toFixed(1)}%`  : '—';
+  const exitPct  = preview.exitNorm != null   ? `${(preview.exitNorm * 100).toFixed(1)}%`   : '—';
+
+  return (
+    <div
+      onClick={busy ? undefined : onClose}
+      style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', zIndex: 9999,
+               display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{ background: '#fff', borderRadius: 12, padding: 24, minWidth: 420, maxWidth: 540,
+                 boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+          <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#059669', display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Sparkles size={18} /> Vị trí đề xuất bởi ML
+          </h3>
+          <button onClick={onClose} disabled={busy} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+            <X size={18} />
+          </button>
+        </div>
+
+        <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: 14 }}>
+          Container <strong>{report.containerCode}</strong> sẽ được chuyển về vị trí dưới đây.
+          Hệ thống đã chọn vị trí tối ưu nhất dựa trên model LightGBM + heuristic stacking.
+        </p>
+
+        {/* Vị trí đề xuất */}
+        <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', borderRadius: 8, padding: '14px 16px', marginBottom: 14 }}>
+          <div style={{ fontSize: '0.78rem', color: '#047857', fontWeight: 600, marginBottom: 8 }}>VỊ TRÍ MỚI</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.55rem 1rem', fontSize: '0.88rem' }}>
+            <div><span style={{ color: '#6b7280' }}>Kho:</span> <strong>{preview.yardName}</strong></div>
+            <div><span style={{ color: '#6b7280' }}>Zone:</span> <strong>{preview.zoneName}</strong></div>
+            <div><span style={{ color: '#6b7280' }}>Block:</span> <strong>{preview.blockName}</strong></div>
+            <div><span style={{ color: '#6b7280' }}>Tầng:</span> <strong>Tier {preview.recommendedTier}</strong></div>
+            <div><span style={{ color: '#6b7280' }}>Hàng (Row):</span> <strong>R{preview.rowNo}</strong></div>
+            <div><span style={{ color: '#6b7280' }}>Cột (Bay):</span> <strong>B{preview.bayNo}</strong></div>
+          </div>
+        </div>
+
+        {/* Chỉ số ML */}
+        <div style={{ background: '#f9fafb', border: '1px solid #e5e7eb', borderRadius: 8, padding: '12px 14px', marginBottom: 16 }}>
+          <div style={{ fontSize: '0.78rem', color: '#374151', fontWeight: 600, marginBottom: 8 }}>CHỈ SỐ TỐI ƯU</div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.4rem 1rem', fontSize: '0.82rem', color: '#4b5563' }}>
+            <div>ML score: <strong style={{ color: '#1e3a8a' }}>{mlPct}</strong></div>
+            <div>Final score: <strong style={{ color: '#1e3a8a' }}>{finalPct}</strong></div>
+            <div>Moves cost: <strong>{movesPct}</strong></div>
+            <div>Exit distance: <strong>{exitPct}</strong></div>
+            {preview.relocationsEstimated != null && (
+              <div style={{ gridColumn: '1 / -1' }}>
+                Dự kiến đảo: <strong>{preview.relocationsEstimated} container</strong>
+              </div>
+            )}
+          </div>
+        </div>
+
+        <p style={{ fontSize: '0.78rem', color: '#9ca3af', marginBottom: 14, fontStyle: 'italic' }}>
+          ML score càng cao = vị trí càng "lành" (ít cản trở, thoáng zone, dễ xuất); final score là tổng hợp tất cả tiêu chí.
+        </p>
+
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button
+            onClick={onClose}
+            disabled={busy}
+            style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: '1px solid #e5e7eb',
+                     background: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}
+          >
+            Hủy
+          </button>
+          <button
+            onClick={onConfirm}
+            disabled={busy}
+            style={{ flex: 1, padding: '10px 0', borderRadius: 8, border: 'none',
+                     background: '#059669', color: '#fff', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}
+          >
+            {busy ? 'Đang chuyển...' : 'Xác nhận chuyển'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
+type StatusFilter = 'ALL' | 'PENDING' | 'STORED';
+
+function statusLabel(s: string): { text: string; cls: string } {
+  switch (s) {
+    case 'PENDING':    return { text: 'Đã báo hỏng',     cls: 'mgmt-badge mgmt-badge-warning' };
+    case 'RELOCATING': return { text: 'Đang đảo',        cls: 'mgmt-badge mgmt-badge-info' };
+    case 'STORED':     return { text: 'Trong kho hỏng',  cls: 'mgmt-badge mgmt-badge-critical' };
+    default:           return { text: s,                  cls: 'mgmt-badge mgmt-badge-neutral' };
+  }
+}
+
 export function Kho() {
-  const [containers, setContainers] = useState<Container[]>([]);
-  const [page, setPage] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalItems, setTotalItems] = useState(0);
+  const [reports, setReports] = useState<DamageReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
-  const [filter, setFilter] = useState<ContainerFilter>({ statusName: 'DAMAGED' });
-  const [pendingFilter, setPendingFilter] = useState<ContainerFilter>({ statusName: 'DAMAGED' });
+  const [keyword, setKeyword] = useState('');
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
 
-  const [selectedContainer, setSelectedContainer] = useState<Container | null>(null);
-  const [editingContainer, setEditingContainer] = useState<Container | null>(null);
-  const [repairingId, setRepairingId] = useState<string | null>(null);
+  const [selectedHistory, setSelectedHistory] = useState<DamageReport | null>(null);
+  const [editingReport, setEditingReport] = useState<DamageReport | null>(null);
+  const [moveTarget, setMoveTarget]       = useState<DamageReport | null>(null);
+  const [returnTarget, setReturnTarget]   = useState<{ report: DamageReport; preview: ReturnPreview } | null>(null);
+  const [busyCode, setBusyCode]           = useState<string | null>(null);
+  const [planByCode, setPlanByCode]       = useState<Record<string, RelocationPlan>>({});
+  const [bannerError, setBannerError]     = useState<string | null>(null);
+  const [bannerSuccess, setBannerSuccess] = useState<string | null>(null);
 
-  function applyFilter() {
-    setFilter((prev) => ({ ...prev, ...pendingFilter, statusName: 'DAMAGED' }));
-    setPage(0);
-  }
-
-  function reload() {
-    setReloadKey((k) => k + 1);
-  }
-
-  async function handleMarkRepaired(containerId: string) {
-    if (!confirm('Xác nhận đánh dấu container đã sửa xong? Container sẽ chuyển về trạng thái AVAILABLE.')) return;
-    setRepairingId(containerId);
-    try {
-      await markRepaired(containerId);
-      reload();
-    } catch (e) {
-      alert(e instanceof Error ? e.message : 'Lỗi cập nhật');
-    } finally {
-      setRepairingId(null);
-    }
-  }
+  function reload() { setReloadKey((k) => k + 1); }
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setError(null);
-    fetchContainers(filter, page)
-      .then((result) => {
-        if (cancelled) return;
-        setContainers(result.content);
-        setTotalPages(result.totalPages);
-        setTotalItems(result.totalElements);
-      })
+    fetchAllDamages()
+      .then((list) => { if (!cancelled) setReports(list); })
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : 'Lỗi tải dữ liệu'); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, [filter, page, reloadKey]);
+  }, [reloadKey]);
 
-  const pageNums = Array.from({ length: totalPages }, (_, i) => i);
+  // Slow polling
+  useEffect(() => {
+    const id = window.setInterval(() => { reload(); }, 20_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  // Action handlers ─────────────────────────────────────────────────────────
+
+  async function handlePreview(code: string) {
+    setBusyCode(code); setBannerError(null);
+    try {
+      const plan = await previewMove(code);
+      setPlanByCode((prev) => ({ ...prev, [code]: plan }));
+    } catch (e) {
+      setBannerError(e instanceof Error ? e.message : 'Không tải được kế hoạch');
+    } finally { setBusyCode(null); }
+  }
+
+  async function confirmMove(code: string, payload: MoveToDamagedYardPayload) {
+    setBusyCode(code); setBannerError(null); setBannerSuccess(null);
+    try {
+      await moveToDamagedYard(code, payload);
+      clearPendingOptimistic(code);
+      setPlanByCode((prev) => { const n = { ...prev }; delete n[code]; return n; });
+      setBannerSuccess(`Đã chuyển ${code} vào kho hỏng.`);
+      setMoveTarget(null);
+      reload();
+    } catch (e) {
+      setBannerError(e instanceof Error ? e.message : 'Chuyển kho hỏng thất bại');
+    } finally { setBusyCode(null); }
+  }
+
+  async function handleCancel(code: string) {
+    if (!confirm(`Huỷ báo hỏng ${code}?`)) return;
+    setBusyCode(code); setBannerError(null);
+    try {
+      await cancelDamage(code);
+      clearPendingOptimistic(code);
+      reload();
+    } catch (e) {
+      setBannerError(e instanceof Error ? e.message : 'Huỷ thất bại');
+    } finally { setBusyCode(null); }
+  }
+
+  async function openReturnPreview(report: DamageReport) {
+    setBusyCode(report.containerCode); setBannerError(null);
+    try {
+      const preview = await previewReturnToYard(report.containerCode);
+      setReturnTarget({ report, preview });
+    } catch (e) {
+      setBannerError(e instanceof Error ? e.message : 'Không lấy được vị trí đề xuất');
+    } finally { setBusyCode(null); }
+  }
+
+  async function confirmReturn(containerId: string) {
+    setBusyCode(containerId); setBannerError(null); setBannerSuccess(null);
+    try {
+      await returnToYard(containerId);
+      setBannerSuccess(`Đã chuyển ${containerId} về kho gốc (slot do ML chọn).`);
+      setReturnTarget(null);
+      reload();
+    } catch (e) {
+      setBannerError(e instanceof Error ? e.message : 'Chuyển về kho gốc thất bại');
+    } finally { setBusyCode(null); }
+  }
+
+  // Derived filtering ───────────────────────────────────────────────────────
+
+  const filtered = reports.filter((r) => {
+    if (statusFilter === 'PENDING' && !(r.reportStatus === 'PENDING' || r.reportStatus === 'RELOCATING')) return false;
+    if (statusFilter === 'STORED'  && r.reportStatus !== 'STORED') return false;
+    const kw = keyword.trim().toLowerCase();
+    if (!kw) return true;
+    return r.containerCode.toLowerCase().includes(kw)
+        || (r.cargoTypeName ?? '').toLowerCase().includes(kw);
+  });
+
+  const pendingCount = reports.filter((r) => r.reportStatus === 'PENDING' || r.reportStatus === 'RELOCATING').length;
+  const storedCount  = reports.filter((r) => r.reportStatus === 'STORED').length;
 
   return (
     <DashboardLayout>
@@ -273,11 +543,11 @@ export function Kho() {
         <div className="mgmt-header">
           <div className="mgmt-header-text">
             <h1>Quản lý kho hỏng</h1>
-            <p>Tiếp nhận, theo dõi và xử lý container trong kho hỏng</p>
+            <p>Tiếp nhận, theo dõi và xử lý container hỏng</p>
           </div>
-          {!loading && !error && (
-            <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>{totalItems} mục trong kho hỏng</span>
-          )}
+          <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>
+            {pendingCount} đang xử lý · {storedCount} trong kho hỏng
+          </span>
         </div>
 
         <div className="mgmt-filter-bar">
@@ -285,168 +555,237 @@ export function Kho() {
             <Search size={14} className="mgmt-search-ico" />
             <input
               type="text"
-              placeholder="Tìm mã container hỏng..."
-              value={pendingFilter.keyword ?? ''}
-              onChange={(e) => setPendingFilter((f) => ({ ...f, keyword: e.target.value }))}
-              onKeyDown={(e) => e.key === 'Enter' && applyFilter()}
+              placeholder="Tìm mã / loại hàng..."
+              value={keyword}
+              onChange={(e) => setKeyword(e.target.value)}
             />
           </div>
           <select
             className="mgmt-select"
-            value={pendingFilter.containerType ?? ''}
-            onChange={(e) => setPendingFilter((f) => ({ ...f, containerType: e.target.value }))}
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value as StatusFilter)}
           >
-            {TYPE_OPTIONS.map((t) => (
-              <option key={t} value={t}>{t || 'Tất cả loại'}</option>
-            ))}
+            <option value="ALL">Tất cả trạng thái</option>
+            <option value="PENDING">Đã báo hỏng / Đang đảo</option>
+            <option value="STORED">Trong kho hỏng</option>
           </select>
-          <button className="mgmt-apply-btn" onClick={applyFilter}>Tìm kiếm</button>
+          <button className="mgmt-apply-btn" onClick={reload}>Làm mới</button>
         </div>
+
+        {bannerError && (
+          <div style={{ padding: '0.5rem 0.75rem', background: '#fee2e2', color: '#7f1d1d',
+                        borderRadius: 6, fontSize: '0.82rem', marginBottom: '0.5rem' }}>
+            {bannerError}
+          </div>
+        )}
+        {bannerSuccess && (
+          <div style={{ padding: '0.5rem 0.75rem', background: '#d1fae5', color: '#065f46',
+                        borderRadius: 6, fontSize: '0.82rem', marginBottom: '0.5rem' }}>
+            {bannerSuccess}
+          </div>
+        )}
 
         <div className="mgmt-content-row">
           <div className="mgmt-table-wrap">
             <table className="mgmt-table">
               <thead>
                 <tr>
-                  <th>Mã container hỏng</th>
+                  <th>Mã container</th>
                   <th>Loại hàng</th>
                   <th>Kích thước</th>
-                  <th>Trọng lượng</th>
+                  <th>Vị trí</th>
+                  <th>Lý do</th>
                   <th>Trạng thái</th>
                   <th>TT sửa chữa</th>
                   <th>Ngày sửa</th>
-                  <th>Chi phí bồi thường</th>
-                  <th>Kho hỏng</th>
-                  <th>Zone</th>
-                  <th>Vị trí</th>
-                  <th>Ngày nhập</th>
+                  <th>Tiền hoàn</th>
+                  <th>Người báo</th>
+                  <th>Ngày báo</th>
                   <th>Thao tác</th>
                 </tr>
               </thead>
               <tbody>
                 {loading && (
-                  <tr className="mgmt-state-row">
-                    <td colSpan={13}>Đang tải dữ liệu...</td>
-                  </tr>
+                  <tr className="mgmt-state-row"><td colSpan={12}>Đang tải...</td></tr>
                 )}
                 {!loading && error && (
-                  <tr className="mgmt-state-row mgmt-state-error">
-                    <td colSpan={13}>{error}</td>
-                  </tr>
+                  <tr className="mgmt-state-row mgmt-state-error"><td colSpan={12}>{error}</td></tr>
                 )}
-                {!loading && !error && containers.length === 0 && (
+                {!loading && !error && filtered.length === 0 && (
                   <tr className="mgmt-state-row">
-                    <td colSpan={13}>Không tìm thấy container damaged</td>
+                    <td colSpan={12}>Chưa có container nào được báo hỏng</td>
                   </tr>
                 )}
-                {!loading && !error && containers.map((c) => (
-                  <tr
-                    key={c.containerId}
-                    onClick={() => setSelectedContainer(
-                      selectedContainer?.containerCode === c.containerCode ? null : c
+                {!loading && !error && filtered.map((r) => {
+                  const plan = planByCode[r.containerCode];
+                  const isPending = r.reportStatus === 'PENDING';
+                  const isStored  = r.reportStatus === 'STORED';
+                  const isBusy    = busyCode === r.containerCode;
+                  const sl = statusLabel(r.reportStatus);
+                  const location = r.currentZone
+                    ? `${r.currentYard ?? '—'} · ${r.currentZone}${r.currentTier ? ` · T${r.currentTier}` : ''}${r.currentSlot ? ` · ${r.currentSlot}` : ''}`
+                    : '—';
+                  return (
+                    <>
+                    <tr key={r.reportId}>
+                      <td><strong>{r.containerCode}</strong></td>
+                      <td>{r.cargoTypeName || '—'}</td>
+                      <td>
+                        <span className="mgmt-badge mgmt-badge-neutral">{r.sizeType || '—'}</span>
+                      </td>
+                      <td style={{ fontSize: '0.78rem' }}>{location}</td>
+                      <td style={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={r.reason}>
+                        {r.reason || '—'}
+                      </td>
+                      <td><span className={sl.cls}>{sl.text}</span></td>
+                      <td>
+                        {r.repairStatus ? (
+                          <span className={repairBadgeClass(r.repairStatus)}>{r.repairStatus}</span>
+                        ) : (
+                          <span style={{ color: '#9ca3af', fontSize: '0.78rem' }}>—</span>
+                        )}
+                      </td>
+                      <td>{formatDate(r.repairDate ?? '')}</td>
+                      <td>{r.compensationCost != null ? formatCurrency(String(r.compensationCost)) : '—'}</td>
+                      <td>{r.reportedBy || '—'}</td>
+                      <td>{formatDate(r.reportedAt ?? '')}</td>
+                      <td>
+                        <div style={{ display: 'flex', gap: '0.35rem', justifyContent: 'center' }}>
+                          {isPending && (
+                            <>
+                              <button
+                                title="Xem kế hoạch đảo"
+                                onClick={() => handlePreview(r.containerCode)}
+                                disabled={isBusy}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.2rem', color: '#6b7280', display: 'flex' }}
+                              >
+                                <Eye size={16} />
+                              </button>
+                              <button
+                                title="Chuyển vào kho hỏng"
+                                onClick={() => setMoveTarget(r)}
+                                disabled={isBusy || (plan != null && !plan.feasible)}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.2rem', color: '#1e3a8a', display: 'flex' }}
+                              >
+                                <ArrowRight size={16} />
+                              </button>
+                              <button
+                                title="Huỷ báo hỏng"
+                                onClick={() => handleCancel(r.containerCode)}
+                                disabled={isBusy}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.2rem', color: '#dc2626', display: 'flex' }}
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </>
+                          )}
+                          {isStored && (
+                            <>
+                              <button
+                                title="Cập nhật thông tin sửa chữa & bồi thường"
+                                onClick={() => setEditingReport(r)}
+                                style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.2rem', color: '#1e3a8a', display: 'flex' }}
+                              >
+                                <FileEdit size={16} />
+                              </button>
+                              <button
+                                title={
+                                  r.repairStatus === 'REPAIRED'
+                                    ? 'Xem vị trí đề xuất & chuyển về kho gốc (ML)'
+                                    : 'Cần đánh dấu repair_status = REPAIRED trước'
+                                }
+                                disabled={isBusy || r.repairStatus !== 'REPAIRED'}
+                                onClick={() => openReturnPreview(r)}
+                                style={{
+                                  background: 'none', border: 'none', cursor: r.repairStatus === 'REPAIRED' ? 'pointer' : 'not-allowed',
+                                  padding: '0.2rem',
+                                  color: r.repairStatus === 'REPAIRED' ? '#059669' : '#d1d5db',
+                                  display: 'flex', alignItems: 'center', gap: '0.15rem',
+                                }}
+                              >
+                                <Sparkles size={12} />
+                                <ArrowLeft size={16} />
+                              </button>
+                            </>
+                          )}
+                          {r.reportStatus === 'RELOCATING' && (
+                            <span style={{ color: '#9ca3af', fontSize: '0.75rem', padding: '0.2rem' }}>Đang xử lý...</span>
+                          )}
+                          <button
+                            title="Lịch sử trạng thái"
+                            onClick={() => setSelectedHistory(r)}
+                            style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.2rem', color: '#6b7280', display: 'flex' }}
+                          >
+                            <Wrench size={14} />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                    {plan && (
+                      <tr key={`${r.reportId}-plan`}>
+                        <td colSpan={12} style={{ background: '#f9fafb', padding: '0.6rem 1rem' }}>
+                          {plan.feasible ? (
+                            <>
+                              <div style={{ fontSize: '0.78rem', fontWeight: 600, marginBottom: '0.3rem', color: '#374151' }}>
+                                Kế hoạch đảo ({plan.blockerCount} blocker{plan.blockerCount !== 1 ? 's' : ''}):
+                              </div>
+                              {plan.moves.map((m, i) => (
+                                <div key={i} style={{ fontSize: '0.78rem', color: '#4b5563', padding: '0.1rem 0' }}>
+                                  {i + 1}. <b>{m.containerId}</b>: {m.fromZone} R{m.fromRow}-B{m.fromBay} T{m.fromTier}
+                                  {' → '}{m.toZone} R{m.toRow}-B{m.toBay} T{m.toTier}
+                                  {' '}<span style={{ color: '#9ca3af' }}>({m.purpose})</span>
+                                </div>
+                              ))}
+                            </>
+                          ) : (
+                            <div style={{ color: '#7f1d1d', fontSize: '0.82rem' }}>
+                              ❌ {plan.infeasibilityReason ?? 'Không khả thi'}
+                            </div>
+                          )}
+                        </td>
+                      </tr>
                     )}
-                    style={{ cursor: 'pointer' }}
-                  >
-                    <td><strong>{c.containerCode}</strong></td>
-                    <td>{c.cargoType || '—'}</td>
-                    <td>
-                      <span className="mgmt-badge mgmt-badge-neutral">{c.containerType || '—'}</span>
-                    </td>
-                    <td>{c.grossWeight}</td>
-                    <td>
-                      <span className={statusBadgeClass(c.status)}>{c.status || '—'}</span>
-                    </td>
-                    <td>
-                      {c.repairStatus ? (
-                        <span className={repairBadgeClass(c.repairStatus)}>{c.repairStatus}</span>
-                      ) : (
-                        <span style={{ color: '#9ca3af', fontSize: '0.78rem' }}>Chưa cập nhật</span>
-                      )}
-                    </td>
-                    <td>{formatDate(c.repairDate)}</td>
-                    <td>{formatCurrency(c.compensationCost)}</td>
-                    <td>{c.yardName || 'Kho hỏng'}</td>
-                    <td>{c.zoneName || '—'}</td>
-                    <td>{c.slot || '—'}</td>
-                    <td>{formatDate(c.createdAt)}</td>
-                    <td>
-                      <div style={{ display: 'flex', gap: '0.5rem', justifyContent: 'center' }} onClick={(e) => e.stopPropagation()}>
-                        <button
-                          title="Cập nhật thông tin hỏng"
-                          onClick={() => setEditingContainer(c)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.2rem', color: '#1e3a8a', display: 'flex' }}
-                        >
-                          <FileEdit size={16} />
-                        </button>
-                        <button
-                          title="Đánh dấu đã sửa xong"
-                          disabled={repairingId === c.containerCode}
-                          onClick={() => handleMarkRepaired(c.containerCode)}
-                          style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '0.2rem', color: '#059669', display: 'flex' }}
-                        >
-                          <CheckCircle size={16} />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                    </>
+                  );
+                })}
               </tbody>
             </table>
-
-            {!loading && !error && totalPages > 1 && (
-              <div className="mgmt-pagination">
-                <span>Trang {page + 1} / {totalPages}</span>
-                <div className="mgmt-pagination-btns">
-                  <button
-                    className="mgmt-page-btn"
-                    onClick={() => setPage((p) => p - 1)}
-                    disabled={page === 0}
-                  >
-                    <ChevronLeft size={14} />
-                  </button>
-                  {pageNums.slice(
-                    Math.max(0, page - 2),
-                    Math.min(totalPages, page + 3),
-                  ).map((n) => (
-                    <button
-                      key={n}
-                      className={`mgmt-page-btn ${n === page ? 'mgmt-page-btn-active' : ''}`}
-                      onClick={() => setPage(n)}
-                    >
-                      {n + 1}
-                    </button>
-                  ))}
-                  <button
-                    className="mgmt-page-btn"
-                    onClick={() => setPage((p) => p + 1)}
-                    disabled={page >= totalPages - 1}
-                  >
-                    <ChevronRight size={14} />
-                  </button>
-                </div>
-              </div>
-            )}
           </div>
 
-          {selectedContainer && (
+          {selectedHistory && (
             <HistoryPanel
-              containerCode={selectedContainer.containerCode}
-              onClose={() => setSelectedContainer(null)}
+              containerCode={selectedHistory.containerCode}
+              onClose={() => setSelectedHistory(null)}
             />
           )}
         </div>
 
-        {editingContainer && (
+        {editingReport && (
           <DamageDetailsModal
-            container={editingContainer}
-            onClose={() => setEditingContainer(null)}
-            onSaved={() => {
-              setEditingContainer(null);
-              reload();
-            }}
+            report={editingReport}
+            onClose={() => setEditingReport(null)}
+            onSaved={() => { setEditingReport(null); reload(); }}
           />
         )}
 
+        {moveTarget && (
+          <MoveToDamagedYardModal
+            report={moveTarget}
+            busy={busyCode === moveTarget.containerCode}
+            onClose={() => setMoveTarget(null)}
+            onSubmit={(payload) => confirmMove(moveTarget.containerCode, payload)}
+          />
+        )}
+
+        {returnTarget && (
+          <ReturnPreviewModal
+            report={returnTarget.report}
+            preview={returnTarget.preview}
+            busy={busyCode === returnTarget.report.containerCode}
+            onClose={() => setReturnTarget(null)}
+            onConfirm={() => confirmReturn(returnTarget.report.containerCode)}
+          />
+        )}
       </div>
     </DashboardLayout>
   );

@@ -71,6 +71,9 @@ export default function ContainerManagement() {
   const [error, setError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [page, setPage] = useState(0);
+  const [totalPages, setTotalPages] = useState(0);
+  const [totalElements, setTotalElements] = useState(0);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editing, setEditing] = useState<ContainerRow | null>(null);
   const [formData, setFormData] = useState<typeof EMPTY_FORM>({ ...EMPTY_FORM });
@@ -88,20 +91,22 @@ export default function ContainerManagement() {
     setLoading(true);
     setError('');
     try {
-      const params = new URLSearchParams({ page: '0', size: '100' });
+      const params = new URLSearchParams({ page: String(page), size: '20' });
       if (filterStatus !== 'all') params.set('statusName', filterStatus);
       if (searchTerm.trim()) params.set('keyword', searchTerm.trim());
       const res = await fetch(`${API_BASE}/admin/containers?${params}`, { headers });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Lỗi tải dữ liệu');
-      const content = data?.data?.content ?? [];
-      setContainers(content);
+      const pageData = data?.data ?? {};
+      setContainers(pageData.content ?? []);
+      setTotalPages(pageData.totalPages ?? 0);
+      setTotalElements(pageData.totalElements ?? 0);
     } catch (err: any) {
       setError(err.message || 'Lỗi');
     } finally {
       setLoading(false);
     }
-  }, [headers, filterStatus, searchTerm]);
+  }, [headers, filterStatus, searchTerm, page]);
 
   useEffect(() => { fetchContainers(); }, [fetchContainers]);
 
@@ -220,11 +225,11 @@ export default function ContainerManagement() {
   const canDelete = user?.role === 'admin';
 
   const stats = useMemo(() => ([
-    { label: 'Tổng container', count: containers.length, color: 'bg-blue-500' },
+    { label: 'Tổng container', count: totalElements, color: 'bg-blue-500' },
     { label: 'Chờ hạ bãi',  count: containers.filter((c) => c.statusName === 'GATE_IN').length, color: 'bg-yellow-500' },
     { label: 'Trong bãi',   count: containers.filter((c) => c.statusName === 'IN_YARD').length, color: 'bg-blue-600' },
     { label: 'Đã xuất',     count: containers.filter((c) => c.statusName === 'EXPORTED').length, color: 'bg-green-500' },
-  ]), [containers]);
+  ]), [containers, totalElements]);
 
   return (
     <WarehouseLayout>
@@ -374,11 +379,11 @@ export default function ContainerManagement() {
                 <Input
                   placeholder="Tìm mã container..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={(e) => { setSearchTerm(e.target.value); setPage(0); }}
                   className="pl-10"
                 />
               </div>
-              <Select value={filterStatus} onValueChange={setFilterStatus}>
+              <Select value={filterStatus} onValueChange={(v) => { setFilterStatus(v); setPage(0); }}>
                 <SelectTrigger className="w-full sm:w-56">
                   <Filter className="w-4 h-4 mr-2" /><SelectValue />
                 </SelectTrigger>
@@ -401,7 +406,7 @@ export default function ContainerManagement() {
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Package className="w-5 h-5 text-blue-600" />
-              Danh sách Container ({filteredContainers.length})
+              Danh sách Container ({totalElements})
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -501,6 +506,30 @@ export default function ContainerManagement() {
                   <div className="text-center py-12">
                     <Package className="w-12 h-12 text-gray-300 mx-auto mb-3" />
                     <p className="text-gray-500">Không có container phù hợp</p>
+                  </div>
+                )}
+                {/* Pagination */}
+                {totalPages > 1 && (
+                  <div className="flex items-center justify-between pt-4 border-t mt-4">
+                    <p className="text-sm text-gray-500">
+                      Trang {page + 1} / {totalPages} · Tổng {totalElements} container
+                    </p>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="outline" size="sm"
+                        disabled={page === 0}
+                        onClick={() => setPage((p) => Math.max(0, p - 1))}
+                      >
+                        ← Trước
+                      </Button>
+                      <Button
+                        variant="outline" size="sm"
+                        disabled={page >= totalPages - 1}
+                        onClick={() => setPage((p) => p + 1)}
+                      >
+                        Sau →
+                      </Button>
+                    </div>
                   </div>
                 )}
               </div>

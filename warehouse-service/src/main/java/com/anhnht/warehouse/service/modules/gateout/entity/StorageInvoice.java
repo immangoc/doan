@@ -32,16 +32,16 @@ public class StorageInvoice {
     @Column(name = "storage_days", nullable = false)
     private Integer storageDays;
 
-    @Column(name = "daily_rate", nullable = false, precision = 12, scale = 2)
+    @Column(name = "daily_rate", nullable = false, precision = 18, scale = 2)
     private BigDecimal dailyRate;
 
-    @Column(name = "base_fee", nullable = false, precision = 12, scale = 2)
+    @Column(name = "base_fee", nullable = false, precision = 18, scale = 2)
     private BigDecimal baseFee;
 
-    @Column(name = "overdue_penalty", nullable = false, precision = 12, scale = 2)
+    @Column(name = "overdue_penalty", nullable = false, precision = 18, scale = 2)
     private BigDecimal overduePenalty;
 
-    @Column(name = "total_fee", nullable = false, precision = 12, scale = 2)
+    @Column(name = "total_fee", nullable = false, precision = 18, scale = 2)
     private BigDecimal totalFee;
 
     @Column(name = "is_overdue", nullable = false)

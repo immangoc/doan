@@ -31,11 +31,20 @@ public interface ContainerRepository extends JpaRepository<Container, String> {
     @EntityGraph(attributePaths = {"containerType", "status", "cargoType", "attribute", "manifest"})
     @Query(value = "SELECT c FROM Container c WHERE " +
                    "(:keyword = '' OR LOWER(c.containerId) LIKE LOWER(CONCAT('%',:keyword,'%'))) AND " +
-                   "(:statusName = '' OR c.status.statusName = :statusName)",
+                   "(:statusName = '' OR c.status.statusName = :statusName) AND " +
+                   "(:yardName = '' OR EXISTS (" +
+                   "  SELECT 1 FROM ContainerPosition cp WHERE cp.container.containerId = c.containerId " +
+                   "  AND cp.slot.block.zone.yard.yardName = :yardName))",
            countQuery = "SELECT COUNT(c) FROM Container c WHERE " +
                         "(:keyword = '' OR LOWER(c.containerId) LIKE LOWER(CONCAT('%',:keyword,'%'))) AND " +
-                        "(:statusName = '' OR c.status.statusName = :statusName)")
-    Page<Container> search(@Param("keyword") String keyword, @Param("statusName") String statusName, Pageable pageable);
+                        "(:statusName = '' OR c.status.statusName = :statusName) AND " +
+                        "(:yardName = '' OR EXISTS (" +
+                        "  SELECT 1 FROM ContainerPosition cp WHERE cp.container.containerId = c.containerId " +
+                        "  AND cp.slot.block.zone.yard.yardName = :yardName))")
+    Page<Container> search(@Param("keyword") String keyword,
+                           @Param("statusName") String statusName,
+                           @Param("yardName") String yardName,
+                           Pageable pageable);
 
     @EntityGraph(attributePaths = {"containerType", "status", "cargoType", "attribute", "manifest"})
     @Query("SELECT c FROM Container c WHERE c.containerId = :id")

@@ -40,6 +40,11 @@ export async function apiFetch(path: string, options: RequestInit = {}, token?: 
   };
   const res = await fetch(`${API_BASE}${path}`, { ...options, headers });
   if (res.status === 401) {
+    // If this is a login attempt, don't redirect — let the error bubble up to the form
+    if (path === '/auth/login') {
+      const data = await res.json().catch(() => ({ message: 'Email hoặc mật khẩu không đúng.' }));
+      throw new Error(data.message || 'Email hoặc mật khẩu không đúng.');
+    }
     // Token expired or invalidated — clear session and redirect to login
     localStorage.removeItem('ht_token');
     localStorage.removeItem('ht_user');

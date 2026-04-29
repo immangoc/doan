@@ -22,7 +22,9 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.stream.Collectors;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
+@Tag(name = "Chat", description = "Hệ thống tin nhắn nội bộ")
 @RestController
 @RequiredArgsConstructor
 @PreAuthorize("isAuthenticated()")

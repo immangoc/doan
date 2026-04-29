@@ -13,7 +13,9 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
+@Tag(name = "Bãi kho", description = "Quản lý bãi, khu vực, block và slot")
 @RestController
 @RequestMapping("/admin")
 @RequiredArgsConstructor

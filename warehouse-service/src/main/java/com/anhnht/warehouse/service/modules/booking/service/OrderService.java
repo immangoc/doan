@@ -3,7 +3,9 @@ package com.anhnht.warehouse.service.modules.booking.service;
 import com.anhnht.warehouse.service.modules.booking.dto.request.OrderCancelRequest;
 import com.anhnht.warehouse.service.modules.booking.dto.request.OrderRequest;
 import com.anhnht.warehouse.service.modules.booking.dto.request.OrderStatusUpdateRequest;
+import com.anhnht.warehouse.service.modules.booking.dto.request.OrderExportDateUpdateRequest;
 import com.anhnht.warehouse.service.modules.booking.dto.request.OrderUpdateRequest;
+import com.anhnht.warehouse.service.modules.booking.dto.response.OrderExportDateFeeResponse;
 import com.anhnht.warehouse.service.modules.booking.entity.Order;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -67,4 +69,13 @@ public interface OrderService {
 
     /** Returns the most recent non-terminal order containing this container, or null. */
     Order findOrderByContainerId(String containerId);
+
+    /**
+     * Customer changes the export date of a STORED order.
+     * Computes the fee from FeeConfig (early-pickup or overdue penalty) and,
+     * when {@code request.confirmPayment} is true, debits the customer wallet
+     * and persists the new exportDate. Otherwise returns a preview.
+     */
+    OrderExportDateFeeResponse changeExportDate(Integer orderId, Integer customerId,
+                                                OrderExportDateUpdateRequest request);
 }

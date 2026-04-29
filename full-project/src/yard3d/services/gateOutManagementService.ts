@@ -13,11 +13,31 @@ export interface GateOutInvoice {
   invoiceId: number;
   containerCode: string;
   cargoType: string;
+  containerType: string;
   gateInTime: string;
   gateOutTime: string;
   storageDays: number;
   feePerDay: string;
+  baseFee: string;
+  overduePenalty: string;
   totalAmount: string;
+  isOverdue: boolean;
+  overdueDays: number;
+}
+
+function fmtDateTime(raw: string): string {
+  if (!raw) return '—';
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return raw;
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function fmtMoney(raw: unknown): string {
+  if (raw == null || raw === '') return '—';
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return String(raw);
+  return n.toLocaleString('vi-VN') + ' đ';
 }
 
 /**
@@ -52,13 +72,18 @@ export async function fetchGateOutInvoice(gateOutId: number): Promise<GateOutInv
   const json: Rec = await res.json();
   const d: Rec = json.data ?? json;
   return {
-    invoiceId:     Number(d.invoiceId ?? d.id ?? 0),
-    containerCode: String(d.containerCode ?? d.code ?? ''),
-    cargoType:     String(d.cargoTypeName ?? d.cargoType ?? ''),
-    gateInTime:    String(d.gateInTime ?? d.startTime ?? ''),
-    gateOutTime:   String(d.gateOutTime ?? d.endTime ?? ''),
-    storageDays:   Number(d.storageDays ?? d.days ?? 0),
-    feePerDay:     String(d.feePerDay ?? d.rate ?? '—'),
-    totalAmount:   String(d.totalAmount ?? d.total ?? d.amount ?? '—'),
+    invoiceId:      Number(d.invoiceId ?? d.id ?? 0),
+    containerCode:  String(d.containerCode ?? d.containerId ?? d.code ?? '—'),
+    cargoType:      String(d.cargoTypeName ?? d.cargoType ?? '—'),
+    containerType:  String(d.containerTypeName ?? d.containerType ?? '—'),
+    gateInTime:     fmtDateTime(String(d.gateInTime ?? d.startTime ?? '')),
+    gateOutTime:    fmtDateTime(String(d.gateOutTime ?? d.endTime ?? '')),
+    storageDays:    Number(d.storageDays ?? d.days ?? 0),
+    feePerDay:      fmtMoney(d.dailyRate ?? d.feePerDay ?? d.rate),
+    baseFee:        fmtMoney(d.baseFee),
+    overduePenalty: fmtMoney(d.overduePenalty),
+    totalAmount:    fmtMoney(d.totalFee ?? d.totalAmount ?? d.total ?? d.amount),
+    isOverdue:      Boolean(d.isOverdue),
+    overdueDays:    Number(d.overdueDays ?? 0),
   };
 }

@@ -2,28 +2,288 @@ import { useEffect, useMemo, useState } from 'react';
 import { useWarehouseAuth, API_BASE } from '../../../contexts/WarehouseAuthContext';
 import PageHeader from '../../../components/warehouse/PageHeader';
 
-type FeeConfig = {
-  configId?: number;
-  currency?: string;
-  costRate?: number;
-  ratePerKgDefault?: number;
-  ratePerKgByCargoType?: Record<string, number>;
-  liftingFeePerMove?: number;
-  overduePenaltyRate?: number;
-  coldStorageSurcharge?: number;
-  hazmatSurcharge?: number;
-  freeStorageDays?: number;
-  storageMultiplier?: number;
-  weightMultiplier?: number;
-  containerRate20ft?: number;
-  containerRate40ft?: number;
-  earlyPickupFee?: number;
-  updatedAt?: string;
+type TariffDefinition = {
+  code: string;
+  name: string;
+  feeType: string;
+  unit: string;
+  unitLabel: string;
+  defaultValue: number;
+  containerSize?: number | null;
+  cargoTypeName?: string | null;
+  note?: string;
+  step?: number;
 };
 
-type SectionKey = 'basic' | 'cargoType' | 'lifting' | 'overdue' | 'cold' | 'hazmat' | 'multipliers';
+type TariffResponse = {
+  tariffCode: string;
+  unitPrice: number;
+};
 
-const fmt = (v?: number | null) => (v != null ? v.toLocaleString('vi-VN') : '—');
+type FeeConfigResponse = {
+  containerRate20ft?: number | null;
+  containerRate40ft?: number | null;
+  storageMultiplier?: number | null;
+  weightMultiplier?: number | null;
+  earlyPickupFee?: number | null;
+};
+
+const tariffDefinitions: TariffDefinition[] = [
+  {
+    code: 'STORAGE_20_DRY',
+    name: 'Giá lưu kho container 20ft - Hàng khô',
+    feeType: 'STORAGE',
+    unit: 'PER_DAY',
+    unitLabel: 'VND/ngày',
+    defaultValue: 150000,
+    containerSize: 20,
+    cargoTypeName: 'Hàng Khô',
+    note: 'Hàng khô',
+    step: 1000,
+  },
+  {
+    code: 'STORAGE_20_COLD',
+    name: 'Giá lưu kho container 20ft - Hàng lạnh',
+    feeType: 'STORAGE',
+    unit: 'PER_DAY',
+    unitLabel: 'VND/ngày',
+    defaultValue: 400000,
+    containerSize: 20,
+    cargoTypeName: 'Hàng Lạnh',
+    note: 'Hàng lạnh',
+    step: 1000,
+  },
+  {
+    code: 'STORAGE_20_FRAGILE',
+    name: 'Giá lưu kho container 20ft - Hàng dễ vỡ',
+    feeType: 'STORAGE',
+    unit: 'PER_DAY',
+    unitLabel: 'VND/ngày',
+    defaultValue: 200000,
+    containerSize: 20,
+    cargoTypeName: 'Hàng Dễ Vỡ',
+    note: 'Hàng dễ vỡ',
+    step: 1000,
+  },
+  {
+    code: 'STORAGE_20_OTHER',
+    name: 'Giá lưu kho container 20ft - Hàng khác',
+    feeType: 'STORAGE',
+    unit: 'PER_DAY',
+    unitLabel: 'VND/ngày',
+    defaultValue: 250000,
+    containerSize: 20,
+    cargoTypeName: 'Hàng Khác',
+    note: 'Hàng khác',
+    step: 1000,
+  },
+  {
+    code: 'STORAGE_40_DRY',
+    name: 'Giá lưu kho container 40ft - Hàng khô',
+    feeType: 'STORAGE',
+    unit: 'PER_DAY',
+    unitLabel: 'VND/ngày',
+    defaultValue: 300000,
+    containerSize: 40,
+    cargoTypeName: 'Hàng Khô',
+    note: 'Hàng khô',
+    step: 1000,
+  },
+  {
+    code: 'STORAGE_40_COLD',
+    name: 'Giá lưu kho container 40ft - Hàng lạnh',
+    feeType: 'STORAGE',
+    unit: 'PER_DAY',
+    unitLabel: 'VND/ngày',
+    defaultValue: 700000,
+    containerSize: 40,
+    cargoTypeName: 'Hàng Lạnh',
+    note: 'Hàng lạnh',
+    step: 1000,
+  },
+  {
+    code: 'STORAGE_40_FRAGILE',
+    name: 'Giá lưu kho container 40ft - Hàng dễ vỡ',
+    feeType: 'STORAGE',
+    unit: 'PER_DAY',
+    unitLabel: 'VND/ngày',
+    defaultValue: 400000,
+    containerSize: 40,
+    cargoTypeName: 'Hàng Dễ Vỡ',
+    note: 'Hàng dễ vỡ',
+    step: 1000,
+  },
+  {
+    code: 'STORAGE_40_OTHER',
+    name: 'Giá lưu kho container 40ft - Hàng khác',
+    feeType: 'STORAGE',
+    unit: 'PER_DAY',
+    unitLabel: 'VND/ngày',
+    defaultValue: 500000,
+    containerSize: 40,
+    cargoTypeName: 'Hàng Khác',
+    note: 'Hàng khác',
+    step: 1000,
+  },
+  {
+    code: 'TIME_MULTIPLIER_LE_5',
+    name: 'Hệ số thời gian lưu kho <= 5 ngày',
+    feeType: 'TIME_MULTIPLIER',
+    unit: 'MULTIPLIER',
+    unitLabel: 'Hệ số',
+    defaultValue: 1.0,
+    note: '<= 5 ngày',
+    step: 0.1,
+  },
+  {
+    code: 'TIME_MULTIPLIER_6_10',
+    name: 'Hệ số thời gian lưu kho 6 - 10 ngày',
+    feeType: 'TIME_MULTIPLIER',
+    unit: 'MULTIPLIER',
+    unitLabel: 'Hệ số',
+    defaultValue: 1.5,
+    note: '6 - 10 ngày',
+    step: 0.1,
+  },
+  {
+    code: 'TIME_MULTIPLIER_GT_10',
+    name: 'Hệ số thời gian lưu kho > 10 ngày',
+    feeType: 'TIME_MULTIPLIER',
+    unit: 'MULTIPLIER',
+    unitLabel: 'Hệ số',
+    defaultValue: 2.0,
+    note: '> 10 ngày',
+    step: 0.1,
+  },
+  {
+    code: 'WEIGHT_MULTIPLIER_LT_10',
+    name: 'Hệ số trọng lượng < 10 tấn',
+    feeType: 'WEIGHT_MULTIPLIER',
+    unit: 'MULTIPLIER',
+    unitLabel: 'Hệ số',
+    defaultValue: 1.0,
+    note: '< 10 tấn',
+    step: 0.1,
+  },
+  {
+    code: 'WEIGHT_MULTIPLIER_10_20',
+    name: 'Hệ số trọng lượng 10 - 20 tấn',
+    feeType: 'WEIGHT_MULTIPLIER',
+    unit: 'MULTIPLIER',
+    unitLabel: 'Hệ số',
+    defaultValue: 1.2,
+    note: '10 - 20 tấn',
+    step: 0.1,
+  },
+  {
+    code: 'WEIGHT_MULTIPLIER_GT_20',
+    name: 'Hệ số trọng lượng > 20 tấn',
+    feeType: 'WEIGHT_MULTIPLIER',
+    unit: 'MULTIPLIER',
+    unitLabel: 'Hệ số',
+    defaultValue: 1.5,
+    note: '> 20 tấn',
+    step: 0.1,
+  },
+  {
+    code: 'LATE_FEE_1_2',
+    name: 'Phí trễ xuất 1 - 2 ngày',
+    feeType: 'LATE_FEE',
+    unit: 'PER_DAY',
+    unitLabel: 'VND/ngày',
+    defaultValue: 500000,
+    note: '1 - 2 ngày',
+    step: 1000,
+  },
+  {
+    code: 'LATE_FEE_3_5',
+    name: 'Phí trễ xuất 3 - 5 ngày',
+    feeType: 'LATE_FEE',
+    unit: 'PER_DAY',
+    unitLabel: 'VND/ngày',
+    defaultValue: 1000000,
+    note: '3 - 5 ngày',
+    step: 1000,
+  },
+  {
+    code: 'LATE_FEE_GT_5',
+    name: 'Phí trễ xuất > 5 ngày',
+    feeType: 'LATE_FEE',
+    unit: 'PER_DAY',
+    unitLabel: 'VND/ngày',
+    defaultValue: 2000000,
+    note: '> 5 ngày',
+    step: 1000,
+  },
+  {
+    code: 'EARLY_FEE_1',
+    name: 'Phí xuất sớm (Ưu tiên thấp, sớm 1 ngày)',
+    feeType: 'EARLY_FEE',
+    unit: 'PER_CONTAINER',
+    unitLabel: 'VND/container',
+    defaultValue: 300000,
+    note: 'Ưu tiên thấp (sớm 1 ngày)',
+    step: 1000,
+  },
+  {
+    code: 'EARLY_FEE_2_3',
+    name: 'Phí xuất sớm (Ưu tiên trung bình, sớm 2 - 3 ngày)',
+    feeType: 'EARLY_FEE',
+    unit: 'PER_CONTAINER',
+    unitLabel: 'VND/container',
+    defaultValue: 700000,
+    note: 'Ưu tiên trung bình (sớm 2 - 3 ngày)',
+    step: 1000,
+  },
+  {
+    code: 'EARLY_FEE_GT_3',
+    name: 'Phí xuất sớm (Ưu tiên cao, sớm > 3 ngày)',
+    feeType: 'EARLY_FEE',
+    unit: 'PER_CONTAINER',
+    unitLabel: 'VND/container',
+    defaultValue: 1500000,
+    note: 'Ưu tiên cao (sớm > 3 ngày)',
+    step: 1000,
+  },
+];
+
+const storage20Rows = [
+  { code: 'STORAGE_20_DRY', label: 'Hàng khô' },
+  { code: 'STORAGE_20_COLD', label: 'Hàng lạnh' },
+  { code: 'STORAGE_20_FRAGILE', label: 'Hàng dễ vỡ' },
+  { code: 'STORAGE_20_OTHER', label: 'Hàng khác' },
+];
+
+const storage40Rows = [
+  { code: 'STORAGE_40_DRY', label: 'Hàng khô' },
+  { code: 'STORAGE_40_COLD', label: 'Hàng lạnh' },
+  { code: 'STORAGE_40_FRAGILE', label: 'Hàng dễ vỡ' },
+  { code: 'STORAGE_40_OTHER', label: 'Hàng khác' },
+];
+
+const timeMultiplierRows = [
+  { code: 'TIME_MULTIPLIER_LE_5', label: '<= 5 ngày' },
+  { code: 'TIME_MULTIPLIER_6_10', label: '6 - 10 ngày' },
+  { code: 'TIME_MULTIPLIER_GT_10', label: '> 10 ngày' },
+];
+
+const weightMultiplierRows = [
+  { code: 'WEIGHT_MULTIPLIER_LT_10', label: '< 10 tấn' },
+  { code: 'WEIGHT_MULTIPLIER_10_20', label: '10 - 20 tấn' },
+  { code: 'WEIGHT_MULTIPLIER_GT_20', label: '> 20 tấn' },
+];
+
+const lateFeeRows = [
+  { code: 'LATE_FEE_1_2', label: '1 - 2 ngày' },
+  { code: 'LATE_FEE_3_5', label: '3 - 5 ngày' },
+  { code: 'LATE_FEE_GT_5', label: '> 5 ngày' },
+];
+
+const earlyFeeRows = [
+  { code: 'EARLY_FEE_1', label: 'Ưu tiên thấp (sớm 1 ngày)' },
+  { code: 'EARLY_FEE_2_3', label: 'Ưu tiên trung bình (sớm 2 - 3 ngày)' },
+  { code: 'EARLY_FEE_GT_3', label: 'Ưu tiên cao (sớm > 3 ngày)' },
+];
 
 export default function QuanLyCuocPhi() {
   const { accessToken } = useWarehouseAuth();
@@ -32,35 +292,85 @@ export default function QuanLyCuocPhi() {
     ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
   }), [accessToken]);
 
-  const [config, setConfig] = useState<FeeConfig | null>(null);
+  const defaultValues = useMemo(() => {
+    return tariffDefinitions.reduce<Record<string, string>>((acc, item) => {
+      acc[item.code] = String(item.defaultValue);
+      return acc;
+    }, {});
+  }, []);
+
+  const tariffMap = useMemo(() => {
+    return tariffDefinitions.reduce<Record<string, TariffDefinition>>((acc, item) => {
+      acc[item.code] = item;
+      return acc;
+    }, {});
+  }, []);
+
+  const [tariffValues, setTariffValues] = useState<Record<string, string>>(defaultValues);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saveMsg, setSaveMsg] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Track which section is being edited
-  const [editSection, setEditSection] = useState<SectionKey | null>(null);
+  const toNumberOr = (value: string | undefined, fallback: number) => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
 
-  // Edit forms per section
-  const [basicForm, setBasicForm] = useState({ currency: 'VND', costRate: '', ratePerKgDefault: '' });
-  const [liftingForm, setLiftingForm] = useState({ liftingFeePerMove: '' });
-  const [overdueForm, setOverdueForm] = useState({ overduePenaltyRate: '', freeStorageDays: '' });
-  const [coldForm, setColdForm] = useState({ coldStorageSurcharge: '' });
-  const [hazmatForm, setHazmatForm] = useState({ hazmatSurcharge: '' });
-  const [cargoTypeForm, setCargoTypeForm] = useState<Record<string, string>>({});
-  const [multipliersForm, setMultipliersForm] = useState({
-    storageMultiplier: '', weightMultiplier: '',
-    containerRate20ft: '', containerRate40ft: '', earlyPickupFee: '',
-  });
+  const mapFeeConfigToTariffValues = (config?: FeeConfigResponse | null) => {
+    if (!config) return {} as Record<string, string>;
+    const mapped: Record<string, string> = {};
+
+    if (typeof config.containerRate20ft === 'number') {
+      mapped.STORAGE_20_DRY = String(config.containerRate20ft);
+    }
+    if (typeof config.containerRate40ft === 'number') {
+      mapped.STORAGE_40_DRY = String(config.containerRate40ft);
+    }
+    if (typeof config.storageMultiplier === 'number') {
+      mapped.TIME_MULTIPLIER_LE_5 = String(config.storageMultiplier);
+    }
+    if (typeof config.weightMultiplier === 'number') {
+      mapped.WEIGHT_MULTIPLIER_LT_10 = String(config.weightMultiplier);
+    }
+    if (typeof config.earlyPickupFee === 'number') {
+      mapped.EARLY_FEE_1 = String(config.earlyPickupFee);
+    }
+
+    return mapped;
+  };
 
   const fetchData = async () => {
     setLoading(true);
     setError('');
     try {
-      const res = await fetch(`${API_BASE}/admin/fees`, { headers });
-      const d = await res.json();
-      if (!res.ok) throw new Error(d.message || 'Lỗi tải cấu hình phí');
-      setConfig(d.data);
+      const [tariffRes, feeRes] = await Promise.all([
+        fetch(`${API_BASE}/admin/tariffs`, { headers }),
+        fetch(`${API_BASE}/admin/fees`, { headers }),
+      ]);
+
+      const tariffData = await tariffRes.json();
+      const feeData = await feeRes.json();
+
+      if (!tariffRes.ok) {
+        throw new Error(tariffData.message || 'Lỗi tải cấu hình biểu phí');
+      }
+      if (!feeRes.ok) {
+        throw new Error(feeData.message || 'Lỗi tải cấu hình phí hệ thống');
+      }
+
+      const items: TariffResponse[] = tariffData.data || [];
+      const feeConfig: FeeConfigResponse | null = feeData.data || null;
+      const merged = { ...defaultValues };
+
+      items.forEach((item) => {
+        if (item.tariffCode && tariffMap[item.tariffCode]) {
+          merged[item.tariffCode] = String(item.unitPrice ?? merged[item.tariffCode]);
+        }
+      });
+
+      Object.assign(merged, mapFeeConfigToTariffValues(feeConfig));
+      setTariffValues(merged);
     } catch (e: any) {
       setError(e.message || 'Lỗi không xác định');
     } finally {
@@ -70,152 +380,110 @@ export default function QuanLyCuocPhi() {
 
   useEffect(() => { fetchData(); }, []);
 
-  const startEdit = (section: SectionKey) => {
-    if (!config) return;
-    setSaveMsg('');
-    if (section === 'basic') {
-      setBasicForm({
-        currency: config.currency || 'VND',
-        costRate: config.costRate != null ? String(config.costRate) : '',
-        ratePerKgDefault: config.ratePerKgDefault != null ? String(config.ratePerKgDefault) : '',
-      });
-    } else if (section === 'lifting') {
-      setLiftingForm({ liftingFeePerMove: config.liftingFeePerMove != null ? String(config.liftingFeePerMove) : '' });
-    } else if (section === 'overdue') {
-      setOverdueForm({
-        overduePenaltyRate: config.overduePenaltyRate != null ? String(config.overduePenaltyRate) : '',
-        freeStorageDays: config.freeStorageDays != null ? String(config.freeStorageDays) : '',
-      });
-    } else if (section === 'cold') {
-      setColdForm({ coldStorageSurcharge: config.coldStorageSurcharge != null ? String(config.coldStorageSurcharge) : '' });
-    } else if (section === 'hazmat') {
-      setHazmatForm({ hazmatSurcharge: config.hazmatSurcharge != null ? String(config.hazmatSurcharge) : '' });
-    } else if (section === 'cargoType') {
-      const init: Record<string, string> = {};
-      Object.entries(config.ratePerKgByCargoType || {}).forEach(([k, v]) => { init[k] = String(v); });
-      setCargoTypeForm(init);
-    } else if (section === 'multipliers') {
-      setMultipliersForm({
-        storageMultiplier: config.storageMultiplier != null ? String(config.storageMultiplier) : '',
-        weightMultiplier:  config.weightMultiplier  != null ? String(config.weightMultiplier)  : '',
-        containerRate20ft: config.containerRate20ft != null ? String(config.containerRate20ft) : '',
-        containerRate40ft: config.containerRate40ft != null ? String(config.containerRate40ft) : '',
-        earlyPickupFee:    config.earlyPickupFee    != null ? String(config.earlyPickupFee)    : '',
-      });
-    }
-    setEditSection(section);
+  const updateTariffValue = (code: string, value: string) => {
+    setTariffValues((prev) => ({ ...prev, [code]: value }));
   };
 
-  const cancelEdit = () => setEditSection(null);
-
-  const saveSection = async (body: Record<string, any>) => {
+  const saveTariffs = async () => {
     setSaving(true);
     setSaveMsg('');
+    setError('');
     try {
-      const res = await fetch(`${API_BASE}/admin/fees`, { method: 'PUT', headers, body: JSON.stringify(body) });
+      const payload = tariffDefinitions.map((item) => {
+        const raw = tariffValues[item.code];
+        const parsed = raw === '' ? item.defaultValue : Number(raw);
+        return {
+          tariffCode: item.code,
+          tariffName: item.name,
+          feeType: item.feeType,
+          containerSize: item.containerSize ?? null,
+          cargoTypeName: item.cargoTypeName ?? null,
+          unitPrice: Number.isFinite(parsed) ? parsed : item.defaultValue,
+          unit: item.unit,
+          note: item.note,
+        };
+      });
+
+      const res = await fetch(`${API_BASE}/admin/tariffs`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(payload),
+      });
       const d = await res.json();
-      if (!res.ok) throw new Error(d.message || 'Lỗi cập nhật');
-      setConfig(d.data);
-      setEditSection(null);
-      setSaveMsg('Đã cập nhật thành công.');
+      if (!res.ok) throw new Error(d.message || 'Lỗi cập nhật biểu phí');
+
+      const feePayload = {
+        containerRate20ft: toNumberOr(tariffValues.STORAGE_20_DRY, tariffDefinitions.find((x) => x.code === 'STORAGE_20_DRY')?.defaultValue ?? 150000),
+        containerRate40ft: toNumberOr(tariffValues.STORAGE_40_DRY, tariffDefinitions.find((x) => x.code === 'STORAGE_40_DRY')?.defaultValue ?? 300000),
+        storageMultiplier: toNumberOr(tariffValues.TIME_MULTIPLIER_LE_5, tariffDefinitions.find((x) => x.code === 'TIME_MULTIPLIER_LE_5')?.defaultValue ?? 1),
+        weightMultiplier: toNumberOr(tariffValues.WEIGHT_MULTIPLIER_LT_10, tariffDefinitions.find((x) => x.code === 'WEIGHT_MULTIPLIER_LT_10')?.defaultValue ?? 1),
+        earlyPickupFee: toNumberOr(tariffValues.EARLY_FEE_1, tariffDefinitions.find((x) => x.code === 'EARLY_FEE_1')?.defaultValue ?? 300000),
+        ratePerKgDefault: toNumberOr(tariffValues.STORAGE_20_DRY, tariffDefinitions.find((x) => x.code === 'STORAGE_20_DRY')?.defaultValue ?? 150000),
+      };
+
+      const feeRes = await fetch(`${API_BASE}/admin/fees`, {
+        method: 'PUT',
+        headers,
+        body: JSON.stringify(feePayload),
+      });
+      const feeData = await feeRes.json();
+      if (!feeRes.ok) throw new Error(feeData.message || 'Lỗi cập nhật bảng fee_config');
+
+      // Reload latest data from database to ensure UI reflects persisted values
+      await fetchData();
+
+      setSaveMsg('Đã cập nhật biểu phí thành công. (Dữ liệu đã lưu vào DB)');
     } catch (e: any) {
-      setSaveMsg(e.message || 'Lỗi');
+      setError(e.message || 'Lỗi không xác định');
     } finally {
       setSaving(false);
     }
   };
 
-  const saveBasic = () => {
-    const body: Record<string, any> = { currency: basicForm.currency || 'VND' };
-    if (basicForm.costRate !== '') body.costRate = parseFloat(basicForm.costRate);
-    if (basicForm.ratePerKgDefault !== '') body.ratePerKgDefault = parseFloat(basicForm.ratePerKgDefault);
-    saveSection(body);
-  };
-
-  const saveLifting = () => {
-    const body: Record<string, any> = {};
-    if (liftingForm.liftingFeePerMove !== '') body.liftingFeePerMove = parseFloat(liftingForm.liftingFeePerMove);
-    saveSection(body);
-  };
-
-  const saveOverdue = () => {
-    const body: Record<string, any> = {};
-    if (overdueForm.overduePenaltyRate !== '') body.overduePenaltyRate = parseFloat(overdueForm.overduePenaltyRate);
-    if (overdueForm.freeStorageDays !== '') body.freeStorageDays = parseInt(overdueForm.freeStorageDays, 10);
-    saveSection(body);
-  };
-
-  const saveCold = () => {
-    const body: Record<string, any> = {};
-    if (coldForm.coldStorageSurcharge !== '') body.coldStorageSurcharge = parseFloat(coldForm.coldStorageSurcharge);
-    saveSection(body);
-  };
-
-  const saveHazmat = () => {
-    const body: Record<string, any> = {};
-    if (hazmatForm.hazmatSurcharge !== '') body.hazmatSurcharge = parseFloat(hazmatForm.hazmatSurcharge);
-    saveSection(body);
-  };
-
-  const saveMultipliers = () => {
-    const body: Record<string, any> = {};
-    if (multipliersForm.storageMultiplier !== '') body.storageMultiplier = parseFloat(multipliersForm.storageMultiplier);
-    if (multipliersForm.weightMultiplier  !== '') body.weightMultiplier  = parseFloat(multipliersForm.weightMultiplier);
-    if (multipliersForm.containerRate20ft !== '') body.containerRate20ft = parseFloat(multipliersForm.containerRate20ft);
-    if (multipliersForm.containerRate40ft !== '') body.containerRate40ft = parseFloat(multipliersForm.containerRate40ft);
-    if (multipliersForm.earlyPickupFee    !== '') body.earlyPickupFee    = parseFloat(multipliersForm.earlyPickupFee);
-    saveSection(body);
-  };
-
-  const saveCargoType = () => {
-    const ratePerKgByCargoType: Record<string, number> = {};
-    Object.entries(cargoTypeForm).forEach(([k, v]) => {
-      if (k.trim() && v !== '') ratePerKgByCargoType[k.trim()] = parseFloat(v);
-    });
-    saveSection({ ratePerKgByCargoType });
-  };
-
-  const addCargoTypeRow = () => {
-    setCargoTypeForm((prev) => ({ ...prev, '': '' }));
-  };
-
-  const updateCargoTypeKey = (oldKey: string, newKey: string) => {
-    setCargoTypeForm((prev) => {
-      const updated: Record<string, string> = {};
-      Object.entries(prev).forEach(([k, v]) => {
-        updated[k === oldKey ? newKey : k] = v;
-      });
-      return updated;
-    });
-  };
-
-  const updateCargoTypeVal = (key: string, val: string) => {
-    setCargoTypeForm((prev) => ({ ...prev, [key]: val }));
-  };
-
-  const removeCargoTypeRow = (key: string) => {
-    setCargoTypeForm((prev) => {
-      const updated = { ...prev };
-      delete updated[key];
-      return updated;
-    });
-  };
-
-  const SectionHeader = ({ title, section }: { title: string; section: SectionKey }) => (
-    <div className="card-header">
-      <div className="card-title">{title}</div>
-      {editSection !== section && (
-        <button type="button" className="btn btn-secondary btn-sm" onClick={() => startEdit(section)}>✏ Sửa</button>
-      )}
-    </div>
-  );
-
-  const ActionRow = ({ onSave }: { onSave: () => void }) => (
-    <div className="form-actions" style={{ gridColumn: '1 / -1', marginTop: 4 }}>
-      <button type="button" className="btn btn-secondary" onClick={cancelEdit}>Hủy</button>
-      <button type="button" className="btn btn-primary" onClick={onSave} disabled={saving}>
-        {saving ? 'Đang lưu...' : 'Lưu'}
-      </button>
+  const renderTable = (title: string, rows: { code: string; label: string }[]) => (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div className="card-header">
+        <div className="card-title">{title}</div>
+      </div>
+      <div className="table-wrap">
+        <table style={{ tableLayout: 'fixed', width: '100%' }}>
+          <thead>
+            <tr>
+              <th style={{ width: '28%' }}>Nội dung</th>
+              <th style={{ width: '52%' }}>Giá trị</th>
+              <th style={{ width: '20%' }}>Đơn vị</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => {
+              const meta = tariffMap[row.code];
+              const isMoney = meta.unitLabel.includes('VND');
+              return (
+                <tr key={row.code}>
+                  <td style={{ whiteSpace: 'nowrap' }}>{row.label}</td>
+                  <td>
+                    <input
+                      className="form-input"
+                      type="number"
+                      min={0}
+                      step={meta.step ?? 1}
+                      value={tariffValues[row.code] ?? ''}
+                      onChange={(e) => updateTariffValue(row.code, e.target.value)}
+                      style={{
+                        width: '100%',
+                        whiteSpace: 'nowrap',
+                        textAlign: 'left',
+                        fontVariantNumeric: 'tabular-nums',
+                      }}
+                    />
+                  </td>
+                  <td style={{ whiteSpace: 'nowrap' }}>{meta.unitLabel}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 
@@ -223,7 +491,7 @@ export default function QuanLyCuocPhi() {
     <>
       <PageHeader
         title="Quản lý cước phí"
-        subtitle="Cấu hình 6 biểu phí lưu kho"
+        subtitle="Cấu hình biểu phí lưu kho theo quy tắc hiện hành"
       />
 
       {error && (
@@ -239,219 +507,33 @@ export default function QuanLyCuocPhi() {
         </div>
       )}
 
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div className="card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <div className="card-title">Biểu phí lưu kho container</div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button type="button" className="btn btn-secondary" onClick={fetchData} disabled={loading || saving}>
+              Làm mới
+            </button>
+            <button type="button" className="btn btn-primary" onClick={saveTariffs} disabled={loading || saving}>
+              {saving ? 'Đang lưu...' : 'Lưu biểu phí'}
+            </button>
+          </div>
+        </div>
+        <div style={{ padding: '0 16px 16px', color: 'var(--text2)', fontSize: 13 }}>
+          Tổng phí = (Giá cơ bản/ngày × Số ngày lưu kho × Hệ số thời gian × Hệ số trọng lượng) + Phí trễ hoặc phí xuất sớm (nếu có).
+        </div>
+      </div>
+
       {loading ? (
         <div className="card"><div style={{ padding: '24px', color: 'var(--text2)' }}>Đang tải...</div></div>
-      ) : config && (
+      ) : (
         <>
-          {/* 1. Phí cơ bản */}
-          <div className="card" style={{ marginBottom: 16 }}>
-            <SectionHeader title="1. Phí lưu kho cơ bản" section="basic" />
-            {editSection !== 'basic' ? (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-                <div className="stat-card"><div className="stat-label">Đơn vị tiền tệ</div><div className="stat-value" style={{ fontSize: 20 }}>{config.currency || '—'}</div></div>
-                <div className="stat-card"><div className="stat-label">Tỉ lệ phí cơ bản</div><div className="stat-value" style={{ fontSize: 20 }}>{config.costRate ?? '—'}</div></div>
-                <div className="stat-card"><div className="stat-label">Phí/kg mặc định</div><div className="stat-value" style={{ fontSize: 20 }}>{fmt(config.ratePerKgDefault)} {config.currency}</div></div>
-              </div>
-            ) : (
-              <div className="form-row">
-                <div className="form-group">
-                  <label className="form-label">Đơn vị tiền tệ</label>
-                  <input className="form-input" value={basicForm.currency} onChange={(e) => setBasicForm((p) => ({ ...p, currency: e.target.value }))} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Tỉ lệ phí cơ bản</label>
-                  <input className="form-input" type="number" step="0.0001" min="0" value={basicForm.costRate} onChange={(e) => setBasicForm((p) => ({ ...p, costRate: e.target.value }))} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Phí/kg mặc định</label>
-                  <input className="form-input" type="number" step="0.01" min="0" value={basicForm.ratePerKgDefault} onChange={(e) => setBasicForm((p) => ({ ...p, ratePerKgDefault: e.target.value }))} />
-                </div>
-                <ActionRow onSave={saveBasic} />
-              </div>
-            )}
-          </div>
-
-          {/* 2. Phí theo loại hàng */}
-          <div className="card" style={{ marginBottom: 16 }}>
-            <SectionHeader title="2. Phí theo loại hàng (VND/kg)" section="cargoType" />
-            {editSection !== 'cargoType' ? (
-              <div className="table-wrap">
-                <table>
-                  <thead><tr><th>Loại hàng</th><th>Phí/kg ({config.currency})</th></tr></thead>
-                  <tbody>
-                    {Object.keys(config.ratePerKgByCargoType || {}).length === 0 ? (
-                      <tr><td colSpan={2} style={{ color: 'var(--text2)' }}>Chưa có cấu hình theo loại hàng.</td></tr>
-                    ) : (
-                      Object.entries(config.ratePerKgByCargoType!).map(([type, rate]) => (
-                        <tr key={type}><td>{type}</td><td>{fmt(rate)}</td></tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div>
-                <div className="table-wrap" style={{ marginBottom: 8 }}>
-                  <table>
-                    <thead><tr><th>Loại hàng</th><th>Phí/kg</th><th></th></tr></thead>
-                    <tbody>
-                      {Object.entries(cargoTypeForm).map(([key, val]) => (
-                        <tr key={key}>
-                          <td><input className="form-input" style={{ minWidth: 140 }} value={key} onChange={(e) => updateCargoTypeKey(key, e.target.value)} /></td>
-                          <td><input className="form-input" type="number" step="0.01" min="0" style={{ minWidth: 120 }} value={val} onChange={(e) => updateCargoTypeVal(key, e.target.value)} /></td>
-                          <td><button type="button" className="btn btn-danger btn-sm" onClick={() => removeCargoTypeRow(key)}>✕</button></td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={addCargoTypeRow} style={{ marginBottom: 8 }}>+ Thêm loại hàng</button>
-                <div className="form-actions">
-                  <button type="button" className="btn btn-secondary" onClick={cancelEdit}>Hủy</button>
-                  <button type="button" className="btn btn-primary" onClick={saveCargoType} disabled={saving}>{saving ? 'Đang lưu...' : 'Lưu'}</button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* 3. Phí nâng hạ */}
-          <div className="card" style={{ marginBottom: 16 }}>
-            <SectionHeader title="3. Phí nâng hạ container" section="lifting" />
-            {editSection !== 'lifting' ? (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
-                <div className="stat-card"><div className="stat-label">Phí nâng/hạ mỗi lần</div><div className="stat-value" style={{ fontSize: 20 }}>{fmt(config.liftingFeePerMove)} {config.currency}</div></div>
-              </div>
-            ) : (
-              <div className="form-row">
-                <div className="form-group">
-                  <label className="form-label">Phí nâng/hạ mỗi lần ({config.currency})</label>
-                  <input className="form-input" type="number" step="0.01" min="0" value={liftingForm.liftingFeePerMove} onChange={(e) => setLiftingForm({ liftingFeePerMove: e.target.value })} />
-                </div>
-                <ActionRow onSave={saveLifting} />
-              </div>
-            )}
-          </div>
-
-          {/* 4. Phí quá hạn */}
-          <div className="card" style={{ marginBottom: 16 }}>
-            <SectionHeader title="4. Phí quá hạn lưu bãi" section="overdue" />
-            {editSection !== 'overdue' ? (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
-                <div className="stat-card"><div className="stat-label">Miễn phí lưu kho (ngày)</div><div className="stat-value" style={{ fontSize: 20 }}>{config.freeStorageDays ?? '—'}</div></div>
-                <div className="stat-card"><div className="stat-label">Tỉ lệ phạt/ngày quá hạn</div><div className="stat-value" style={{ fontSize: 20 }}>{config.overduePenaltyRate ?? '—'}</div></div>
-              </div>
-            ) : (
-              <div className="form-row">
-                <div className="form-group">
-                  <label className="form-label">Số ngày miễn phí</label>
-                  <input className="form-input" type="number" min="0" step="1" value={overdueForm.freeStorageDays} onChange={(e) => setOverdueForm((p) => ({ ...p, freeStorageDays: e.target.value }))} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Tỉ lệ phạt/ngày (0.01 = 1%)</label>
-                  <input className="form-input" type="number" step="0.0001" min="0" value={overdueForm.overduePenaltyRate} onChange={(e) => setOverdueForm((p) => ({ ...p, overduePenaltyRate: e.target.value }))} />
-                </div>
-                <ActionRow onSave={saveOverdue} />
-              </div>
-            )}
-          </div>
-
-          {/* 5. Phụ thu kho lạnh */}
-          <div className="card" style={{ marginBottom: 16 }}>
-            <SectionHeader title="5. Phụ thu kho lạnh" section="cold" />
-            {editSection !== 'cold' ? (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
-                <div className="stat-card"><div className="stat-label">Phụ thu kho lạnh</div><div className="stat-value" style={{ fontSize: 20 }}>{fmt(config.coldStorageSurcharge)} {config.currency}</div></div>
-              </div>
-            ) : (
-              <div className="form-row">
-                <div className="form-group">
-                  <label className="form-label">Phụ thu kho lạnh ({config.currency})</label>
-                  <input className="form-input" type="number" step="0.01" min="0" value={coldForm.coldStorageSurcharge} onChange={(e) => setColdForm({ coldStorageSurcharge: e.target.value })} />
-                </div>
-                <ActionRow onSave={saveCold} />
-              </div>
-            )}
-          </div>
-
-          {/* 6. Phụ thu hàng nguy hiểm */}
-          <div className="card" style={{ marginBottom: 16 }}>
-            <SectionHeader title="6. Phụ thu hàng nguy hiểm (Hazmat)" section="hazmat" />
-            {editSection !== 'hazmat' ? (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 12 }}>
-                <div className="stat-card"><div className="stat-label">Phụ thu Hazmat</div><div className="stat-value" style={{ fontSize: 20 }}>{fmt(config.hazmatSurcharge)} {config.currency}</div></div>
-              </div>
-            ) : (
-              <div className="form-row">
-                <div className="form-group">
-                  <label className="form-label">Phụ thu Hazmat ({config.currency})</label>
-                  <input className="form-input" type="number" step="0.01" min="0" value={hazmatForm.hazmatSurcharge} onChange={(e) => setHazmatForm({ hazmatSurcharge: e.target.value })} />
-                </div>
-                <ActionRow onSave={saveHazmat} />
-              </div>
-            )}
-          </div>
-
-          {/* 7. Hệ số nhân & phí container theo loại */}
-          <div className="card" style={{ marginBottom: 16 }}>
-            <SectionHeader title="7. Hệ số nhân & phí container theo loại" section="multipliers" />
-            {editSection !== 'multipliers' ? (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
-                <div className="stat-card">
-                  <div className="stat-label">Hệ số lưu kho</div>
-                  <div className="stat-value" style={{ fontSize: 20 }}>{config.storageMultiplier ?? 1}</div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-label">Hệ số trọng lượng</div>
-                  <div className="stat-value" style={{ fontSize: 20 }}>{config.weightMultiplier ?? 1}</div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-label">Phí xuất sớm</div>
-                  <div className="stat-value" style={{ fontSize: 20 }}>{fmt(config.earlyPickupFee)} {config.currency}</div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-label">Giá container 20ft</div>
-                  <div className="stat-value" style={{ fontSize: 20 }}>{fmt(config.containerRate20ft)} {config.currency}</div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-label">Giá container 40ft</div>
-                  <div className="stat-value" style={{ fontSize: 20 }}>{fmt(config.containerRate40ft)} {config.currency}</div>
-                </div>
-              </div>
-            ) : (
-              <div className="form-row">
-                <div className="form-group">
-                  <label className="form-label">Hệ số lưu kho (storage_multiplier)</label>
-                  <input className="form-input" type="number" step="0.0001" min="0" value={multipliersForm.storageMultiplier} onChange={(e) => setMultipliersForm((p) => ({ ...p, storageMultiplier: e.target.value }))} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Hệ số trọng lượng (weight_multiplier)</label>
-                  <input className="form-input" type="number" step="0.0001" min="0" value={multipliersForm.weightMultiplier} onChange={(e) => setMultipliersForm((p) => ({ ...p, weightMultiplier: e.target.value }))} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Giá base container 20ft ({config.currency})</label>
-                  <input className="form-input" type="number" step="0.01" min="0" value={multipliersForm.containerRate20ft} onChange={(e) => setMultipliersForm((p) => ({ ...p, containerRate20ft: e.target.value }))} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Giá base container 40ft ({config.currency})</label>
-                  <input className="form-input" type="number" step="0.01" min="0" value={multipliersForm.containerRate40ft} onChange={(e) => setMultipliersForm((p) => ({ ...p, containerRate40ft: e.target.value }))} />
-                </div>
-                <div className="form-group">
-                  <label className="form-label">Phí xuất sớm ({config.currency})</label>
-                  <input className="form-input" type="number" step="0.01" min="0" value={multipliersForm.earlyPickupFee} onChange={(e) => setMultipliersForm((p) => ({ ...p, earlyPickupFee: e.target.value }))} />
-                </div>
-                <ActionRow onSave={saveMultipliers} />
-              </div>
-            )}
-            <div style={{ marginTop: 10, padding: '8px 12px', background: 'var(--bg2)', borderRadius: 6, fontSize: 12, color: 'var(--text2)' }}>
-              Công thức: <strong>Phí = base_price × số ngày × hệ số lưu kho × hệ số trọng lượng</strong>
-            </div>
-          </div>
-
-          {config.updatedAt && (
-            <div style={{ color: 'var(--text2)', fontSize: 12, textAlign: 'right' }}>
-              Cập nhật lần cuối: {new Date(config.updatedAt).toLocaleString('vi-VN')}
-            </div>
-          )}
+          {renderTable('1. Giá lưu Container 20ft', storage20Rows)}
+          {renderTable('2. Giá lưu Container 40ft', storage40Rows)}
+          {renderTable('3. Hệ số thời gian lưu kho', timeMultiplierRows)}
+          {renderTable('4. Hệ số trọng lượng lưu kho', weightMultiplierRows)}
+          {renderTable('5. Bảng phí trễ xuất Container', lateFeeRows)}
+          {renderTable('6. Bảng phí xuất sớm Container', earlyFeeRows)}
         </>
       )}
     </>

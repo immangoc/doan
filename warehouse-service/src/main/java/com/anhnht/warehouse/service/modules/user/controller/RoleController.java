@@ -11,7 +11,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
+@Tag(name = "Vai trò", description = "Quản lý vai trò người dùng")
 @RestController
 @RequestMapping("/admin/roles")
 @RequiredArgsConstructor

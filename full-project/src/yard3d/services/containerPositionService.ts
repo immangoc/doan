@@ -114,13 +114,23 @@ function buildReverseMap(yards: ApiYard[]): {
 // ─── Fetch containers in yard ─────────────────────────────────────────────────
 
 async function fetchContainersInYard(): Promise<ContainerInfo[]> {
-  const res = await apiFetch('/admin/containers?statusName=IN_YARD&size=500');
-  if (!res.ok) throw new Error(`HTTP ${res.status} fetching containers`);
-  const json: Rec = await res.json();
-  const data: unknown = json.data ?? json;
-  const list: Rec[] = Array.isArray(data)
-    ? (data as Rec[])
-    : Array.isArray((data as Rec).content) ? (data as Rec).content as Rec[] : [];
+  // Lấy mọi container đang có vị trí trong kho — IN_YARD (kho thường), DAMAGED_PENDING
+  // (đã báo, chưa di chuyển), DAMAGED (đã chuyển vào kho hỏng).
+  const statuses = ['IN_YARD', 'DAMAGED_PENDING', 'DAMAGED'];
+  const responses = await Promise.all(
+    statuses.map((s) => apiFetch(`/admin/containers?statusName=${s}&size=2000`)),
+  );
+
+  const list: Rec[] = [];
+  for (const res of responses) {
+    if (!res.ok) continue;
+    const json: Rec = await res.json();
+    const data: unknown = json.data ?? json;
+    const arr: Rec[] = Array.isArray(data)
+      ? (data as Rec[])
+      : Array.isArray((data as Rec).content) ? (data as Rec).content as Rec[] : [];
+    list.push(...arr);
+  }
 
   return list.map((c: Rec) => {
     const rawWeight = c.weight ?? c.grossWeight ?? c.totalWeight ?? null;
@@ -143,6 +153,21 @@ async function fetchContainersInYard(): Promise<ContainerInfo[]> {
       sizeType:      sizeRaw.toUpperCase().includes('40') ? '40ft' : '20ft',
     };
   });
+}
+
+// ─── Fetch overdue container IDs ─────────────────────────────────────────────
+
+async function fetchOverdueContainerIds(): Promise<Set<string>> {
+  try {
+    const res = await apiFetch('/admin/containers/overdue');
+    if (!res.ok) return new Set();
+    const json: Rec = await res.json();
+    const data: unknown = json.data ?? json;
+    const list: string[] = Array.isArray(data) ? (data as string[]) : [];
+    return new Set(list.map(String));
+  } catch {
+    return new Set();
+  }
 }
 
 // ─── Fetch one container position ─────────────────────────────────────────────
@@ -207,7 +232,10 @@ export async function fetchAndSetOccupancy(yards: ApiYard[]): Promise<void> {
   }
 
   const ids       = containers.map((c) => c.containerCode);
-  const positions = await fetchPositionsInBatches(ids);
+  const [positions, overdueIds] = await Promise.all([
+    fetchPositionsInBatches(ids),
+    fetchOverdueContainerIds(),
+  ]);
 
   const map: OccupancyMap = new Map();
 
@@ -258,6 +286,7 @@ export async function fetchAndSetOccupancy(yards: ApiYard[]): Promise<void> {
       zoneName:        pos.zoneName ?? '',
       blockName:       pos.blockName ?? '',
       statusText:      pos.statusText ?? 'Trong kho',
+      isOverdue:       overdueIds.has(ctn.containerCode),
     };
 
     map.set(key, occ);

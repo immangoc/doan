@@ -11,11 +11,13 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Map;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
  * Slot lock / unlock management.
  * Staff reports a slot as unusable; manager locks it to prevent assignment.
  */
+@Tag(name = "Slot kho", description = "Quản lý khóa/mở slot kho")
 @RestController
 @RequestMapping("/admin/slots")
 @RequiredArgsConstructor

@@ -4,6 +4,7 @@ import lombok.Getter;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 
 @Getter
@@ -34,6 +35,9 @@ public class ContainerResponse {
 
     // Populated for gated-out containers (status = GATE_OUT)
     private LocalDateTime gateOutTime;
+
+    /** Expected exit date from YardStorage. Null when no storage record exists. */
+    private LocalDate expectedExitDate;
 
     /**
      * True when this container is attached to at least one active (non-terminal)

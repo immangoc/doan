@@ -21,6 +21,7 @@ export interface SlotOccupancy {
   zoneName?:       string;
   blockName?:      string;
   statusText?:     string;
+  isOverdue?:      boolean;      // true when storageEndDate has passed and container still in yard
 }
 
 export type OccupancyMap = Map<string, SlotOccupancy>;

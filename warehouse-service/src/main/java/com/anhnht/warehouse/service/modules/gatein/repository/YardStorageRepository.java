@@ -21,6 +21,12 @@ public interface YardStorageRepository extends JpaRepository<YardStorage, Intege
     @Query("SELECT s FROM YardStorage s WHERE s.container.containerId = :containerId AND s.storageEndDate IS NULL")
     Optional<YardStorage> findActiveByContainerId(@Param("containerId") String containerId);
 
+    /** Batch: latest expected exit date per container ID. Returns [containerId, storageEndDate]. */
+    @Query("SELECT s.container.containerId, MAX(s.storageEndDate) FROM YardStorage s " +
+           "WHERE s.container.containerId IN :containerIds AND s.storageEndDate IS NOT NULL " +
+           "GROUP BY s.container.containerId")
+    List<Object[]> findExpectedExitDates(@Param("containerIds") List<String> containerIds);
+
     /** Scheduler: storage records with expected exit date on or before cutoff (service filters by container status). */
     @EntityGraph(attributePaths = {"container", "container.status", "yard"})
     @Query("SELECT s FROM YardStorage s WHERE s.storageEndDate IS NOT NULL AND s.storageEndDate <= :cutoff")

@@ -18,7 +18,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
+@Tag(name = "Người dùng", description = "Quản lý tài khoản người dùng")
 @RestController
 @RequiredArgsConstructor
 public class UserController {

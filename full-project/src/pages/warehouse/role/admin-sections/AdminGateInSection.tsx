@@ -94,14 +94,18 @@ export default function AdminGateInSection() {
 
   const fetchApprovedOrders = async () => {
     try {
-      const params = new URLSearchParams({ statusName: 'APPROVED', size: '100', page: '0' });
-      const res = await fetch(`${API_BASE}/admin/orders?${params}`, { headers });
-      const data = await res.json();
-      if (res.ok) {
-        setApprovedOrders(
-          (data.data?.content || []).filter((o: ApprovedOrder) => o.containerIds?.length > 0),
-        );
-      }
+      // "Chờ nhập kho" = WAITING_CHECKIN. LATE_CHECKIN orders are still
+      // valid for gate-in. READY_FOR_IMPORT kept for backward-compat.
+      const statuses = ['WAITING_CHECKIN', 'LATE_CHECKIN', 'READY_FOR_IMPORT'];
+      const responses = await Promise.all(
+        statuses.map((s) =>
+          fetch(`${API_BASE}/admin/orders?statusName=${s}&size=100&page=0`, { headers })
+            .then((r) => (r.ok ? r.json() : { data: { content: [] } }))
+            .catch(() => ({ data: { content: [] } })),
+        ),
+      );
+      const merged = responses.flatMap((d) => d.data?.content || []);
+      setApprovedOrders(merged.filter((o: ApprovedOrder) => o.containerIds?.length > 0));
     } catch {
       // ignore — manual input still available
     }
@@ -135,7 +139,7 @@ export default function AdminGateInSection() {
     setOrderValidationError(null);
   };
 
-  const VALID_IMPORT_STATUSES = ['APPROVED', 'WAITING_CHECKIN', 'LATE_CHECKIN'];
+  const VALID_IMPORT_STATUSES = ['READY_FOR_IMPORT', 'WAITING_CHECKIN', 'LATE_CHECKIN', 'APPROVED'];
 
   const lookupOrderExportDate = async (containerId: string) => {
     const cid = containerId.trim();

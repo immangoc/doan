@@ -35,6 +35,8 @@ export interface InYardContainer {
   bayNo: number | null;
   tier: number | null;
   inActiveOrder: boolean;
+  /** YYYY-MM-DD or empty. Computed from YardStorage.storageEndDate. */
+  expectedExitDate: string;
 }
 
 export interface StorageBill {
@@ -135,6 +137,16 @@ export async function searchInYardContainers(keyword: string): Promise<InYardCon
       bayNo:         c.bayNo != null ? Number(c.bayNo) : null,
       tier:          c.tier  != null ? Number(c.tier)  : null,
       inActiveOrder: Boolean(c.inActiveOrder),
+      expectedExitDate: (() => {
+        const raw = c.expectedExitDate;
+        if (!raw) return '';
+        if (Array.isArray(raw) && raw.length >= 3) {
+          const [y, m, d] = raw;
+          return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+        }
+        const s = String(raw);
+        return s.includes('T') ? s.split('T')[0] : s;
+      })(),
     };
   });
 }
@@ -199,15 +211,17 @@ export async function performGateOut(containerId: string, note?: string): Promis
 // ─── Waiting list ─────────────────────────────────────────────────────────────
 
 /**
- * Fetch containers waiting for gate-in from approved admin orders.
- * Queries orders in statuses APPROVED / WAITING_CHECKIN / LATE_CHECKIN in parallel.
+ * Fetch containers waiting for gate-in. After an admin approves an order
+ * it transitions directly to WAITING_CHECKIN ("Chờ nhập kho"). LATE_CHECKIN
+ * orders are still pending arrival and stay in the list. READY_FOR_IMPORT
+ * is kept as a backward-compat alias for old data.
  *
  * Flattens each order's containerIds so the 3D gate-in flow can
  * open the exact container selected by admin approval.
  * Containers already in yard (status IN_YARD) are filtered out.
  */
 export async function fetchWaitingContainers(): Promise<WaitingItem[]> {
-  const validStatuses = ['PENDING'];
+  const validStatuses = ['WAITING_CHECKIN', 'LATE_CHECKIN', 'READY_FOR_IMPORT'];
 
   const responses = await Promise.all(
     validStatuses.map((s) =>

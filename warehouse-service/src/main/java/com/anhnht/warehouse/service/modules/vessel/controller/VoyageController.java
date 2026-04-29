@@ -17,7 +17,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
+@Tag(name = "Chuyến tàu", description = "Quản lý chuyến tàu (Voyage)")
 @RestController
 @RequiredArgsConstructor
 public class VoyageController {

@@ -44,6 +44,7 @@ export interface PageResult<T> {
 export interface ContainerFilter {
     keyword?: string;
     statusName?: string;
+    yardName?: string;
     containerType?: string;
 }
 
@@ -55,6 +56,7 @@ export async function fetchContainers(
     const params = new URLSearchParams({ page: String(page), size: String(size) });
     if (filter.keyword?.trim()) params.set('keyword', filter.keyword.trim());
     if (filter.statusName?.trim()) params.set('statusName', filter.statusName.trim());
+    if (filter.yardName?.trim()) params.set('yardName', filter.yardName.trim());
     if (filter.containerType?.trim()) params.set('containerType', filter.containerType.trim());
 
     const res = await apiFetch(`/admin/containers?${params.toString()}`);

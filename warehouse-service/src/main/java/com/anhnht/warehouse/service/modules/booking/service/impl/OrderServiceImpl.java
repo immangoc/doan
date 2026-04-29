@@ -3,10 +3,14 @@ package com.anhnht.warehouse.service.modules.booking.service.impl;
 import com.anhnht.warehouse.service.common.constant.ErrorCode;
 import com.anhnht.warehouse.service.common.exception.BusinessException;
 import com.anhnht.warehouse.service.common.exception.ResourceNotFoundException;
+import com.anhnht.warehouse.service.modules.billing.entity.FeeConfig;
+import com.anhnht.warehouse.service.modules.billing.repository.FeeConfigRepository;
 import com.anhnht.warehouse.service.modules.booking.dto.request.OrderCancelRequest;
+import com.anhnht.warehouse.service.modules.booking.dto.request.OrderExportDateUpdateRequest;
 import com.anhnht.warehouse.service.modules.booking.dto.request.OrderRequest;
 import com.anhnht.warehouse.service.modules.booking.dto.request.OrderStatusUpdateRequest;
 import com.anhnht.warehouse.service.modules.booking.dto.request.OrderUpdateRequest;
+import com.anhnht.warehouse.service.modules.booking.dto.response.OrderExportDateFeeResponse;
 import com.anhnht.warehouse.service.modules.booking.entity.Order;
 import com.anhnht.warehouse.service.modules.booking.entity.OrderCancellation;
 import com.anhnht.warehouse.service.modules.booking.entity.OrderStatus;
@@ -19,6 +23,8 @@ import com.anhnht.warehouse.service.modules.container.repository.ContainerReposi
 import com.anhnht.warehouse.service.modules.alert.service.NotificationService;
 import com.anhnht.warehouse.service.modules.user.entity.User;
 import com.anhnht.warehouse.service.modules.user.repository.UserRepository;
+import com.anhnht.warehouse.service.modules.wallet.entity.Wallet;
+import com.anhnht.warehouse.service.modules.wallet.service.WalletService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -26,6 +32,10 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.math.RoundingMode;
+import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 
 @Slf4j
@@ -41,6 +51,7 @@ public class OrderServiceImpl implements OrderService {
     private static final String STATUS_CANCEL_REQUESTED  = "CANCEL_REQUESTED";
     private static final String STATUS_WAITING_CHECKIN   = "WAITING_CHECKIN";
     private static final String STATUS_LATE_CHECKIN      = "LATE_CHECKIN";
+    private static final String STATUS_READY_FOR_IMPORT  = "READY_FOR_IMPORT";
     private static final String STATUS_IMPORTED          = "IMPORTED";
     private static final String STATUS_STORED            = "STORED";
     private static final String STATUS_EXPORTED          = "EXPORTED";
@@ -54,6 +65,8 @@ public class OrderServiceImpl implements OrderService {
     private final ContainerRepository        containerRepository;
     private final UserRepository             userRepository;
     private final NotificationService        notificationService;
+    private final FeeConfigRepository        feeConfigRepository;
+    private final WalletService              walletService;
 
     @Override
     public Page<Order> findAll(String statusName, String keyword, Pageable pageable) {
@@ -270,7 +283,7 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public void markImported(String containerId) {
         Order order = orderRepository.findActiveOrderByContainerId(containerId,
-                List.of(STATUS_WAITING_CHECKIN, STATUS_LATE_CHECKIN, STATUS_APPROVED))
+                List.of(STATUS_READY_FOR_IMPORT, STATUS_WAITING_CHECKIN, STATUS_LATE_CHECKIN, STATUS_APPROVED))
                 .orElseThrow(() -> new BusinessException(ErrorCode.BOOKING_NOT_FOUND,
                         "Không tìm thấy đơn hàng hợp lệ cho container: " + containerId));
         order.setStatus(resolveStatus(STATUS_IMPORTED));
@@ -405,11 +418,129 @@ public class OrderServiceImpl implements OrderService {
     public Order findOrderByContainerId(String containerId) {
         List<String> activeStatuses = List.of(
                 STATUS_PENDING, STATUS_APPROVED, STATUS_CANCEL_REQUESTED,
-                STATUS_WAITING_CHECKIN, STATUS_LATE_CHECKIN, STATUS_IMPORTED, STATUS_STORED);
+                STATUS_WAITING_CHECKIN, STATUS_LATE_CHECKIN, STATUS_READY_FOR_IMPORT,
+                STATUS_IMPORTED, STATUS_STORED);
         return orderRepository.findActiveOrderByContainerId(containerId, activeStatuses)
                 .map(Order::getOrderId)
                 .flatMap(orderRepository::findByIdWithDetails)
                 .orElse(null);
+    }
+
+    @Override
+    @Transactional
+    public OrderExportDateFeeResponse changeExportDate(Integer orderId, Integer customerId,
+                                                       OrderExportDateUpdateRequest request) {
+        Order order = findById(orderId);
+
+        // Authorization: only the order's owner (or admin/operator at the controller layer)
+        if (customerId != null && order.getCustomer() != null
+                && !customerId.equals(order.getCustomer().getUserId())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN,
+                    "Bạn không có quyền sửa đơn hàng này");
+        }
+
+        String current = order.getStatus().getStatusName();
+        if (!STATUS_STORED.equalsIgnoreCase(current) && !STATUS_IMPORTED.equalsIgnoreCase(current)) {
+            throw new BusinessException(ErrorCode.BOOKING_ALREADY_PROCESSED,
+                    "Chỉ đơn ở trạng thái Đang lưu kho mới được sửa ngày xuất. Trạng thái hiện tại: " + current);
+        }
+
+        LocalDate today = LocalDate.now();
+        LocalDate newDate = request.getNewExportDate();
+        if (newDate == null) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "Ngày xuất mới không được trống");
+        }
+        if (newDate.isBefore(today)) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST,
+                    "Ngày xuất mới không được sớm hơn hôm nay");
+        }
+        if (order.getImportDate() != null && newDate.isBefore(order.getImportDate())) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST,
+                    "Ngày xuất mới không được sớm hơn ngày nhập kho (" + order.getImportDate() + ")");
+        }
+
+        LocalDate originalExport = order.getExportDate();
+        long dayDiff = (originalExport != null)
+                ? ChronoUnit.DAYS.between(originalExport, newDate)
+                : 0L;
+        String changeType = dayDiff > 0 ? "LATE" : (dayDiff < 0 ? "EARLY" : "SAME");
+
+        FeeConfig fee = feeConfigRepository.findAll().stream().findFirst()
+                .orElse(new FeeConfig());
+
+        // Per-day daily storage rate (used as the late fee per day): 20ft rate × storageMultiplier.
+        // Falls back to ratePerKgDefault when 20ft rate is not configured.
+        BigDecimal dailyRate = fee.getContainerRate20ft() != null
+                && fee.getContainerRate20ft().compareTo(BigDecimal.ZERO) > 0
+                ? fee.getContainerRate20ft()
+                : (fee.getRatePerKgDefault() != null ? fee.getRatePerKgDefault() : BigDecimal.ZERO);
+        if (fee.getStorageMultiplier() != null) {
+            dailyRate = dailyRate.multiply(fee.getStorageMultiplier());
+        }
+        // Multiply by overdue penalty rate when picking up later than originally promised.
+        BigDecimal lateFeePerDay = dailyRate;
+        if (fee.getOverduePenaltyRate() != null
+                && fee.getOverduePenaltyRate().compareTo(BigDecimal.ZERO) > 0) {
+            lateFeePerDay = dailyRate.multiply(BigDecimal.ONE.add(fee.getOverduePenaltyRate()));
+        }
+
+        BigDecimal feeAmount;
+        if (changeType.equals("LATE")) {
+            feeAmount = lateFeePerDay.multiply(BigDecimal.valueOf(dayDiff));
+        } else if (changeType.equals("EARLY")) {
+            BigDecimal early = fee.getEarlyPickupFee() != null
+                    ? fee.getEarlyPickupFee()
+                    : BigDecimal.ZERO;
+            // Charge a one-time early-pickup fee, regardless of how many days early.
+            feeAmount = early;
+        } else {
+            feeAmount = BigDecimal.ZERO;
+        }
+        feeAmount = feeAmount.setScale(2, RoundingMode.HALF_UP);
+
+        boolean confirm = Boolean.TRUE.equals(request.getConfirmPayment());
+        BigDecimal balanceAfter = null;
+
+        if (confirm) {
+            if (feeAmount.compareTo(BigDecimal.ZERO) > 0) {
+                if (order.getCustomer() == null) {
+                    throw new BusinessException(ErrorCode.BAD_REQUEST,
+                            "Đơn hàng không có chủ tài khoản — không thể trừ ví");
+                }
+                Wallet wallet = walletService.debitWalletForInvoice(
+                        order.getCustomer().getUserId(),
+                        feeAmount,
+                        "Phí thay đổi ngày xuất — Đơn #" + orderId);
+                balanceAfter = wallet.getBalance();
+            } else if (order.getCustomer() != null) {
+                balanceAfter = walletService.getByUserId(order.getCustomer().getUserId()).getBalance();
+            }
+
+            order.setExportDate(newDate);
+            orderRepository.save(order);
+
+            if (order.getCustomer() != null) {
+                notificationService.notify(
+                        "Đã đổi ngày xuất — Đơn #" + orderId,
+                        "Ngày xuất mới: " + newDate
+                                + (feeAmount.compareTo(BigDecimal.ZERO) > 0
+                                    ? ". Phí: " + feeAmount + " " + fee.getCurrency() : ""),
+                        order.getCustomer().getUserId());
+            }
+        }
+
+        return OrderExportDateFeeResponse.builder()
+                .orderId(orderId)
+                .currentExportDate(originalExport)
+                .newExportDate(newDate)
+                .dayDiff(dayDiff)
+                .changeType(changeType)
+                .fee(feeAmount)
+                .freeStorageDays(fee.getFreeStorageDays())
+                .walletBalanceAfter(balanceAfter)
+                .charged(confirm)
+                .currency(fee.getCurrency() != null ? fee.getCurrency() : "VND")
+                .build();
     }
 
     // ----------------------------------------------------------------

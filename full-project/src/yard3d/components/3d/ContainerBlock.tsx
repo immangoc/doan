@@ -13,19 +13,26 @@ const statusLabel: Record<ContainerStatus, string> = {
   other:   'Khác',
 };
 
-// ─── Realistic container color palette ───────────────────────────────────────
-const PALETTE = [
-  '#1B3B6F', '#1a3a5c', '#1D4ED8', '#2563EB', '#1E40AF', '#3B82F6',
-  '#7C3A1C', '#8B4513', '#92400E', '#A0522D', '#6B3410',
-  '#B45309', '#D97706',
-  '#6B7280', '#4B5563', '#374151', '#9CA3AF',
-  '#DC2626', '#7F1D1D',
-  '#065F46',
-];
+// ─── Container color palette by cargo type ──────────────────────────────────
+const STATUS_COLORS: Record<string, string> = {
+  cold: '#1D4ED8',     // Deep Blue
+  dry: '#D97706',      // Deep Orange
+  fragile: '#DC2626',  // Red
+  other: '#4B5563',    // Dark Gray
+  damaged: '#7F1D1D',  // Dark Red
+};
 
-export function getContainerColor(seed: number): string {
-  const x = Math.sin(seed * 127.1 + 311.7) * 43758.5453;
-  return PALETTE[Math.abs(Math.floor(x)) % PALETTE.length];
+export function getContainerColor(status: string, cargoType?: string): string {
+  let effectiveStatus = status;
+  if (cargoType) {
+    const c = cargoType.toLowerCase();
+    if (c.includes('lạnh')) effectiveStatus = 'cold';
+    else if (c.includes('vỡ') || c.includes('dễ')) effectiveStatus = 'fragile';
+    else if (c.includes('hỏng')) effectiveStatus = 'damaged';
+    else if (c.includes('khác')) effectiveStatus = 'other';
+    else effectiveStatus = 'dry';
+  }
+  return STATUS_COLORS[effectiveStatus] || STATUS_COLORS.other;
 }
 
 function darkenHex(hex: string, amount: number): string {
@@ -119,6 +126,8 @@ interface ContainerBlockProps {
   whName?:          string;
   blockName?:       string;
   statusText?:      string;
+  isOverdue?:       boolean;
+  isDamageReported?: boolean;
 }
 
 export function ContainerBlock({
@@ -140,13 +149,17 @@ export function ContainerBlock({
   whName,
   blockName,
   statusText,
+  isOverdue = false,
+  isDamageReported = false,
 }: ContainerBlockProps) {
   const LENGTH = sizeType === '40ft' ? 12.0 : 6.0; // 40ft = exactly 2× 20ft
-  const color = getContainerColor(colorSeed);
+  const color = getContainerColor(status, cargoType);
   const frameColor = darkenHex(color, 45);
 
   const bounceRef = useRef<THREE.Group>(null);
   const bodyRef = useRef<THREE.MeshStandardMaterial>(null);
+  const overdueMatRef = useRef<THREE.MeshBasicMaterial>(null);
+  const damageMatRef  = useRef<THREE.MeshBasicMaterial>(null);
   const [hovered, setHovered] = useState(false);
   const [tooltipHovered, setTooltipHovered] = useState(false);
   const [pinned, setPinned] = useState(false);
@@ -156,18 +169,28 @@ export function ContainerBlock({
   const corrugatedTex = useMemo(() => getCorrugatedTexture(color), [color]);
 
   useFrame((state) => {
-    if (!bounceRef.current) return;
-    if (isHighlighted) {
-      bounceRef.current.position.y = Math.sin(state.clock.elapsedTime * 5) * 0.35;
-    } else if (hovered || tooltipHovered || pinned) {
-      bounceRef.current.position.y = Math.sin(state.clock.elapsedTime * 4) * 0.1;
-    } else if (Math.abs(bounceRef.current.position.y) > 0.001) {
-      bounceRef.current.position.y = THREE.MathUtils.lerp(bounceRef.current.position.y, 0, 0.1);
+    if (bounceRef.current) {
+      if (isHighlighted) {
+        bounceRef.current.position.y = Math.sin(state.clock.elapsedTime * 5) * 0.35;
+      } else if (hovered || tooltipHovered || pinned) {
+        bounceRef.current.position.y = Math.sin(state.clock.elapsedTime * 4) * 0.1;
+      } else if (Math.abs(bounceRef.current.position.y) > 0.001) {
+        bounceRef.current.position.y = THREE.MathUtils.lerp(bounceRef.current.position.y, 0, 0.1);
+      }
     }
 
     if (bodyRef.current && isHighlighted) {
       const pulse = 0.25 + 0.2 * Math.sin(state.clock.elapsedTime * 6);
       bodyRef.current.emissiveIntensity = pulse;
+    }
+
+    if (overdueMatRef.current && isOverdue) {
+      // Smooth blink: 0.35 → 1.0 at ~2 Hz
+      overdueMatRef.current.opacity = 0.35 + 0.65 * (0.5 + 0.5 * Math.sin(state.clock.elapsedTime * 4));
+    }
+    if (damageMatRef.current && isDamageReported) {
+      // Faster, more urgent blink for damage-reported containers (3 Hz)
+      damageMatRef.current.opacity = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(state.clock.elapsedTime * 6));
     }
   });
 
@@ -210,6 +233,36 @@ export function ContainerBlock({
           <meshStandardMaterial color={frameColor} roughness={0.5} metalness={0.4} />
         </mesh>
 
+        {/* Overdue indicator: blinking red wireframe outline */}
+        {isOverdue && (
+          <mesh>
+            <boxGeometry args={[WIDTH + 0.18, HEIGHT + 0.18, LENGTH + 0.18]} />
+            <meshBasicMaterial
+              ref={overdueMatRef}
+              color="#EF4444"
+              wireframe
+              transparent
+              opacity={0.9}
+              depthTest={false}
+            />
+          </mesh>
+        )}
+
+        {/* Damage-reported indicator: blinking amber wireframe outline (Pha 1 đã báo, chưa di chuyển) */}
+        {isDamageReported && (
+          <mesh>
+            <boxGeometry args={[WIDTH + 0.28, HEIGHT + 0.28, LENGTH + 0.28]} />
+            <meshBasicMaterial
+              ref={damageMatRef}
+              color="#F59E0B"
+              wireframe
+              transparent
+              opacity={0.9}
+              depthTest={false}
+            />
+          </mesh>
+        )}
+
         {/* Hover tooltip */}
         {(hovered || tooltipHovered || pinned) && (
           <Html position={[0, HEIGHT / 2 + 1.5, 0]} center style={{ pointerEvents: 'auto' }}>
@@ -246,8 +299,9 @@ export function ContainerBlock({
                   {[
                     { label: 'Mã số Container:', value: id },
                     { label: 'Loại hàng:', value: displayCargo },
+                    { label: 'Loại container:', value: (containerType ?? sizeType).toUpperCase(), style: { fontWeight: '600' as const } },
                     { label: 'Trọng lượng:', value: displayWeight },
-                    { label: 'Trạng thái:', value: displayStatus, style: { color: '#F97316', fontWeight: '600' as const } },
+                    { label: 'Trạng thái:', value: isOverdue ? `${displayStatus} · QUÁ HẠN` : displayStatus, style: { color: isOverdue ? '#DC2626' : '#F97316', fontWeight: '600' as const } },
                     { label: 'Vị trí:', value: vLabel, style: { fontWeight: '700' as const, color: '#111827' } },
                     { label: 'Zone:', value: displayZone },
                     { label: 'Ngày nhập bãi:', value: displayGateIn },

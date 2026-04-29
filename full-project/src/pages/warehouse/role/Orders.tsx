@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AlertCircle, FileText, Pencil, Plus, RefreshCw, Search, XCircle } from 'lucide-react';
+import { AlertCircle, CalendarClock, FileText, Pencil, Plus, RefreshCw, Search, XCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../components/ui/card';
 import { Input } from '../../../components/ui/input';
 import { Button } from '../../../components/ui/button';
@@ -37,8 +37,9 @@ type BillItem = {
 const STATUS_LABELS: Record<string, string> = {
   PENDING:          'Chờ duyệt',
   APPROVED:         'Đã duyệt',
-  WAITING_CHECKIN:  'Chờ nhận hàng',
+  WAITING_CHECKIN:  'Chờ nhập kho',
   LATE_CHECKIN:     'Trễ check-in',
+  READY_FOR_IMPORT: 'Chờ nhập kho',
   IMPORTED:         'Đã nhập kho',
   STORED:           'Đang lưu kho',
   EXPORTED:         'Đã xuất kho',
@@ -50,8 +51,9 @@ const STATUS_LABELS: Record<string, string> = {
 const STATUS_CLASS: Record<string, string> = {
   PENDING:          'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200',
   APPROVED:         'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200',
-  WAITING_CHECKIN:  'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200',
+  WAITING_CHECKIN:  'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-200',
   LATE_CHECKIN:     'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200',
+  READY_FOR_IMPORT: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-200',
   IMPORTED:         'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-200',
   STORED:           'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200',
   EXPORTED:         'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-200',
@@ -107,6 +109,17 @@ export default function Orders() {
   const [openBill, setOpenBill] = useState(false);
   const [billData, setBillData] = useState<BillItem | null>(null);
   const [billLoading, setBillLoading] = useState(false);
+
+  // Change export date (STORED orders only)
+  const [openExportEdit, setOpenExportEdit] = useState(false);
+  const [exportTarget, setExportTarget] = useState<OrderItem | null>(null);
+  const [exportNewDate, setExportNewDate] = useState('');
+  const [exportPreview, setExportPreview] = useState<{
+    fee: number; dayDiff: number; changeType: string; currency: string;
+    walletBalanceAfter?: number | null;
+  } | null>(null);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [exportError, setExportError] = useState('');
 
   const fetchOrders = async (p = 0) => {
     setLoading(true);
@@ -298,8 +311,85 @@ export default function Orders() {
   };
 
   const canCancel = (o: OrderItem) =>
-    ['PENDING', 'APPROVED', 'WAITING_CHECKIN', 'LATE_CHECKIN'].includes(o.statusName);
+    ['PENDING', 'APPROVED', 'WAITING_CHECKIN', 'LATE_CHECKIN', 'READY_FOR_IMPORT'].includes(o.statusName);
   const canEdit   = (o: OrderItem) => o.statusName === 'PENDING';
+  const canChangeExport = (o: OrderItem) => o.statusName === 'STORED' || o.statusName === 'IMPORTED';
+
+  const todayISO = new Date().toISOString().split('T')[0];
+
+  const openExportDialog = (order: OrderItem) => {
+    setExportTarget(order);
+    setExportNewDate(order.exportDate || '');
+    setExportPreview(null);
+    setExportError('');
+    setOpenExportEdit(true);
+  };
+
+  const previewExportFee = async () => {
+    if (!exportTarget || !exportNewDate) {
+      setExportError('Vui lòng chọn ngày xuất mới');
+      return;
+    }
+    if (exportNewDate < todayISO) {
+      setExportError('Ngày xuất mới không được sớm hơn hôm nay');
+      return;
+    }
+    if (exportTarget.importDate && exportNewDate < exportTarget.importDate) {
+      setExportError('Ngày xuất mới không được sớm hơn ngày nhập kho');
+      return;
+    }
+    setExportError('');
+    setExportLoading(true);
+    try {
+      const res = await fetch(`${apiUrl}/orders/${exportTarget.orderId}/export-date`, {
+        method: 'PUT', headers,
+        body: JSON.stringify({ newExportDate: exportNewDate, confirmPayment: false }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Lỗi tính phí');
+      setExportPreview({
+        fee: Number(data.data?.fee ?? 0),
+        dayDiff: Number(data.data?.dayDiff ?? 0),
+        changeType: String(data.data?.changeType ?? 'SAME'),
+        currency: String(data.data?.currency ?? 'VND'),
+      });
+    } catch (e: any) {
+      setExportError(e.message || 'Lỗi không xác định');
+    } finally {
+      setExportLoading(false);
+    }
+  };
+
+  const confirmExportChange = async () => {
+    if (!exportTarget || !exportNewDate) return;
+    setExportLoading(true);
+    setExportError('');
+    try {
+      const res = await fetch(`${apiUrl}/orders/${exportTarget.orderId}/export-date`, {
+        method: 'PUT', headers,
+        body: JSON.stringify({ newExportDate: exportNewDate, confirmPayment: true }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Lỗi cập nhật ngày xuất');
+      setExportPreview({
+        fee: Number(data.data?.fee ?? 0),
+        dayDiff: Number(data.data?.dayDiff ?? 0),
+        changeType: String(data.data?.changeType ?? 'SAME'),
+        currency: String(data.data?.currency ?? 'VND'),
+        walletBalanceAfter: data.data?.walletBalanceAfter ?? null,
+      });
+      alert('Đã cập nhật ngày xuất.' +
+        (data.data?.fee ? ` Phí ${Number(data.data.fee).toLocaleString('vi-VN')} ${data.data.currency || 'VND'} đã được trừ từ ví.` : ''));
+      setOpenExportEdit(false);
+      setExportTarget(null);
+      setExportPreview(null);
+      await fetchOrders(page);
+    } catch (e: any) {
+      setExportError(e.message || 'Lỗi không xác định');
+    } finally {
+      setExportLoading(false);
+    }
+  };
 
   return (
     <WarehouseLayout>
@@ -370,9 +460,11 @@ export default function Orders() {
                 className="h-10 rounded-md border border-gray-200 bg-white px-3 text-sm text-gray-700 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-200 outline-none focus:border-blue-500"
               >
                 <option value="">Tất cả trạng thái</option>
-                {Object.entries(STATUS_LABELS).map(([k, v]) => (
-                  <option key={k} value={k}>{v}</option>
-                ))}
+                {Object.entries(STATUS_LABELS)
+                  .filter(([k]) => k !== 'READY_FOR_IMPORT')
+                  .map(([k, v]) => (
+                    <option key={k} value={k}>{v}</option>
+                  ))}
               </select>
               <Button variant="outline" onClick={() => fetchOrders(page)} disabled={loading}>
                 <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />Làm mới
@@ -445,6 +537,16 @@ export default function Orders() {
                                 <Pencil className="w-4 h-4" />
                               </Button>
                             )}
+                            {canChangeExport(o) && (
+                              <Button
+                                variant="ghost" size="sm"
+                                className="text-indigo-700 hover:bg-indigo-50"
+                                onClick={() => openExportDialog(o)}
+                                title="Sửa ngày xuất kho"
+                              >
+                                <CalendarClock className="w-4 h-4" />
+                              </Button>
+                            )}
                             {canCancel(o) && (
                               <Button
                                 variant="ghost" size="sm"
@@ -469,7 +571,7 @@ export default function Orders() {
                   </TableBody>
                 </Table>
                 {totalPages > 1 && (
-                  <div className="flex items-center justify-center gap-2 mt-4">
+                  <div className="flex items-center justify-start gap-2 mt-4 pl-2 pr-32 sm:pr-40">
                     <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>Trước</Button>
                     <span className="text-sm text-gray-500">Trang {page + 1} / {totalPages}</span>
                     <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)}>Sau</Button>
@@ -657,6 +759,79 @@ export default function Orders() {
             )}
             <DialogFooter>
               <Button variant="outline" onClick={() => setOpenBill(false)}>Đóng</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Change export date dialog (STORED orders only) */}
+        <Dialog open={openExportEdit} onOpenChange={(o) => {
+          setOpenExportEdit(o);
+          if (!o) { setExportTarget(null); setExportPreview(null); setExportError(''); }
+        }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Sửa ngày xuất kho — Đơn #{exportTarget?.orderId}</DialogTitle>
+              <DialogDescription>
+                Ngày mới phải lớn hơn hoặc bằng hôm nay và ngày nhập kho.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 text-sm">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="text-gray-500">Ngày nhập:</div>
+                  <div className="font-medium">{exportTarget?.importDate || '—'}</div>
+                </div>
+                <div>
+                  <div className="text-gray-500">Ngày xuất hiện tại:</div>
+                  <div className="font-medium">{exportTarget?.exportDate || '—'}</div>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-sm font-medium text-gray-700">Ngày xuất mới</div>
+                <Input
+                  type="date"
+                  value={exportNewDate}
+                  min={exportTarget?.importDate && exportTarget.importDate > todayISO ? exportTarget.importDate : todayISO}
+                  onChange={(e) => { setExportNewDate(e.target.value); setExportPreview(null); }}
+                />
+              </div>
+              {exportError && (
+                <div className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded">{exportError}</div>
+              )}
+              {exportPreview && (
+                <div className="rounded-md border border-indigo-200 bg-indigo-50 p-3 space-y-1">
+                  <div className="flex justify-between">
+                    <span className="text-gray-600">Loại thay đổi:</span>
+                    <span className="font-medium">
+                      {exportPreview.changeType === 'LATE' ? `Xuất trễ ${exportPreview.dayDiff} ngày`
+                        : exportPreview.changeType === 'EARLY' ? `Xuất sớm ${Math.abs(exportPreview.dayDiff)} ngày`
+                        : 'Không thay đổi'}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-base font-semibold text-indigo-800">
+                    <span>Phí phải trả:</span>
+                    <span>{Number(exportPreview.fee).toLocaleString('vi-VN')} {exportPreview.currency}</span>
+                  </div>
+                  {exportPreview.walletBalanceAfter != null && (
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>Số dư ví sau giao dịch:</span>
+                      <span>{Number(exportPreview.walletBalanceAfter).toLocaleString('vi-VN')} {exportPreview.currency}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button variant="outline" onClick={() => setOpenExportEdit(false)} disabled={exportLoading}>Hủy</Button>
+              {!exportPreview ? (
+                <Button className="bg-indigo-700 hover:bg-indigo-800 text-white" onClick={previewExportFee} disabled={exportLoading}>
+                  {exportLoading ? 'Đang tính...' : 'Xem phí'}
+                </Button>
+              ) : (
+                <Button className="bg-green-700 hover:bg-green-800 text-white" onClick={confirmExportChange} disabled={exportLoading}>
+                  {exportLoading ? 'Đang xử lý...' : 'Thanh toán & Cập nhật'}
+                </Button>
+              )}
             </DialogFooter>
           </DialogContent>
         </Dialog>

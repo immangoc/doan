@@ -28,6 +28,7 @@ public class OptimizationServiceImpl implements OptimizationService {
         String     containerId   = null;
         String     cargoTypeName;
         BigDecimal grossWeight;
+        String     sizeType;
 
         if (StringUtils.hasText(request.getContainerId())) {
             // Resolve from registered container
@@ -37,6 +38,9 @@ public class OptimizationServiceImpl implements OptimizationService {
                     ? container.getCargoType().getCargoTypeName()
                     : null;
             grossWeight   = container.getGrossWeight();
+            sizeType      = container.getContainerType() != null
+                    ? normalizeSizeType(container.getContainerType().getContainerTypeName())
+                    : null;
 
             if (cargoTypeName == null) {
                 throw new BusinessException(ErrorCode.BAD_REQUEST,
@@ -50,8 +54,14 @@ public class OptimizationServiceImpl implements OptimizationService {
             }
             cargoTypeName = request.getCargoTypeName();
             grossWeight   = request.getGrossWeight();
+            sizeType      = normalizeSizeType(request.getSizeType());
         }
 
-        return algorithm.recommend(containerId, cargoTypeName, grossWeight);
+        return algorithm.recommend(containerId, cargoTypeName, grossWeight, sizeType);
+    }
+
+    private static String normalizeSizeType(String raw) {
+        if (raw == null) return "20ft";
+        return raw.toUpperCase().contains("40") ? "40ft" : "20ft";
     }
 }

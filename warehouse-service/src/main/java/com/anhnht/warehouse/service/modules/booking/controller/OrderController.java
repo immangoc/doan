@@ -5,9 +5,11 @@ import com.anhnht.warehouse.service.common.dto.response.PageResponse;
 import com.anhnht.warehouse.service.common.util.PageableUtils;
 import com.anhnht.warehouse.service.common.util.SecurityUtils;
 import com.anhnht.warehouse.service.modules.booking.dto.request.OrderCancelRequest;
+import com.anhnht.warehouse.service.modules.booking.dto.request.OrderExportDateUpdateRequest;
 import com.anhnht.warehouse.service.modules.booking.dto.request.OrderRequest;
 import com.anhnht.warehouse.service.modules.booking.dto.request.OrderStatusUpdateRequest;
 import com.anhnht.warehouse.service.modules.booking.dto.request.OrderUpdateRequest;
+import com.anhnht.warehouse.service.modules.booking.dto.response.OrderExportDateFeeResponse;
 import com.anhnht.warehouse.service.modules.booking.dto.response.OrderResponse;
 import com.anhnht.warehouse.service.modules.booking.mapper.BookingMapper;
 import com.anhnht.warehouse.service.modules.booking.service.OrderService;
@@ -17,7 +19,9 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
+@Tag(name = "Đơn hàng", description = "Quản lý đơn hàng nhập/xuất kho")
 @RestController
 @RequiredArgsConstructor
 public class OrderController {
@@ -76,6 +80,22 @@ public class OrderController {
             @Valid @RequestBody OrderCancelRequest request) {
         return ResponseEntity.ok(ApiResponse.success(
                 bookingMapper.toOrderResponse(orderService.cancel(id, request))));
+    }
+
+    /**
+     * PUT /orders/{id}/export-date — change the export date of a STORED order.
+     * Body: { newExportDate: yyyy-MM-dd, confirmPayment: true|false }
+     * When confirmPayment=false the response is a preview of the fee. When true,
+     * the wallet is debited and the new date is persisted.
+     */
+    @PutMapping("/orders/{id}/export-date")
+    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','OPERATOR')")
+    public ResponseEntity<ApiResponse<OrderExportDateFeeResponse>> changeExportDate(
+            @PathVariable Integer id,
+            @Valid @RequestBody OrderExportDateUpdateRequest request) {
+        Integer customerId = SecurityUtils.getCurrentUserId();
+        return ResponseEntity.ok(ApiResponse.success(
+                orderService.changeExportDate(id, customerId, request)));
     }
 
     // ============================================================

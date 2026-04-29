@@ -12,7 +12,9 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import io.swagger.v3.oas.annotations.tags.Tag;
 
+@Tag(name = "Danh mục container", description = "Quản lý danh mục loại container")
 @RestController
 @RequestMapping("/admin")
 @RequiredArgsConstructor
