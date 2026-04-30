@@ -20,9 +20,9 @@ import java.util.Optional;
  * Any failure (timeout, 5xx, parse error, ML disabled) yields an empty Optional
  * so callers can fall back to the heuristic.
  *
- * Implementation note: we read the response as raw byte[] (ByteArrayHttpMessageConverter
- * accepts ANY content type, including the application/octet-stream that uvicorn sometimes
- * emits) and parse with ObjectMapper, sidestepping Spring's content-type negotiation.
+ * Implementation note: we use a customized Jackson converter in MlClientConfig
+ * to parse application/octet-stream directly to MlPlacementResponse, sidestepping
+ * uvicorn's occasional incorrect content-type headers.
  */
 @Slf4j
 @Component
@@ -50,17 +50,14 @@ public class MlScoringClient {
                 .build();
 
         try {
-            byte[] raw = mlRestClient.post()
+            MlPlacementResponse resp = mlRestClient.post()
                     .uri("/recommend-placement")
                     .contentType(MediaType.APPLICATION_JSON)
                     .accept(MediaType.APPLICATION_JSON)
                     .body(req)
                     .retrieve()
-                    .body(byte[].class);
+                    .body(MlPlacementResponse.class);
 
-            if (raw == null || raw.length == 0) return Optional.empty();
-
-            MlPlacementResponse resp = objectMapper.readValue(raw, MlPlacementResponse.class);
             if (resp == null || resp.recommendations() == null) return Optional.empty();
 
             Map<Integer, Double> scores = new HashMap<>();
@@ -72,7 +69,7 @@ public class MlScoringClient {
                     // ML service emits string slotId; non-numeric ids skipped
                 }
             }
-            log.debug("[ML] {} slots scored by model {}", scores.size(), resp.modelName());
+            log.info("[ML] {} slots scored by model {}", scores.size(), resp.modelName());
             return scores.isEmpty() ? Optional.empty() : Optional.of(Collections.unmodifiableMap(scores));
         } catch (Exception ex) {
             log.warn("[ML] scoring fallback to heuristic — {}", ex.getMessage());

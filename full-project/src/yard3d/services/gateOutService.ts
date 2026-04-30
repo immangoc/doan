@@ -249,12 +249,17 @@ export async function performGateOut(containerId: string, note?: string): Promis
  * orders are still pending arrival and stay in the list. READY_FOR_IMPORT
  * is kept as a backward-compat alias for old data.
  *
+ * For multi-container orders, we also include IMPORTED and STORED statuses
+ * so remaining containers are still visible after the first one gates in.
+ *
  * Flattens each order's containerIds so the 3D gate-in flow can
  * open the exact container selected by admin approval.
- * Containers already in yard (status IN_YARD) are filtered out.
+ * Containers already processed (GATE_IN or IN_YARD) are filtered out.
  */
 export async function fetchWaitingContainers(): Promise<WaitingItem[]> {
-  const validStatuses = ['WAITING_CHECKIN', 'LATE_CHECKIN', 'READY_FOR_IMPORT'];
+  // Include IMPORTED and STORED so multi-container orders remain visible
+  // after the first container is gate-in'd.
+  const validStatuses = ['WAITING_CHECKIN', 'LATE_CHECKIN', 'READY_FOR_IMPORT', 'IMPORTED', 'STORED'];
 
   const responses = await Promise.all(
     validStatuses.map((s) =>
@@ -327,6 +332,6 @@ export async function fetchWaitingContainers(): Promise<WaitingItem[]> {
   }));
 
   return checked
-    .filter(({ status }) => status !== 'IN_YARD')
+    .filter(({ status }) => status !== 'IN_YARD' && status !== 'GATE_IN')
     .map(({ item }) => item);
 }

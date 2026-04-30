@@ -283,12 +283,17 @@ public class OrderServiceImpl implements OrderService {
     @Transactional
     public void markImported(String containerId) {
         Order order = orderRepository.findActiveOrderByContainerId(containerId,
-                List.of(STATUS_READY_FOR_IMPORT, STATUS_WAITING_CHECKIN, STATUS_LATE_CHECKIN, STATUS_APPROVED))
+                List.of(STATUS_READY_FOR_IMPORT, STATUS_WAITING_CHECKIN, STATUS_LATE_CHECKIN, STATUS_APPROVED,
+                        STATUS_IMPORTED, STATUS_STORED))
                 .orElseThrow(() -> new BusinessException(ErrorCode.BOOKING_NOT_FOUND,
                         "Không tìm thấy đơn hàng hợp lệ cho container: " + containerId));
-        order.setStatus(resolveStatus(STATUS_IMPORTED));
-        orderRepository.save(order);
-        log.info("[Order] Container {} gate-in → Order #{} → IMPORTED", containerId, order.getOrderId());
+        // Only advance to IMPORTED if the order hasn't already reached IMPORTED or STORED
+        String currentStatus = order.getStatus().getStatusName();
+        if (!STATUS_IMPORTED.equalsIgnoreCase(currentStatus) && !STATUS_STORED.equalsIgnoreCase(currentStatus)) {
+            order.setStatus(resolveStatus(STATUS_IMPORTED));
+            orderRepository.save(order);
+        }
+        log.info("[Order] Container {} gate-in → Order #{} → {}", containerId, order.getOrderId(), order.getStatus().getStatusName());
         if (order.getCustomer() != null) {
             notificationService.notify(
                     "Container đã nhập kho — Đơn #" + order.getOrderId(),
@@ -301,11 +306,14 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public void markStored(String containerId) {
-        orderRepository.findActiveOrderByContainerId(containerId, List.of(STATUS_IMPORTED))
+        orderRepository.findActiveOrderByContainerId(containerId, List.of(STATUS_IMPORTED, STATUS_STORED))
                 .ifPresent(order -> {
-                    order.setStatus(resolveStatus(STATUS_STORED));
-                    orderRepository.save(order);
-                    log.info("[Order] Container {} positioned → Order #{} → STORED", containerId, order.getOrderId());
+                    // Only advance to STORED if not already there
+                    if (!STATUS_STORED.equalsIgnoreCase(order.getStatus().getStatusName())) {
+                        order.setStatus(resolveStatus(STATUS_STORED));
+                        orderRepository.save(order);
+                    }
+                    log.info("[Order] Container {} positioned → Order #{} → {}", containerId, order.getOrderId(), order.getStatus().getStatusName());
                     if (order.getCustomer() != null) {
                         notificationService.notify(
                                 "Container đã vào vị trí — Đơn #" + order.getOrderId(),

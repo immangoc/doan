@@ -35,16 +35,16 @@ const STATUS_BADGE: Record<string, string> = {
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING:          'Chờ duyệt',
-  APPROVED:         'Đã duyệt',
+  APPROVED:         'Chờ checkin',
   WAITING_CHECKIN:  'Chờ nhập kho',
-  LATE_CHECKIN:     'Trễ check-in',
+  LATE_CHECKIN:     'Trễ checkin',
   READY_FOR_IMPORT: 'Chờ nhập kho',
   IMPORTED:         'Đã nhập kho',
-  STORED:           'Đang lưu kho',
-  EXPORTED:         'Đã xuất kho',
+  STORED:           'Đã nhập kho',
+  EXPORTED:         'Đã xuất',
   REJECTED:         'Từ chối',
   CANCELLED:        'Đã hủy',
-  CANCEL_REQUESTED: 'Yêu cầu hủy',
+  CANCEL_REQUESTED: 'Duyệt sửa',
   ACTIVE:           'Hoạt động',
   COMPLETED:        'Hoàn tất',
 };
@@ -211,8 +211,8 @@ export default function DonHang() {
       <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', marginBottom: 16 }}>
         <div className="stat-card"><div><div className="stat-label">Tổng đơn hàng</div><div className="stat-value">{total}</div></div></div>
         <div className="stat-card"><div><div className="stat-label">Chờ duyệt</div><div className="stat-value">{pending}</div></div></div>
-        <div className="stat-card"><div><div className="stat-label">Đã duyệt</div><div className="stat-value">{approved}</div></div></div>
-        <div className="stat-card"><div><div className="stat-label">Đã hủy/Từ chối</div><div className="stat-value">{cancelled}</div></div></div>
+        <div className="stat-card"><div><div className="stat-label">Chờ checkin</div><div className="stat-value">{approved}</div></div></div>
+        <div className="stat-card"><div><div className="stat-label">Đã hủy/Duyệt sửa</div><div className="stat-value">{cancelled}</div></div></div>
       </div>
 
       {error && (
@@ -238,15 +238,15 @@ export default function DonHang() {
           <select className="filter-select" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); fetchOrders(0, search, e.target.value); }}>
             <option value="">Tất cả</option>
             <option value="PENDING">Chờ duyệt</option>
-            <option value="APPROVED">Đã duyệt</option>
+            <option value="APPROVED">Chờ checkin</option>
             <option value="WAITING_CHECKIN">Chờ nhập kho</option>
-            <option value="LATE_CHECKIN">Trễ check-in</option>
+            <option value="LATE_CHECKIN">Trễ checkin</option>
             <option value="IMPORTED">Đã nhập kho</option>
-            <option value="STORED">Đang lưu kho</option>
-            <option value="EXPORTED">Đã xuất kho</option>
-            <option value="CANCEL_REQUESTED">Yêu cầu hủy</option>
+            <option value="STORED">Đã nhập kho</option>
+            <option value="EXPORTED">Đã xuất</option>
+            <option value="CANCEL_REQUESTED">Duyệt sửa</option>
             <option value="REJECTED">Từ chối</option>
-            <option value="CANCELLED">Hủy</option>
+            <option value="CANCELLED">Đã hủy</option>
           </select>
           <button className="btn btn-secondary btn-sm" onClick={handleSearch}>Tìm</button>
         </div>

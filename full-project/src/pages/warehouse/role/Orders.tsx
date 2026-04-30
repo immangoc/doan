@@ -36,21 +36,21 @@ type BillItem = {
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING:          'Chờ duyệt',
-  APPROVED:         'Đã duyệt',
+  APPROVED:         'Chờ checkin',
   WAITING_CHECKIN:  'Chờ nhập kho',
-  LATE_CHECKIN:     'Trễ check-in',
+  LATE_CHECKIN:     'Trễ checkin',
   READY_FOR_IMPORT: 'Chờ nhập kho',
   IMPORTED:         'Đã nhập kho',
-  STORED:           'Đang lưu kho',
-  EXPORTED:         'Đã xuất kho',
+  STORED:           'Đã nhập kho',
+  EXPORTED:         'Đã xuất',
   REJECTED:         'Từ chối',
-  CANCEL_REQUESTED: 'Yêu cầu hủy',
+  CANCEL_REQUESTED: 'Chờ duyệt sửa',
   CANCELLED:        'Đã hủy',
 };
 
 const STATUS_CLASS: Record<string, string> = {
   PENDING:          'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200',
-  APPROVED:         'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200',
+  APPROVED:         'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200',
   WAITING_CHECKIN:  'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-200',
   LATE_CHECKIN:     'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200',
   READY_FOR_IMPORT: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-200',
@@ -436,7 +436,7 @@ export default function Orders() {
             <p className="mt-1 text-3xl font-semibold text-green-600">{counts.approved}</p>
           </CardContent></Card>
           <Card><CardContent className="pt-5">
-            <p className="text-sm text-gray-500">Hủy / Yêu cầu hủy</p>
+            <p className="text-sm text-gray-500">Đã hủy / Chờ duyệt sửa</p>
             <p className="mt-1 text-3xl font-semibold text-gray-500">{counts.cancelled}</p>
           </CardContent></Card>
         </div>

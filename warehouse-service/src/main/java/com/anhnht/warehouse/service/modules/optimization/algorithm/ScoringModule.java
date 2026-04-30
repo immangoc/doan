@@ -56,7 +56,7 @@ public class ScoringModule {
                 c.setMlScore(clamp(heuristic(c)));
             }
         }
-        log.debug("[Scoring] ml_used={} ml_hits={}/{}",
+        log.info("[Scoring] ml_used={} ml_hits={}/{}",
                 !mlScores.isEmpty(), mlHits, candidates.size());
     }
 

@@ -53,7 +53,7 @@ public class StackingAlgorithm {
 
         // Module 0 — Pre-filter
         String yardTypeName = preFilter.resolveYardType(cargoTypeName);
-        List<SlotCandidate> candidates = preFilter.filter(yardTypeName, grossWeight);
+        List<SlotCandidate> candidates = preFilter.filter(yardTypeName, grossWeight, sizeType);
         log.debug("[Algorithm] Pre-filter passed: {} candidates", candidates.size());
 
         // Module A — ML scoring (with heuristic fallback)

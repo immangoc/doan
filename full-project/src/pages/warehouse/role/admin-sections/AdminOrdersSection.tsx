@@ -42,9 +42,15 @@ type BillHistoryItem = {
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING:          'Chờ duyệt',
-  APPROVED:         'Đã duyệt',
+  APPROVED:         'Chờ checkin',
+  WAITING_CHECKIN:  'Chờ nhập kho',
+  LATE_CHECKIN:     'Trễ checkin',
+  READY_FOR_IMPORT: 'Chờ nhập kho',
+  IMPORTED:         'Đã nhập kho',
+  STORED:           'Đã nhập kho',
+  EXPORTED:         'Đã xuất',
   REJECTED:         'Từ chối',
-  CANCEL_REQUESTED: 'Yêu cầu hủy',
+  CANCEL_REQUESTED: 'Duyệt sửa',
   CANCELLED:        'Đã hủy',
 };
 
@@ -275,11 +281,11 @@ export default function AdminOrdersSection() {
             <p className="mt-1 text-3xl font-semibold text-amber-600">{counts.pending}</p>
           </CardContent></Card>
           <Card><CardContent className="pt-5">
-            <p className="text-sm text-gray-500">Đã duyệt</p>
+            <p className="text-sm text-gray-500">Chờ checkin</p>
             <p className="mt-1 text-3xl font-semibold text-green-600">{counts.approved}</p>
           </CardContent></Card>
           <Card><CardContent className="pt-5">
-            <p className="text-sm text-gray-500">Đã/Yêu cầu hủy</p>
+            <p className="text-sm text-gray-500">Đã hủy/Duyệt sửa</p>
             <p className="mt-1 text-3xl font-semibold text-gray-500">{counts.cancelled}</p>
           </CardContent></Card>
         </div>

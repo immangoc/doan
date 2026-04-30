@@ -72,7 +72,7 @@ public class PreFilterModule {
      * @param newGrossWeight gross weight of the new container (for weight check)
      * @return list of candidate slots passing all hard constraints
      */
-    public List<SlotCandidate> filter(String yardTypeName, BigDecimal newGrossWeight) {
+    public List<SlotCandidate> filter(String yardTypeName, BigDecimal newGrossWeight, String sizeType) {
         List<Slot> slots = slotRepository.findByYardTypeName(yardTypeName);
 
         if (slots.isEmpty()) {
@@ -80,10 +80,31 @@ public class PreFilterModule {
                     "No slots found in yard type: " + yardTypeName);
         }
 
+        // Pre-calculate occupied tiers
+        java.util.Map<Integer, Integer> occupiedMap = new java.util.HashMap<>();
+        for (Slot slot : slots) {
+            occupiedMap.put(slot.getSlotId(), slotRepository.countOccupiedTiers(slot.getSlotId()));
+        }
+
         List<SlotCandidate> candidates = new ArrayList<>();
 
         for (Slot slot : slots) {
-            int occupied = slotRepository.countOccupiedTiers(slot.getSlotId());
+            int occupied = occupiedMap.getOrDefault(slot.getSlotId(), 0);
+
+            // Adjust for 40ft area (bay >= 5): a 40ft container spans two rows.
+            // The physical stack height is the max of the slot and its pair.
+            if (slot.getBayNo() >= 5) {
+                int pairedRowNo = slot.getRowNo() % 2 == 0 ? slot.getRowNo() - 1 : slot.getRowNo() + 1;
+                Slot pairedSlot = slots.stream()
+                        .filter(s -> s.getBlock().getBlockId().equals(slot.getBlock().getBlockId())
+                                  && s.getBayNo().equals(slot.getBayNo())
+                                  && s.getRowNo() == pairedRowNo)
+                        .findFirst().orElse(null);
+                if (pairedSlot != null) {
+                    int pairedOccupied = occupiedMap.getOrDefault(pairedSlot.getSlotId(), 0);
+                    occupied = Math.max(occupied, pairedOccupied);
+                }
+            }
 
             // Hard constraint 1: slot must have room
             if (occupied >= slot.getMaxTier()) continue;
@@ -95,6 +116,14 @@ public class PreFilterModule {
                 throw new BusinessException(ErrorCode.BAD_REQUEST,
                         "Trọng lượng container (" + newGrossWeight + " kg) vượt quá giới hạn "
                                 + (long) AppConstant.MAX_STACK_WEIGHT_TONS + " tấn.");
+            }
+
+            // Hard constraint 3: Size Type (20ft vs 40ft)
+            boolean is40ft = sizeType != null && sizeType.toUpperCase().contains("40");
+            if (is40ft) {
+                // 40ft must be in right half (bay >= 5) and anchor row (odd row)
+                if (slot.getBayNo() <= 4) continue;
+                if (slot.getRowNo() % 2 == 0) continue;
             }
 
             int zoneId       = slot.getBlock().getZone().getZoneId();
