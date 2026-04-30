@@ -35,7 +35,7 @@ public class ContainerCatalogController {
     }
 
     @PostMapping("/container-types")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<ContainerTypeResponse>> createContainerType(
             @Valid @RequestBody ContainerTypeRequest request) {
         return ResponseEntity.status(201).body(ApiResponse.created(
@@ -44,7 +44,7 @@ public class ContainerCatalogController {
     }
 
     @PutMapping("/container-types/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<ContainerTypeResponse>> updateContainerType(
             @PathVariable Integer id,
             @Valid @RequestBody ContainerTypeRequest request) {
@@ -54,7 +54,7 @@ public class ContainerCatalogController {
     }
 
     @DeleteMapping("/container-types/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<Void>> deleteContainerType(@PathVariable Integer id) {
         catalogService.deleteContainerType(id);
         return ResponseEntity.ok(ApiResponse.noContent("Container type deleted"));
@@ -72,7 +72,7 @@ public class ContainerCatalogController {
     }
 
     @PostMapping("/cargo-types")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<CargoTypeResponse>> createCargoType(
             @Valid @RequestBody CargoTypeRequest request) {
         return ResponseEntity.status(201).body(ApiResponse.created(
@@ -81,7 +81,7 @@ public class ContainerCatalogController {
     }
 
     @PutMapping("/cargo-types/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<CargoTypeResponse>> updateCargoType(
             @PathVariable Integer id,
             @Valid @RequestBody CargoTypeRequest request) {
@@ -91,7 +91,7 @@ public class ContainerCatalogController {
     }
 
     @DeleteMapping("/cargo-types/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<Void>> deleteCargoType(@PathVariable Integer id) {
         catalogService.deleteCargoType(id);
         return ResponseEntity.ok(ApiResponse.noContent("Cargo type deleted"));
@@ -109,7 +109,7 @@ public class ContainerCatalogController {
     }
 
     @PostMapping("/cargo-attributes")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<CargoAttributeResponse>> createCargoAttribute(
             @Valid @RequestBody CargoAttributeRequest request) {
         return ResponseEntity.status(201).body(ApiResponse.created(
@@ -118,7 +118,7 @@ public class ContainerCatalogController {
     }
 
     @PutMapping("/cargo-attributes/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<CargoAttributeResponse>> updateCargoAttribute(
             @PathVariable Integer id,
             @Valid @RequestBody CargoAttributeRequest request) {
@@ -128,7 +128,7 @@ public class ContainerCatalogController {
     }
 
     @DeleteMapping("/cargo-attributes/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<Void>> deleteCargoAttribute(@PathVariable Integer id) {
         catalogService.deleteCargoAttribute(id);
         return ResponseEntity.ok(ApiResponse.noContent("Cargo attribute deleted"));

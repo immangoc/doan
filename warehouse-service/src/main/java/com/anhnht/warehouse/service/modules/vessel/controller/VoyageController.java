@@ -68,7 +68,7 @@ public class VoyageController {
     }
 
     @PostMapping("/admin/voyages")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<VoyageResponse>> createVoyage(
             @Valid @RequestBody VoyageRequest request) {
         return ResponseEntity.status(201).body(ApiResponse.created(
@@ -76,7 +76,7 @@ public class VoyageController {
     }
 
     @PutMapping("/admin/voyages/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<VoyageResponse>> updateVoyage(
             @PathVariable Integer id,
             @Valid @RequestBody VoyageRequest request) {
@@ -85,7 +85,7 @@ public class VoyageController {
     }
 
     @DeleteMapping("/admin/voyages/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<Void>> deleteVoyage(@PathVariable Integer id) {
         voyageService.delete(id);
         return ResponseEntity.ok(ApiResponse.noContent("Voyage deleted"));
@@ -111,7 +111,7 @@ public class VoyageController {
     }
 
     @PostMapping("/admin/voyages/{voyageId}/manifests")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<ManifestResponse>> createManifest(
             @PathVariable Integer voyageId,
             @Valid @RequestBody ManifestRequest request) {
@@ -120,7 +120,7 @@ public class VoyageController {
     }
 
     @PutMapping("/admin/manifests/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<ManifestResponse>> updateManifest(
             @PathVariable Integer id,
             @Valid @RequestBody ManifestRequest request) {
@@ -129,7 +129,7 @@ public class VoyageController {
     }
 
     @DeleteMapping("/admin/manifests/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<Void>> deleteManifest(@PathVariable Integer id) {
         voyageService.deleteManifest(id);
         return ResponseEntity.ok(ApiResponse.noContent("Manifest deleted"));

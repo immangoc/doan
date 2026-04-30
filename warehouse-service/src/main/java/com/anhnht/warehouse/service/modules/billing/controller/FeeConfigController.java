@@ -28,7 +28,7 @@ public class FeeConfigController {
     }
 
     @PutMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<FeeConfigResponse>> update(@RequestBody FeeConfigRequest request) {
         return ResponseEntity.ok(ApiResponse.success(toResponse(feeConfigService.update(request))));
     }

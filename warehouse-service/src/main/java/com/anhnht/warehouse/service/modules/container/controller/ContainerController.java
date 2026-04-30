@@ -238,7 +238,7 @@ public class ContainerController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<Void>> deleteContainer(@PathVariable String id) {
         containerService.delete(id);
         return ResponseEntity.ok(ApiResponse.success(null));

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { FileText, Package, Clock, AlertTriangle, LogIn, LogOut } from 'lucide-react';
 import { useWarehouseAuth, API_BASE } from '../../../contexts/WarehouseAuthContext';
 
 type ContainerStatusCount = { statusName: string; count: number };
@@ -44,10 +45,10 @@ export default function Dashboard() {
   useEffect(() => { fetchData(); }, []);
 
   const statCards = dash ? [
-    { title: 'Tổng đơn hàng', value: String(dash.totalOrders), subtitle: `${dash.pendingOrders} đơn chờ xử lý`, color: 'si-blue' },
-    { title: 'Container trong kho', value: String(dash.containersInYard), subtitle: `${dash.totalContainers} tổng cộng`, color: 'si-green' },
-    { title: 'Container quá hạn', value: String(dash.overdueContainers), subtitle: 'Cần xử lý ngay', color: 'si-purple' },
-    { title: 'Cảnh báo mở', value: String(dash.openAlerts), subtitle: `${dash.criticalAlerts} nghiêm trọng`, color: dash.criticalAlerts > 0 ? 'si-red' : '' },
+    { title: 'Tổng đơn hàng', value: String(dash.totalOrders), subtitle: `${dash.pendingOrders} đơn chờ xử lý`, color: 'si-blue', icon: <FileText size={20} /> },
+    { title: 'Container trong kho', value: String(dash.containersInYard), subtitle: `${dash.totalContainers} tổng cộng`, color: 'si-green', icon: <Package size={20} /> },
+    { title: 'Container quá hạn', value: String(dash.overdueContainers), subtitle: 'Cần xử lý ngay', color: 'si-purple', icon: <Clock size={20} /> },
+    { title: 'Cảnh báo mở', value: String(dash.openAlerts), subtitle: `${dash.criticalAlerts} nghiêm trọng`, color: dash.criticalAlerts > 0 ? 'si-red' : '', icon: <AlertTriangle size={20} /> },
   ] : [];
 
   return (
@@ -78,7 +79,7 @@ export default function Dashboard() {
                   <div className="stat-sub">{card.subtitle}</div>
                 </div>
                 <div className={`stat-icon ${card.color}`}>
-                  <span style={{ fontSize: 20 }}>•</span>
+                  {card.icon}
                 </div>
               </div>
             ))}
@@ -90,12 +91,14 @@ export default function Dashboard() {
                 <div className="stat-label">Gate-In hôm nay</div>
                 <div className="stat-value">{dash.gateInToday}</div>
               </div>
+              <div className="stat-icon si-blue"><LogIn size={20} /></div>
             </div>
             <div className="stat-card" style={{ flex: 1 }}>
               <div>
                 <div className="stat-label">Gate-Out hôm nay</div>
                 <div className="stat-value">{dash.gateOutToday}</div>
               </div>
+              <div className="stat-icon si-purple"><LogOut size={20} /></div>
             </div>
           </div>
 

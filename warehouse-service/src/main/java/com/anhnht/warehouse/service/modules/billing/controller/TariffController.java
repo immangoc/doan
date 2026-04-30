@@ -22,7 +22,7 @@ public class TariffController {
     private final TariffService tariffService;
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<List<TariffResponse>>> getAll() {
         List<TariffResponse> data = tariffService.getAll().stream()
                 .map(this::toResponse)
@@ -31,7 +31,7 @@ public class TariffController {
     }
 
     @PutMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<List<TariffResponse>>> upsert(@RequestBody List<TariffRequest> requests) {
         List<TariffResponse> data = tariffService.upsert(requests).stream()
                 .map(this::toResponse)

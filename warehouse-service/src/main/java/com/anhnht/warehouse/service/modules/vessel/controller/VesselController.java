@@ -47,7 +47,7 @@ public class VesselController {
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<VesselResponse>> createVessel(
             @Valid @RequestBody VesselRequest request) {
         return ResponseEntity.status(201).body(ApiResponse.created(
@@ -55,7 +55,7 @@ public class VesselController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<VesselResponse>> updateVessel(
             @PathVariable Integer id,
             @Valid @RequestBody VesselRequest request) {
@@ -64,7 +64,7 @@ public class VesselController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<Void>> deleteVessel(@PathVariable Integer id) {
         vesselService.delete(id);
         return ResponseEntity.ok(ApiResponse.noContent("Vessel deleted"));

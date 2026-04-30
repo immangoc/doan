@@ -36,7 +36,7 @@ public class ShippingCompanyController {
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<ShippingCompanyResponse>> create(
             @Valid @RequestBody ShippingCompanyRequest request) {
         return ResponseEntity.status(201).body(ApiResponse.created(
@@ -44,7 +44,7 @@ public class ShippingCompanyController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<ShippingCompanyResponse>> update(
             @PathVariable Integer id,
             @Valid @RequestBody ShippingCompanyRequest request) {
@@ -53,7 +53,7 @@ public class ShippingCompanyController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Integer id) {
         service.delete(id);
         return ResponseEntity.ok(ApiResponse.noContent("Shipping company deleted"));

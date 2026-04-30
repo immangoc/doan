@@ -20,22 +20,37 @@ export interface Alert {
 }
 
 export async function fetchAlerts(): Promise<Alert[]> {
-  const res = await apiFetch('/admin/alerts');
+  // Request all alerts (large page size) sorted by createdAt desc
+  const res = await apiFetch('/admin/alerts?size=200&sort=createdAt,desc');
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
   const json: Rec = await res.json();
+
+  // Backend returns ApiResponse<PageResponse<AlertResponse>>
+  // Structure: { data: { content: [...], totalElements, ... } }
   const data: unknown = json.data ?? json;
-  const list: Rec[] = Array.isArray(data)
-    ? data
-    : Array.isArray((data as Rec).content) ? (data as Rec).content : [];
+  let list: Rec[];
+
+  if (Array.isArray(data)) {
+    list = data;
+  } else if (data && typeof data === 'object') {
+    const obj = data as Rec;
+    list = Array.isArray(obj.content) ? obj.content : [];
+  } else {
+    list = [];
+  }
 
   return list.map((a: Rec) => ({
     alertId:      Number(a.alertId ?? a.id ?? 0),
     zoneName:     String(a.zoneName ?? a.zone ?? '—'),
-    level:        (String(a.level ?? a.severity ?? 'INFO').toUpperCase()) as AlertLevel,
-    message:      String(a.message ?? a.description ?? ''),
-    timestamp:    String(a.timestamp ?? a.createdAt ?? a.date ?? ''),
-    acknowledged: Boolean(a.acknowledged ?? a.isAcknowledged ?? false),
+    // Backend field: levelName (e.g. "INFO", "WARNING", "CRITICAL")
+    level:        (String(a.levelName ?? a.level ?? a.severity ?? 'INFO').toUpperCase()) as AlertLevel,
+    // Backend field: description
+    message:      String(a.description ?? a.message ?? ''),
+    // Backend field: createdAt
+    timestamp:    String(a.createdAt ?? a.timestamp ?? a.date ?? ''),
+    // Backend field: status (0 = OPEN, 1 = ACKNOWLEDGED)
+    acknowledged: a.status === 1 || a.status === '1' || Boolean(a.acknowledged ?? a.isAcknowledged ?? false),
   }));
 }
 

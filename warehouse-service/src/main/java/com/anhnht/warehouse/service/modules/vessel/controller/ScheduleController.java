@@ -36,7 +36,7 @@ public class ScheduleController {
     }
 
     @PostMapping
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<ScheduleResponse>> create(
             @Valid @RequestBody ScheduleRequest request) {
         return ResponseEntity.status(201).body(ApiResponse.created(
@@ -44,7 +44,7 @@ public class ScheduleController {
     }
 
     @PutMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<ScheduleResponse>> update(
             @PathVariable Integer id,
             @Valid @RequestBody ScheduleRequest request) {
@@ -52,7 +52,7 @@ public class ScheduleController {
     }
 
     @DeleteMapping("/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<Void>> delete(@PathVariable Integer id) {
         service.delete(id);
         return ResponseEntity.ok(ApiResponse.noContent("Schedule deleted"));

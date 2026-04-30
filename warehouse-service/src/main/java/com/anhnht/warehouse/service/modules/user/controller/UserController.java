@@ -95,7 +95,7 @@ public class UserController {
     // ============================================================
 
     @GetMapping("/admin/users")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<PageResponse<UserResponse>>> getAllUsers(
             @Valid PageRequestDto pageRequest) {
         return ResponseEntity.ok(ApiResponse.success(
@@ -103,21 +103,21 @@ public class UserController {
     }
 
     @GetMapping("/admin/users/{userId}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<UserDetailResponse>> getUserById(
             @PathVariable Integer userId) {
         return ResponseEntity.ok(ApiResponse.success(userFacade.getUserById(userId)));
     }
 
     @PostMapping("/admin/users")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<UserResponse>> createUser(
             @Valid @RequestBody CreateUserRequest request) {
         return ResponseEntity.status(201).body(ApiResponse.created(userFacade.createUser(request)));
     }
 
     @PutMapping("/admin/users/{userId}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<UserResponse>> updateUser(
             @PathVariable Integer userId,
             @Valid @RequestBody UpdateUserRequest request) {
@@ -125,7 +125,7 @@ public class UserController {
     }
 
     @PutMapping("/admin/users/{userId}/status")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<Void>> updateUserStatus(
             @PathVariable Integer userId,
             @RequestParam Integer status) {
@@ -134,7 +134,7 @@ public class UserController {
     }
 
     @PutMapping("/admin/users/{userId}/roles/{roleId}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<Void>> assignRole(
             @PathVariable Integer userId,
             @PathVariable Integer roleId) {

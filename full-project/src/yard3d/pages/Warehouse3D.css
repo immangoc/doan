@@ -404,17 +404,19 @@
 
 .rp-container-list {
   list-style: none;
-  padding: 8px 20px 20px 32px;
+  padding: 8px 20px 20px 20px;
   margin: 0;
   display: flex;
   flex-direction: column;
+  align-items: center;
   gap: 5px;
 }
 
 .rp-container-list li {
   font-size: 13px;
   color: var(--color-text-secondary);
-  list-style-type: disc;
+  list-style-type: none;
+  text-align: center;
 }
 
 /* ── Import / Waiting panel ──────────────────────────────────────────────── */

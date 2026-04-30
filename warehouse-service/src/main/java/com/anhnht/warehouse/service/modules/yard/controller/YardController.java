@@ -61,7 +61,7 @@ public class YardController {
     }
 
     @PostMapping("/yards")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<YardResponse>> createYard(
             @Valid @RequestBody YardRequest request) {
         return ResponseEntity.status(201).body(ApiResponse.created(
@@ -69,7 +69,7 @@ public class YardController {
     }
 
     @PutMapping("/yards/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<YardResponse>> updateYard(
             @PathVariable Integer id,
             @Valid @RequestBody YardRequest request) {
@@ -78,7 +78,7 @@ public class YardController {
     }
 
     @DeleteMapping("/yards/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<Void>> deleteYard(@PathVariable Integer id) {
         yardService.deleteYard(id);
         return ResponseEntity.ok(ApiResponse.noContent("Yard deleted"));
@@ -104,7 +104,7 @@ public class YardController {
     }
 
     @PostMapping("/yards/{yardId}/zones")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<YardZoneResponse>> createZone(
             @PathVariable Integer yardId,
             @Valid @RequestBody YardZoneRequest request) {
@@ -113,7 +113,7 @@ public class YardController {
     }
 
     @PutMapping("/zones/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<YardZoneResponse>> updateZone(
             @PathVariable Integer id,
             @Valid @RequestBody YardZoneRequest request) {
@@ -122,7 +122,7 @@ public class YardController {
     }
 
     @DeleteMapping("/zones/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<Void>> deleteZone(@PathVariable Integer id) {
         yardService.deleteZone(id);
         return ResponseEntity.ok(ApiResponse.noContent("Zone deleted"));
@@ -148,7 +148,7 @@ public class YardController {
     }
 
     @PostMapping("/zones/{zoneId}/blocks")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<BlockResponse>> createBlock(
             @PathVariable Integer zoneId,
             @Valid @RequestBody BlockRequest request) {
@@ -157,7 +157,7 @@ public class YardController {
     }
 
     @PutMapping("/blocks/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<BlockResponse>> updateBlock(
             @PathVariable Integer id,
             @Valid @RequestBody BlockRequest request) {
@@ -166,7 +166,7 @@ public class YardController {
     }
 
     @DeleteMapping("/blocks/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<Void>> deleteBlock(@PathVariable Integer id) {
         yardService.deleteBlock(id);
         return ResponseEntity.ok(ApiResponse.noContent("Block deleted"));
@@ -192,7 +192,7 @@ public class YardController {
     }
 
     @PostMapping("/blocks/{blockId}/slots")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<SlotResponse>> createSlot(
             @PathVariable Integer blockId,
             @Valid @RequestBody SlotRequest request) {
@@ -201,7 +201,7 @@ public class YardController {
     }
 
     @PostMapping("/blocks/{blockId}/slots/batch")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<Map<String, Integer>>> batchCreateSlots(
             @PathVariable Integer blockId,
             @Valid @RequestBody SlotBatchRequest request) {
@@ -210,7 +210,7 @@ public class YardController {
     }
 
     @PutMapping("/slots/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<SlotResponse>> updateSlot(
             @PathVariable Integer id,
             @Valid @RequestBody SlotRequest request) {
@@ -219,7 +219,7 @@ public class YardController {
     }
 
     @DeleteMapping("/slots/{id}")
-    @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<Void>> deleteSlot(@PathVariable Integer id) {
         yardService.deleteSlot(id);
         return ResponseEntity.ok(ApiResponse.noContent("Slot deleted"));
