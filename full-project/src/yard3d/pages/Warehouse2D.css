@@ -482,6 +482,22 @@
   animation: ghostPulse 1.5s ease-in-out infinite;
 }
 
+/* Locked slot */
+.slot-locked {
+  cursor: pointer !important;
+  animation: lockedPulse 2s ease-in-out infinite !important;
+  position: relative;
+}
+.slot-locked:hover {
+  transform: scale(1.08);
+  box-shadow: 0 3px 12px rgba(239, 68, 68, 0.3);
+}
+
+@keyframes lockedPulse {
+  0%, 100% { opacity: 0.85; }
+  50%      { opacity: 0.55; }
+}
+
 @keyframes hl-pulse {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.55; }

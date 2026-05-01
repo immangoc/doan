@@ -4,37 +4,39 @@ import com.anhnht.warehouse.service.common.constant.ErrorCode;
 import com.anhnht.warehouse.service.common.dto.response.ApiResponse;
 import com.anhnht.warehouse.service.common.exception.ResourceNotFoundException;
 import com.anhnht.warehouse.service.modules.yard.entity.Slot;
+import com.anhnht.warehouse.service.modules.yard.entity.YardZone;
 import com.anhnht.warehouse.service.modules.yard.repository.SlotRepository;
+import com.anhnht.warehouse.service.modules.yard.repository.YardZoneRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 import io.swagger.v3.oas.annotations.tags.Tag;
 
 /**
- * Slot lock / unlock management.
- * Staff reports a slot as unusable; manager locks it to prevent assignment.
+ * Slot & Zone lock / unlock management.
  */
-@Tag(name = "Slot kho", description = "Quản lý khóa/mở slot kho")
+@Tag(name = "Khóa vị trí kho", description = "Quản lý khóa/mở slot và zone kho")
 @RestController
-@RequestMapping("/admin/slots")
+@RequestMapping("/admin/slot-lock")
 @RequiredArgsConstructor
 public class SlotController {
 
     private final SlotRepository slotRepository;
+    private final YardZoneRepository yardZoneRepository;
 
-    /**
-     * PUT /admin/slots/{slotId}/lock
-     * Body (optional): { "reason": "flooding in zone A" }
-     */
-    @PutMapping("/{slotId}/lock")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    // ── Slot lock/unlock ──────────────────────────────────────────────────
+
+    @PutMapping("/slots/{slotId}/lock")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<SlotStatusDto>> lockSlot(
             @PathVariable Integer slotId,
             @RequestBody(required = false) Map<String, String> body) {
-
         Slot slot = findSlot(slotId);
         slot.setIsLocked(true);
         slot.setLockReason(body != null ? body.get("reason") : null);
@@ -42,11 +44,8 @@ public class SlotController {
         return ResponseEntity.ok(ApiResponse.success(toDto(slot)));
     }
 
-    /**
-     * PUT /admin/slots/{slotId}/unlock
-     */
-    @PutMapping("/{slotId}/unlock")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PutMapping("/slots/{slotId}/unlock")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<SlotStatusDto>> unlockSlot(@PathVariable Integer slotId) {
         Slot slot = findSlot(slotId);
         slot.setIsLocked(false);
@@ -55,13 +54,41 @@ public class SlotController {
         return ResponseEntity.ok(ApiResponse.success(toDto(slot)));
     }
 
-    /**
-     * GET /admin/slots/{slotId}
-     */
-    @GetMapping("/{slotId}")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
-    public ResponseEntity<ApiResponse<SlotStatusDto>> getSlot(@PathVariable Integer slotId) {
-        return ResponseEntity.ok(ApiResponse.success(toDto(findSlot(slotId))));
+    /** All locked slot IDs — used by 3D/2D views to render red overlay. */
+    @GetMapping("/slots/locked")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
+    public ResponseEntity<ApiResponse<List<SlotStatusDto>>> getLockedSlots() {
+        List<SlotStatusDto> locked = slotRepository.findAll().stream()
+                .filter(s -> Boolean.TRUE.equals(s.getIsLocked()))
+                .map(this::toDto)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(ApiResponse.success(locked));
+    }
+
+    // ── Zone lock/unlock ──────────────────────────────────────────────────
+
+    @PutMapping("/zones/{zoneId}/lock")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
+    @Transactional
+    public ResponseEntity<ApiResponse<Map<String, Object>>> lockZone(@PathVariable Integer zoneId) {
+        YardZone zone = yardZoneRepository.findById(zoneId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.ZONE_NOT_FOUND, "Zone not found: " + zoneId));
+        zone.setIsLocked(true);
+        yardZoneRepository.save(zone);
+        return ResponseEntity.ok(ApiResponse.success(
+                Map.of("zoneId", zoneId, "zoneName", zone.getZoneName(), "isLocked", true)));
+    }
+
+    @PutMapping("/zones/{zoneId}/unlock")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
+    @Transactional
+    public ResponseEntity<ApiResponse<Map<String, Object>>> unlockZone(@PathVariable Integer zoneId) {
+        YardZone zone = yardZoneRepository.findById(zoneId)
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.ZONE_NOT_FOUND, "Zone not found: " + zoneId));
+        zone.setIsLocked(false);
+        yardZoneRepository.save(zone);
+        return ResponseEntity.ok(ApiResponse.success(
+                Map.of("zoneId", zoneId, "zoneName", zone.getZoneName(), "isLocked", false)));
     }
 
     // ── helpers ──────────────────────────────────────────────────────────
@@ -82,8 +109,6 @@ public class SlotController {
         dto.lockReason = slot.getLockReason();
         return dto;
     }
-
-    // ── inner DTO ─────────────────────────────────────────────────────────
 
     public static class SlotStatusDto {
         public Integer slotId;

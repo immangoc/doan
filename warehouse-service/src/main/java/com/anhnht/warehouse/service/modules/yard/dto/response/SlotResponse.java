@@ -11,4 +11,6 @@ public class SlotResponse {
     private Integer rowNo;
     private Integer bayNo;
     private Integer maxTier;
+    private Boolean isLocked;
+    private String  lockReason;
 }

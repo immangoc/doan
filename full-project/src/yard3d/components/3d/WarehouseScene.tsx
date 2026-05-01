@@ -1,6 +1,6 @@
-import { Suspense, useRef, useMemo, forwardRef, useImperativeHandle, useSyncExternalStore } from 'react';
+import { Suspense, useRef, useMemo, useState, forwardRef, useImperativeHandle, useSyncExternalStore } from 'react';
 import { Canvas, useThree, useFrame } from '@react-three/fiber';
-import { OrbitControls, Environment, ContactShadows, Text } from '@react-three/drei';
+import { OrbitControls, Environment, ContactShadows, Text, Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { toast } from 'sonner';
 import { ContainerBlock } from './ContainerBlock';
@@ -9,9 +9,11 @@ import {
   TOTAL_SLOTS, WARNING_THRESHOLD, WH_MAP,
 } from '../../data/warehouse';
 import type { WHType, ZoneInfo, PreviewPosition } from '../../data/warehouse';
-import { subscribeYard, getYardData, getZoneNames, countZoneFilledSlots, getZoneTotalSlots, getZoneDims } from '../../store/yardStore';
+import { subscribeYard, getYardData, getZoneNames, countZoneFilledSlots, getZoneTotalSlots, getZoneDims, getLockedSlotKeys, processApiYards, setYardData } from '../../store/yardStore';
 import { subscribeOccupancy, getOccupancyData, getSlotOccupancy, countOccupiedZoneSlots, isOccupancyFetched } from '../../store/occupancyStore';
 import { subscribeDamage, getPendingByCodeMap } from '../../store/damageStore';
+import { getCachedYards } from '../../services/yardService';
+import { apiFetch } from '../../services/apiClient';
 
 export type { WHType, ZoneInfo };
 
@@ -73,6 +75,8 @@ interface ZoneBlockProps {
   onClick: () => void;
   highlightId?: string;
   previewPosition?: PreviewPosition | null;
+  lockedSlotKeys: Set<string>;
+  onLockToggle: (whType: WHType, zoneName: string, row: number, col: number, lock: boolean) => void;
   onDamageContainer: (payload: {
     containerCode: string;
     cargoType: string;
@@ -86,7 +90,7 @@ interface ZoneBlockProps {
   }) => void;
 }
 
-function ZoneBlock({ position, zoneName, whType, onClick, highlightId, previewPosition, onDamageContainer }: ZoneBlockProps) {
+function ZoneBlock({ position, zoneName, whType, onClick, highlightId, previewPosition, lockedSlotKeys, onLockToggle, onDamageContainer }: ZoneBlockProps) {
   const wh = WH_MAP[whType];
   const allYards = useSyncExternalStore(subscribeYard, getYardData);
   const occupancyMap = useSyncExternalStore(subscribeOccupancy, getOccupancyData);
@@ -259,6 +263,32 @@ function ZoneBlock({ position, zoneName, whType, onClick, highlightId, previewPo
           <WarningLabel centerX={centerX} centerZ={centerZ} width={TOTAL_Z + 3} />
         </>
       )}
+
+      {/* Locked slot markers */}
+      {(() => {
+        const { rows: gridRows, cols: gridCols } = getZoneDims(allYards, whType, zoneName);
+        const markers: JSX.Element[] = [];
+        for (let row = 0; row < gridRows; row++) {
+          for (let col = 0; col < gridCols; col++) {
+            const key = `${whType}/${zoneName}/${row}/${col}`;
+            if (!lockedSlotKeys.has(key)) continue;
+            const x = colX(col);
+            const z = rowZ(row);
+            markers.push(
+              <group key={`lock-${row}-${col}`} position={[x, 0.06, z]}>
+                <mesh rotation={[-Math.PI / 2, 0, 0]} onClick={(e) => { e.stopPropagation(); onLockToggle(whType, zoneName, row, col, false); }}>
+                  <planeGeometry args={[CTN_W, CTN_L20]} />
+                  <meshStandardMaterial color="#EF4444" transparent opacity={0.45} side={THREE.DoubleSide} />
+                </mesh>
+                <Text position={[0, 0.1, 0]} rotation={[-Math.PI / 2, 0, 0]} fontSize={1.2} color="#DC2626" anchorX="center" anchorY="middle">
+                  {'🔒'}
+                </Text>
+              </group>
+            );
+          }
+        }
+        return markers;
+      })()}
     </group>
   );
 }
@@ -327,12 +357,70 @@ interface WarehouseSceneProps {
 
 const ZONE_SPACING = 34;
 
-export const WarehouseScene = forwardRef<SceneHandle, WarehouseSceneProps>(
+const WarehouseScene = forwardRef<SceneHandle, WarehouseSceneProps>(
   ({ warehouseType, onZoneClick, highlightId, previewPosition, onDamageContainer }, ref) => {
     const handleRef = useRef<SceneHandle | null>(null);
     const allYards = useSyncExternalStore(subscribeYard, getYardData);
     const occupancyMap = useSyncExternalStore(subscribeOccupancy, getOccupancyData);
     const zones = getZoneNames(allYards, warehouseType);
+    const [lockRefreshKey, setLockRefreshKey] = useState(0);
+
+    const lockedSlotKeys = useMemo(() => {
+      void lockRefreshKey; // dependency trigger
+      return getLockedSlotKeys(allYards, getCachedYards());
+    }, [allYards, lockRefreshKey]);
+
+    async function handleLockToggle(wh: WHType, zoneName: string, row: number, col: number, lock: boolean) {
+      // Find yard and zone from reactive store which already has correct whType
+      const matchedYard = allYards.find(y => y.whType === wh);
+      if (!matchedYard) { toast.error('Không tìm thấy dữ liệu kho'); return; }
+      
+      const matchedZone = matchedYard.zones.find(z => z.zoneName === zoneName);
+      if (!matchedZone) { toast.error('Không tìm thấy zone'); return; }
+
+      const cachedYards = getCachedYards();
+      let slotId: number | undefined;
+
+      const targetYard = cachedYards.find(y => y.yardId === matchedYard.yardId);
+      const targetZone = targetYard?.zones.find(z => z.zoneId === matchedZone.zoneId);
+      
+      if (targetZone) {
+        for (const b of targetZone.blocks) {
+          for (const s of b.slots) {
+            if (s.rowNo === row + 1 && s.bayNo === col + 1) { slotId = s.slotId; break; }
+          }
+          if (slotId) break;
+        }
+      }
+      if (!slotId) { toast.error('Không tìm thấy slot'); return; }
+
+      try {
+        const action = lock ? 'lock' : 'unlock';
+        const res = await apiFetch(`/admin/slot-lock/slots/${slotId}/${action}`, { 
+          method: 'PUT',
+          body: JSON.stringify({})
+        });
+        if (!res.ok) throw new Error('API error');
+        // Update slot in cached data
+        for (const y of cachedYards) {
+          for (const z of y.zones) {
+            for (const b of z.blocks) {
+              for (const s of b.slots) {
+                if (s.slotId === slotId) s.isLocked = lock;
+              }
+            }
+          }
+        }
+        // Re-process and sync reactive store
+        setYardData(processApiYards(cachedYards));
+        setLockRefreshKey(k => k + 1);
+        toast.success(lock
+          ? `🔒 Đã khóa vị trí R${row + 1}B${col + 1} tại ${zoneName}`
+          : `🔓 Đã mở khóa vị trí R${row + 1}B${col + 1} tại ${zoneName}`);
+      } catch {
+        toast.error('Lỗi khi thay đổi trạng thái khóa');
+      }
+    }
 
     useImperativeHandle(ref, () => ({
       zoomIn: () => handleRef.current?.zoomIn(),
@@ -383,6 +471,8 @@ export const WarehouseScene = forwardRef<SceneHandle, WarehouseSceneProps>(
                 onClick={() => handleZoneClick(zone)}
                 highlightId={highlightId}
                 previewPosition={previewPosition?.whType === warehouseType ? previewPosition : null}
+                lockedSlotKeys={lockedSlotKeys}
+                onLockToggle={handleLockToggle}
                 onDamageContainer={onDamageContainer}
               />
             ))}
@@ -395,3 +485,4 @@ export const WarehouseScene = forwardRef<SceneHandle, WarehouseSceneProps>(
 );
 
 WarehouseScene.displayName = 'WarehouseScene';
+export { WarehouseScene };

@@ -23,6 +23,8 @@ export interface ProcessedZone {
   cols:       number;
   maxTier:    number;
   totalSlots: number;
+  isLocked:   boolean;
+  lockedSlotIds: Set<number>;
 }
 
 export interface ProcessedYard {
@@ -56,6 +58,12 @@ export function processApiYards(apiYards: ApiYard[]): ProcessedYard[] {
       const { grid, rows, cols, maxTier, totalSlots } = mergeBlockGrids(
         zone.blocks.map((b) => b.slots)
       );
+      // Collect locked slot IDs
+      const lockedSlotIds = new Set<number>();
+      zone.blocks.forEach(b => b.slots.forEach(s => {
+        if (s.isLocked) lockedSlotIds.add(s.slotId);
+      }));
+
       return {
         zoneId:     zone.zoneId,
         zoneName:   zone.zoneName,
@@ -64,6 +72,8 @@ export function processApiYards(apiYards: ApiYard[]): ProcessedYard[] {
         cols,
         maxTier,
         totalSlots,
+        isLocked:   zone.isLocked === true,
+        lockedSlotIds,
       };
     });
 
@@ -238,3 +248,49 @@ export function getZoneDims(
 // Also export a convenience wrapper that reads from module-level store directly.
 // Useful for the mock-fill seeded algorithm that runs inside useMemo.
 export { buildSlotGrid };
+
+/** Check if a specific slot (by row/col, 0-based) is locked in a zone */
+export function isSlotLocked(
+  yards: ProcessedYard[],
+  whType: WHType,
+  zoneName: string,
+  row: number,
+  col: number,
+): boolean {
+  const yard = yards.find(y => y.whType === whType);
+  if (!yard) return false;
+  const zone = yard.zones.find(z => z.zoneName === zoneName);
+  if (!zone) return false;
+  if (zone.isLocked) return true; // entire zone is locked
+  // Check individual slot by looking up slotId from cached yards
+  return false; // individual slot check done via lockedSlotIds in the zone
+}
+
+/** Get all locked slot keys as Set<'whType/zone/row/col'> for O(1) lookup in 3D/2D */
+export function getLockedSlotKeys(yards: ProcessedYard[], apiYards: ApiYard[]): Set<string> {
+  const keys = new Set<string>();
+  for (const yard of apiYards) {
+    const whType = inferWHType(yard.yardType, yard.yardName);
+    for (const zone of yard.zones) {
+      const pZone = yards.find(y => y.whType === whType)?.zones.find(z => z.zoneId === zone.zoneId);
+      if (pZone?.isLocked) {
+        // Lock all slots in zone
+        for (const block of zone.blocks) {
+          for (const slot of block.slots) {
+            keys.add(`${whType}/${zone.zoneName}/${slot.rowNo - 1}/${slot.bayNo - 1}`);
+          }
+        }
+      } else {
+        // Check individual locked slots
+        for (const block of zone.blocks) {
+          for (const slot of block.slots) {
+            if (slot.isLocked) {
+              keys.add(`${whType}/${zone.zoneName}/${slot.rowNo - 1}/${slot.bayNo - 1}`);
+            }
+          }
+        }
+      }
+    }
+  }
+  return keys;
+}

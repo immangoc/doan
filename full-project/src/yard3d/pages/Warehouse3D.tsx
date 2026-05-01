@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import {
   Search, Plus, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Compass,
   Package, Calendar, Truck, Snowflake, AlertTriangle, Layers, Info,
-  Shuffle, LogOut, X, FileText, Trash2, RefreshCw,
+  Shuffle, LogOut, X, FileText, Trash2, RefreshCw, Lock, Unlock,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router';
@@ -88,6 +88,8 @@ function DonutChart({ pct }: { pct: number }) {
 // ─── Zone info panel ──────────────────────────────────────────────────────────
 function ZoneInfoPanel({ zone }: { zone: ZoneInfo }) {
   const isWarning = zone.fillRate >= 90;
+  const [zoneLocking, setZoneLocking] = useState(false);
+  const [zoneLockedState, setZoneLockedState] = useState(false);
 
   // Use real data from store
   const allYards = useSyncExternalStore(subscribeYard, getYardData);
@@ -98,6 +100,64 @@ function ZoneInfoPanel({ zone }: { zone: ZoneInfo }) {
   const whTypeMap: Record<string, WHType> = {
     'Kho Lạnh': 'cold', 'Kho Khô': 'dry', 'Kho Hàng dễ vỡ': 'fragile', 'Kho Hỏng': 'damaged', 'Kho khác': 'other',
   };
+
+  // Check if zone is locked
+  useEffect(() => {
+    const whType = whTypeMap[zone.type];
+    if (!whType) return;
+    const pYard = allYards.find(y => y.whType === whType);
+    const pZone = pYard?.zones.find(z => z.zoneName === zone.name);
+    setZoneLockedState(pZone?.isLocked ?? false);
+  }, [zone, allYards]);
+
+  async function handleZoneLock() {
+    const whType = whTypeMap[zone.type];
+    if (!whType) { toast.error(`Không xác định loại kho: ${zone.type}`); return; }
+
+    // Find yard and zone from reactive store which already has correct whType
+    const matchedYard = allYards.find(y => y.whType === whType);
+    if (!matchedYard) { toast.error('Không tìm thấy dữ liệu kho'); return; }
+    
+    const matchedZone = matchedYard.zones.find(z => z.zoneName === zone.name);
+    if (!matchedZone || matchedZone.zoneId <= 0) { toast.error(`Không tìm thấy ${zone.name} trong ${zone.type}`); return; }
+    
+    const zoneId = matchedZone.zoneId;
+    const cachedYards = getCachedYards();
+
+    setZoneLocking(true);
+    try {
+      const action = zoneLockedState ? 'unlock' : 'lock';
+      const res = await apiFetch(`/admin/slot-lock/zones/${zoneId}/${action}`, {
+        method: 'PUT',
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        const errBody = await res.text();
+        console.error('Zone lock API error:', res.status, errBody);
+        throw new Error(`API ${res.status}`);
+      }
+
+      // Update cached data
+      for (const y of cachedYards) {
+        for (const z of y.zones) {
+          if (z.zoneId === zoneId) {
+            z.isLocked = !zoneLockedState;
+          }
+        }
+      }
+      // Re-process and sync reactive store
+      setYardData(processApiYards(cachedYards));
+      setZoneLockedState(!zoneLockedState);
+      toast.success(zoneLockedState
+        ? `🔓 Đã mở khóa ${zone.name} tại ${zone.type}`
+        : `🔒 Đã khóa toàn bộ ${zone.name} tại ${zone.type}`);
+    } catch (err) {
+      console.error('Zone lock error:', err);
+      toast.error(`Lỗi khi ${zoneLockedState ? 'mở khóa' : 'khóa'} ${zone.name}`);
+    } finally {
+      setZoneLocking(false);
+    }
+  }
   const whType = whTypeMap[zone.type];
 
   let cap20 = 0, cap40 = 0, filled20 = 0, filled40 = 0;
@@ -177,6 +237,33 @@ function ZoneInfoPanel({ zone }: { zone: ZoneInfo }) {
           : <li style={{ color: '#9CA3AF', fontSize: '12px' }}>Chưa có container nhập gần đây</li>
         }
       </ul>
+
+      {/* Zone lock/unlock button */}
+      <div style={{ padding: '0 20px 16px' }}>
+        <button
+          onClick={handleZoneLock}
+          disabled={zoneLocking}
+          className="w3d-import-btn"
+          style={{
+            width: '100%',
+            justifyContent: 'center',
+            padding: '10px 16px',
+            border: zoneLockedState ? '1px solid #16A34A' : '1px solid #EF4444',
+            background: zoneLockedState ? '#F0FDF4' : '#FEF2F2',
+            color: zoneLockedState ? '#16A34A' : '#DC2626',
+            cursor: zoneLocking ? 'wait' : 'pointer',
+            opacity: zoneLocking ? 0.6 : 1,
+          }}
+        >
+          {zoneLockedState ? <Unlock size={17} /> : <Lock size={17} />}
+          <span>{zoneLockedState ? 'Mở khóa Zone' : 'Khóa toàn bộ Zone'}</span>
+        </button>
+        {zoneLockedState && (
+          <p style={{ fontSize: '11px', color: '#DC2626', textAlign: 'center', marginTop: '6px', fontWeight: 500 }}>
+            ⚠ Zone đang bị khóa — Container không thể nhập vào zone này
+          </p>
+        )}
+      </div>
     </div>
   );
 }

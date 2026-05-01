@@ -1,8 +1,8 @@
-import { useState, useCallback, useEffect, useSyncExternalStore } from 'react';
+import { useState, useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
 import {
   Search, Plus, ChevronLeft, ChevronRight, ChevronDown,
   Snowflake, Package, AlertTriangle, Layers,
-  Thermometer, Truck, Calendar, Info, X, RefreshCw, LogOut, FileText,
+  Thermometer, Truck, Calendar, Info, X, RefreshCw, LogOut, FileText, Lock, Unlock,
 } from 'lucide-react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import {
@@ -15,7 +15,7 @@ import {
 import type { WHType, WHConfig, WHStat, SlotInfo, PreviewPosition } from '../data/warehouse';
 import { useDashboardStats } from '../hooks/useDashboardStats';
 import {
-  subscribeYard, getYardData, getZoneNames, getZoneGrid, getZoneGridForFloor, getSlotIdByCoords,
+  subscribeYard, getYardData, getZoneNames, getZoneGrid, getZoneGridForFloor, getSlotIdByCoords, getLockedSlotKeys,
 } from '../store/yardStore';
 import { apiFetch } from '../services/apiClient';
 import {
@@ -35,40 +35,64 @@ import type { WaitingItem, InYardContainer } from '../services/gateOutService';
 import { performGateOutForManagement, fetchGateOutInvoice } from '../services/gateOutManagementService';
 import type { GateOutInvoice } from '../services/gateOutManagementService';
 import './Warehouse2D.css';
+import { toast } from 'sonner';
 
 // ─── Slot with tooltip ──────────────────────────────────────────────────────
-function Slot({ info, color, emptyColor, isHL, isGhost, onClickSlot }: {
+function Slot({ info, color, emptyColor, isHL, isGhost, isLocked, onClickSlot, onLockToggle }: {
   info: SlotInfo;
   color: string;
   emptyColor: string;
   isHL: boolean;
   isGhost?: boolean;
+  isLocked?: boolean;
   onClickSlot?: (info: SlotInfo) => void;
+  onLockToggle?: (info: SlotInfo) => void;
 }) {
   const [hovered, setHovered] = useState(false);
   return (
     <div className="slot-wrapper">
       <div
-        className={`slot ${info.type === '40ft' ? 'slot-40' : 'slot-20'} ${info.filled ? 'slot-filled' : 'slot-empty'} ${isHL ? 'slot-hl' : ''} ${isGhost ? 'slot-ghost' : ''}`}
+        className={`slot ${info.type === '40ft' ? 'slot-40' : 'slot-20'} ${info.filled ? 'slot-filled' : 'slot-empty'} ${isHL ? 'slot-hl' : ''} ${isGhost ? 'slot-ghost' : ''} ${isLocked ? 'slot-locked' : ''}`}
         style={{
-          backgroundColor: isGhost ? `${color}30` : isHL ? `${color}20` : info.filled ? color : emptyColor,
-          borderColor: isGhost ? color : isHL ? color : 'transparent',
-          color: info.filled ? '#fff' : color,
-          borderWidth: isGhost ? '2px' : undefined,
-          borderStyle: isGhost ? 'dashed' : undefined,
+          backgroundColor: isLocked ? '#FEE2E2' : isGhost ? `${color}30` : isHL ? `${color}20` : info.filled ? color : emptyColor,
+          borderColor: isLocked ? '#EF4444' : isGhost ? color : isHL ? color : 'transparent',
+          color: isLocked ? '#DC2626' : info.filled ? '#fff' : color,
+          borderWidth: isLocked ? '2px' : isGhost ? '2px' : undefined,
+          borderStyle: isLocked ? 'solid' : isGhost ? 'dashed' : undefined,
           animation: isGhost ? 'ghostPulse 1.5s ease-in-out infinite' : undefined,
+          cursor: isLocked ? 'pointer' : undefined,
+          position: 'relative',
         }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
-        onClick={() => onClickSlot?.(info)}
+        onClick={() => isLocked ? onLockToggle?.(info) : onClickSlot?.(info)}
+        onContextMenu={(e) => {
+          if (!isLocked) {
+            e.preventDefault();
+            onLockToggle?.(info);
+          }
+        }}
       >
-        {isGhost ? '⬚' : info.label}
+        {isLocked ? '🔒' : isGhost ? '⬚' : info.label}
       </div>
-      {hovered && info.filled && !isGhost && (
+      {hovered && isLocked && (
+        <div className="slot-tooltip">
+          <div className="slot-tooltip-row" style={{ color: '#DC2626' }}><strong>🔒 Vị trí đã khóa</strong></div>
+          <div className="slot-tooltip-row">Nhấn để mở khóa</div>
+        </div>
+      )}
+      {hovered && info.filled && !isGhost && !isLocked && (
         <div className="slot-tooltip">
           <div className="slot-tooltip-row"><strong>{info.cargo}</strong></div>
           <div className="slot-tooltip-row">{info.weight} · {info.temp}</div>
           <div className="slot-tooltip-row">{info.type} container</div>
+          <div className="slot-tooltip-row" style={{ fontSize: '0.65rem', color: '#9ca3af', marginTop: 4 }}>Chuột phải để khóa vị trí</div>
+        </div>
+      )}
+      {hovered && !info.filled && !isGhost && !isLocked && (
+        <div className="slot-tooltip">
+          <div className="slot-tooltip-row"><strong>Vị trí trống</strong></div>
+          <div className="slot-tooltip-row" style={{ fontSize: '0.65rem', color: '#9ca3af' }}>Chuột phải để khóa</div>
         </div>
       )}
       {hovered && isGhost && (
@@ -82,7 +106,7 @@ function Slot({ info, color, emptyColor, isHL, isGhost, onClickSlot }: {
 }
 
 // ─── Rack rendering ──────────────────────────────────────────────────────────
-function Rack({ rows, colStart, color, emptyColor, highlighted, ghostPos, is40ft, seedBase, onClickSlot, occupancyMap, whType, zoneName, floor, baseRow, occupancyLoaded, searchTerm }: {
+function Rack({ rows, colStart, color, emptyColor, highlighted, ghostPos, is40ft, seedBase, onClickSlot, onLockToggle, lockedSlotKeys, occupancyMap, whType, zoneName, floor, baseRow, occupancyLoaded, searchTerm }: {
   rows: boolean[][];
   colStart: number;
   color: string;
@@ -92,6 +116,8 @@ function Rack({ rows, colStart, color, emptyColor, highlighted, ghostPos, is40ft
   is40ft: boolean;
   seedBase: number;
   onClickSlot?: (info: SlotInfo) => void;
+  onLockToggle?: (info: SlotInfo) => void;
+  lockedSlotKeys?: Set<string>;
   occupancyMap?: OccupancyMap;
   whType?: string;
   zoneName?: string;
@@ -150,8 +176,11 @@ function Rack({ rows, colStart, color, emptyColor, highlighted, ghostPos, is40ft
           const isHL = ((highlighted?.row === 0 || highlighted?.row === 1) && highlighted?.col === absCol)
             || (info.filled && matchesSearch(info.label));
           const isGhost = (ghostPos?.row === 0 || ghostPos?.row === 1) && ghostPos?.col === absCol;
+          const realRow = baseRow !== undefined ? baseRow : 0;
+          const lockKey = whType && zoneName ? `${whType}/${zoneName}/${realRow}/${absCol}` : '';
+          const slotLocked = lockedSlotKeys?.has(lockKey) || false;
           return (
-            <Slot key={ci} info={info} color={color} emptyColor={emptyColor} isHL={isHL} isGhost={isGhost} onClickSlot={onClickSlot} />
+            <Slot key={ci} info={info} color={color} emptyColor={emptyColor} isHL={isHL} isGhost={isGhost} isLocked={slotLocked} onClickSlot={onClickSlot} onLockToggle={onLockToggle} />
           );
         })}
       </div>
@@ -169,8 +198,11 @@ function Rack({ rows, colStart, color, emptyColor, highlighted, ghostPos, is40ft
             const isHL = (highlighted?.row === ri && highlighted?.col === absCol)
               || (info.filled && matchesSearch(info.label));
             const isGhost = ghostPos?.row === ri && ghostPos?.col === absCol;
+            const realRow = baseRow !== undefined ? baseRow + ri : ri;
+            const lockKey = whType && zoneName ? `${whType}/${zoneName}/${realRow}/${absCol}` : '';
+            const slotLocked = lockedSlotKeys?.has(lockKey) || false;
             return (
-              <Slot key={ci} info={info} color={color} emptyColor={emptyColor} isHL={isHL} isGhost={isGhost} onClickSlot={onClickSlot} />
+              <Slot key={ci} info={info} color={color} emptyColor={emptyColor} isHL={isHL} isGhost={isGhost} isLocked={slotLocked} onClickSlot={onClickSlot} onLockToggle={onLockToggle} />
             );
           })}
         </div>
@@ -179,7 +211,7 @@ function Rack({ rows, colStart, color, emptyColor, highlighted, ghostPos, is40ft
   );
 }
 
-function SlotGrid({ grid, color, emptyColor, highlighted, ghostPos, animDir, onClickSlot, occupancyMap, whType, zoneName, floor, occupancyLoaded, searchTerm }: {
+function SlotGrid({ grid, color, emptyColor, highlighted, ghostPos, animDir, onClickSlot, onLockToggle, lockedSlotKeys, occupancyMap, whType, zoneName, floor, occupancyLoaded, searchTerm }: {
   grid: boolean[][];
   color: string;
   emptyColor: string;
@@ -187,6 +219,8 @@ function SlotGrid({ grid, color, emptyColor, highlighted, ghostPos, animDir, onC
   ghostPos?: { row: number; col: number } | null;
   animDir?: 'left' | 'right' | null;
   onClickSlot?: (info: SlotInfo) => void;
+  onLockToggle?: (info: SlotInfo) => void;
+  lockedSlotKeys?: Set<string>;
   occupancyMap?: OccupancyMap;
   whType?: string;
   zoneName?: string;
@@ -222,13 +256,13 @@ function SlotGrid({ grid, color, emptyColor, highlighted, ghostPos, animDir, onC
           <div key={gi} className="rack-row-group">
             <div className="rack-block">
               {leftPairs.map((cs) => (
-                <Rack key={cs} rows={rg} colStart={cs} color={color} emptyColor={emptyColor} highlighted={hlInGroup} ghostPos={ghostInGroup} is40ft={false} seedBase={gi * 100 + cs} onClickSlot={onClickSlot} occupancyMap={occupancyMap} whType={whType} zoneName={zoneName} floor={floor} baseRow={gi * 2} occupancyLoaded={occupancyLoaded} searchTerm={searchTerm} />
+                <Rack key={cs} rows={rg} colStart={cs} color={color} emptyColor={emptyColor} highlighted={hlInGroup} ghostPos={ghostInGroup} is40ft={false} seedBase={gi * 100 + cs} onClickSlot={onClickSlot} onLockToggle={onLockToggle} lockedSlotKeys={lockedSlotKeys} occupancyMap={occupancyMap} whType={whType} zoneName={zoneName} floor={floor} baseRow={gi * 2} occupancyLoaded={occupancyLoaded} searchTerm={searchTerm} />
               ))}
             </div>
             <div className="rack-gap" />
             <div className="rack-block">
               {rightPairs.map((cs) => (
-                <Rack key={cs} rows={rg} colStart={cs} color={color} emptyColor={emptyColor} highlighted={hlInGroup} ghostPos={ghostInGroup} is40ft={true} seedBase={gi * 100 + cs + 50} onClickSlot={onClickSlot} occupancyMap={occupancyMap} whType={whType} zoneName={zoneName} floor={floor} baseRow={gi * 2} occupancyLoaded={occupancyLoaded} searchTerm={searchTerm} />
+                <Rack key={cs} rows={rg} colStart={cs} color={color} emptyColor={emptyColor} highlighted={hlInGroup} ghostPos={ghostInGroup} is40ft={true} seedBase={gi * 100 + cs + 50} onClickSlot={onClickSlot} onLockToggle={onLockToggle} lockedSlotKeys={lockedSlotKeys} occupancyMap={occupancyMap} whType={whType} zoneName={zoneName} floor={floor} baseRow={gi * 2} occupancyLoaded={occupancyLoaded} searchTerm={searchTerm} />
               ))}
             </div>
           </div>
@@ -338,6 +372,72 @@ function WarehouseCard({ wh, highlight, ghostPos, ghostZone, ghostFloor, onSlotC
   // Only show ghost on matching zone and floor
   const showGhost = ghostPos && ghostZone === currentZone && ghostFloor === floor;
 
+  // Lock state
+  const [lockRefreshKey, setLockRefreshKey] = useState(0);
+  const lockedSlotKeys = useMemo(() => {
+    void lockRefreshKey;
+    return getLockedSlotKeys(allYards, getCachedYards());
+  }, [allYards, lockRefreshKey]);
+
+  const handleLockToggle = useCallback(async (info: SlotInfo) => {
+    const row = info.row;
+    const col = info.col;
+    if (row == null || col == null) return;
+    const lockKey = `${wh.id}/${currentZone}/${row}/${col}`;
+    const isCurrentlyLocked = lockedSlotKeys.has(lockKey);
+
+    // Find yard and zone from reactive store which already has correct whType
+    const matchedYard = allYards.find(y => y.whType === wh.id);
+    if (!matchedYard) { toast.error('Không tìm thấy dữ liệu kho'); return; }
+    
+    const matchedZone = matchedYard.zones.find(z => z.zoneName === currentZone);
+    if (!matchedZone) { toast.error('Không tìm thấy zone'); return; }
+
+    const cachedYards = getCachedYards();
+    let slotId: number | undefined;
+
+    const targetYard = cachedYards.find(y => y.yardId === matchedYard.yardId);
+    const targetZone = targetYard?.zones.find(z => z.zoneId === matchedZone.zoneId);
+    
+    if (targetZone) {
+      for (const b of targetZone.blocks) {
+        for (const s of b.slots) {
+          if (s.rowNo === row + 1 && s.bayNo === col + 1) { slotId = s.slotId; break; }
+        }
+        if (slotId) break;
+      }
+    }
+    if (!slotId) { toast.error('Không tìm thấy slot trong hệ thống'); return; }
+
+    try {
+      const action = isCurrentlyLocked ? 'unlock' : 'lock';
+      const res = await apiFetch(`/admin/slot-lock/slots/${slotId}/${action}`, { 
+        method: 'PUT',
+        body: JSON.stringify({})
+      });
+      if (!res.ok) throw new Error('API error');
+      // Update cached data
+      for (const y of cachedYards) {
+        for (const z of y.zones) {
+          for (const b of z.blocks) {
+            for (const s of b.slots) {
+              if (s.slotId === slotId) s.isLocked = !isCurrentlyLocked;
+            }
+          }
+        }
+      }
+      // Re-process and update the reactive store so 3D/2D both see the change
+      const { processApiYards, setYardData } = await import('../store/yardStore');
+      setYardData(processApiYards(cachedYards));
+      setLockRefreshKey(k => k + 1);
+      toast.success(isCurrentlyLocked
+        ? `🔓 Đã mở khóa vị trí R${row + 1}B${col + 1} tại ${currentZone}`
+        : `🔒 Đã khóa vị trí R${row + 1}B${col + 1} tại ${currentZone}`);
+    } catch {
+      toast.error('Lỗi khi thay đổi trạng thái khóa');
+    }
+  }, [wh.id, currentZone, lockedSlotKeys]);
+
   const navigateZone = useCallback((dir: 'left' | 'right') => {
     setAnimDir(dir);
     setZoneIdx((i) => {
@@ -393,7 +493,11 @@ function WarehouseCard({ wh, highlight, ghostPos, ghostZone, ghostFloor, onSlotC
           <ChevronLeft size={15} />
         </button>
         <SlotGrid grid={grid} color={wh.color} emptyColor={wh.emptyColor} highlighted={highlight}
-          ghostPos={showGhost ? ghostPos : null} animDir={animDir} onClickSlot={(info) => onSlotClick ? onSlotClick(info, currentZone) : setSelectedSlot(info)} occupancyMap={occupancyMap} whType={wh.id} zoneName={currentZone} floor={floor} occupancyLoaded={occupancyLoaded} searchTerm={searchTerm} />
+          ghostPos={showGhost ? ghostPos : null} animDir={animDir}
+          onClickSlot={(info) => onSlotClick ? onSlotClick(info, currentZone) : setSelectedSlot(info)}
+          onLockToggle={handleLockToggle}
+          lockedSlotKeys={lockedSlotKeys}
+          occupancyMap={occupancyMap} whType={wh.id} zoneName={currentZone} floor={floor} occupancyLoaded={occupancyLoaded} searchTerm={searchTerm} />
         <button className="wh-nav-btn" onClick={() => navigateZone('right')}>
           <ChevronRight size={15} />
         </button>
