@@ -7,6 +7,7 @@
  */
 import { useEffect, useState, useSyncExternalStore } from 'react';
 import { X, AlertTriangle, ArrowRight, Trash2, Eye } from 'lucide-react';
+import { toast } from 'sonner';
 import {
   reportDamage,
   previewMove,
@@ -106,10 +107,19 @@ export function DamagePanel({ onClose, panelClass, selectedContainer, onReported
     setError(null);
     setSuccess(null);
     try {
-      await moveToDamagedYard(code);
+      const report = await moveToDamagedYard(code);
       clearPendingOptimistic(code);
       setPlanByCode((prev) => { const n = { ...prev }; delete n[code]; return n; });
       setSuccess(`Đã chuyển ${code} vào kho hỏng.`);
+
+      // Show ML relocation info via toast
+      if (report.relocationMessage) {
+        toast.info('Đã đảo container bằng ML', {
+          description: report.relocationMessage,
+          duration: 12000,
+        });
+      }
+
       await refreshDamages();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Chuyển kho hỏng thất bại');

@@ -5,6 +5,7 @@ import com.anhnht.warehouse.service.common.exception.BusinessException;
 import com.anhnht.warehouse.service.common.exception.ResourceNotFoundException;
 import com.anhnht.warehouse.service.common.util.SecurityUtils;
 import com.anhnht.warehouse.service.modules.booking.repository.OrderRepository;
+import com.anhnht.warehouse.service.modules.booking.repository.OrderStatusRepository;
 import com.anhnht.warehouse.service.modules.container.dto.request.ContainerRequest;
 import com.anhnht.warehouse.service.modules.container.dto.request.ExportPriorityRequest;
 import com.anhnht.warehouse.service.modules.container.entity.*;
@@ -52,13 +53,17 @@ public class ContainerServiceImpl implements ContainerService {
     private final YardStorageRepository yardStorageRepository;
     private final WalletService walletService;
     private final com.anhnht.warehouse.service.modules.damage.repository.DamageReportRepository damageReportRepository;
+    private final OrderStatusRepository orderStatusRepository;
 
     @Override
-    public Page<Container> findAll(String keyword, String statusName, String yardName, Pageable pageable) {
+    public Page<Container> findAll(String keyword, String statusName, String yardName, String containerType, String cargoType, String zoneName, Pageable pageable) {
         String kw = (keyword == null || keyword.isBlank()) ? "" : keyword.trim();
         String sn = (statusName == null || statusName.isBlank()) ? "" : statusName.trim();
         String yn = (yardName == null || yardName.isBlank()) ? "" : yardName.trim();
-        return containerRepository.search(kw, sn, yn, pageable);
+        String ct = (containerType == null || containerType.isBlank()) ? "" : containerType.trim();
+        String cg = (cargoType == null || cargoType.isBlank()) ? "" : cargoType.trim();
+        String zn = (zoneName == null || zoneName.isBlank()) ? "" : zoneName.trim();
+        return containerRepository.search(kw, sn, yn, ct, cg, zn, pageable);
     }
 
     @Override
@@ -255,6 +260,18 @@ public class ContainerServiceImpl implements ContainerService {
 
         if (request.getRepairStatus() != null) {
             container.setRepairStatus(request.getRepairStatus());
+            
+            // Sync with order status
+            if ("REPAIRING".equalsIgnoreCase(request.getRepairStatus()) || "REPAIRED".equalsIgnoreCase(request.getRepairStatus())) {
+                List<com.anhnht.warehouse.service.modules.booking.entity.Order> orders = orderRepository.findOrdersByContainerId(containerId);
+                for (com.anhnht.warehouse.service.modules.booking.entity.Order o : orders) {
+                    if (!TERMINAL_STATUSES.contains(o.getStatus().getStatusName())) {
+                        orderStatusRepository.findByStatusNameIgnoreCase(request.getRepairStatus().toUpperCase())
+                                .ifPresent(o::setStatus);
+                        orderRepository.save(o);
+                    }
+                }
+            }
         }
         if (request.getRepairDate() != null) {
             container.setRepairDate(request.getRepairDate());

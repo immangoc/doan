@@ -10,6 +10,7 @@ import {
 } from '../services/damageService';
 import { clearPendingOptimistic } from '../store/damageStore';
 import { apiFetch } from '../services/apiClient';
+import { useAuth } from '../contexts/AuthContext';
 import './management.css';
 
 const TYPE_OPTIONS = ['', '20ft', '40ft'];
@@ -516,6 +517,9 @@ function statusLabel(s: string): { text: string; cls: string } {
 }
 
 export function Kho() {
+  const user = useAuth();
+  const isYardStaff = user?.role === 'YARD_STAFF';
+
   const [reports, setReports] = useState<DamageReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -800,7 +804,7 @@ export function Kho() {
                               </button>
                             </>
                           )}
-                          {isStored && (
+                          {isStored && !isYardStaff && (
                             <>
                               <button
                                 title="Cập nhật thông tin sửa chữa & bồi thường"

@@ -27,7 +27,7 @@ import { apiFetch } from '../services/apiClient';
 import {
   searchInYardContainers, performGateOut, fetchWaitingContainers, fetchStorageBill,
 } from '../services/gateOutService';
-import type { InYardContainer, WaitingItem, StorageBill } from '../services/gateOutService';
+import type { InYardContainer, WaitingItem, StorageBill, RelocationMoveInfo, GateOutResult } from '../services/gateOutService';
 import './WarehouseOverview.css';
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
@@ -231,7 +231,7 @@ function WaitingListPanel({ onClose, onSelect, refreshKey }: {
 }
 
 // ─── Export panel ────────────────────────────────────────────────────────────
-type ExportStep = 'search' | 'confirm';
+type ExportStep = 'search' | 'confirm' | 'relocation';
 
 function ExportPanel({ onClose }: { onClose: () => void }) {
   const [step, setStep] = useState<ExportStep>('search');
@@ -245,6 +245,7 @@ function ExportPanel({ onClose }: { onClose: () => void }) {
   const [note, setNote] = useState('');
   const [bill, setBill] = useState<StorageBill | null>(null);
   const [billLoading, setBillLoading] = useState(false);
+  const [relocationResult, setRelocationResult] = useState<GateOutResult | null>(null);
 
   const doSearch = useCallback((keyword: string) => {
     setFetchLoading(true);
@@ -283,11 +284,13 @@ function ExportPanel({ onClose }: { onClose: () => void }) {
       setContainers((prev) => prev.filter((c) => c.containerId !== selectedExport.containerId));
 
       // Show relocation info if any containers were moved
-      if (result.relocationMessage) {
-        alert(result.relocationMessage);
+      if (result.relocationMessage || (result.relocationMoves && result.relocationMoves.length > 0)) {
+        setRelocationResult(result);
+        setStep('relocation');
+        setGateOutLoading(false);
+      } else {
+        onClose();
       }
-
-      onClose();
     } catch (e) {
       setGateOutError(e instanceof Error ? e.message : 'Xuất kho thất bại');
       setGateOutLoading(false);
@@ -404,33 +407,21 @@ function ExportPanel({ onClose }: { onClose: () => void }) {
             <div className="ov-rp-suggestion-card" style={{ background: '#fff7ed', borderColor: '#fed7aa' }}>
               <div className="ov-rp-sug-header">
                 <div className="ov-rp-sug-icon" style={{ background: '#f97316' }}><Info size={16} /></div>
-                <span className="ov-rp-sug-title">Phí lưu kho</span>
+                <span className="ov-rp-sug-title">Thông tin thanh toán</span>
               </div>
               {billLoading ? (
-                <div className="ov-rp-sug-row"><span className="ov-rp-sug-label">Đang tính phí…</span></div>
+                <div className="ov-rp-sug-row"><span className="ov-rp-sug-label">Đang tải…</span></div>
               ) : bill ? (
                 <>
-                  <div className="ov-rp-sug-row">
-                    <span className="ov-rp-sug-label">Số ngày lưu</span>
-                    <span className="ov-rp-sug-value">{bill.days} ngày</span>
-                  </div>
-                  <div className="ov-rp-sug-row">
-                    <span className="ov-rp-sug-label">Số ngày tính phí</span>
-                    <span className="ov-rp-sug-value">{bill.billableDays} ngày</span>
-                  </div>
-                  <div className="ov-rp-sug-row">
-                    <span className="ov-rp-sug-label">Giá/ngày</span>
-                    <span className="ov-rp-sug-value">{fmtVND(bill.ratePerDay)}</span>
-                  </div>
                   <div className="ov-rp-sug-row" style={{ borderTop: '1px solid #fed7aa', paddingTop: 6, marginTop: 4 }}>
-                    <span className="ov-rp-sug-label" style={{ fontWeight: 600, color: '#9a3412' }}>Tổng phí</span>
+                    <span className="ov-rp-sug-label" style={{ fontWeight: 600, color: '#9a3412' }}>Tổng tiền đơn hàng</span>
                     <span className="ov-rp-sug-value" style={{ color: '#c2410c', fontWeight: 700 }}>
                       {fmtVND(bill.total)}
                     </span>
                   </div>
                 </>
               ) : (
-                <div className="ov-rp-sug-row"><span className="ov-rp-sug-label">Không có dữ liệu lưu kho để tính phí</span></div>
+                <div className="ov-rp-sug-row"><span className="ov-rp-sug-label">Không có dữ liệu thanh toán</span></div>
               )}
             </div>
 
@@ -455,6 +446,76 @@ function ExportPanel({ onClose }: { onClose: () => void }) {
               {gateOutLoading ? 'Đang xử lý...' : 'Xác nhận xuất kho'}
             </button>
             <button className="ov-rp-cancel-link" onClick={() => { setStep('search'); setGateOutError(null); }}>Quay lại</button>
+          </>
+        )}
+
+        {step === 'relocation' && relocationResult && (
+          <>
+            <div style={{
+              background: '#fef3c7', border: '1px solid #fbbf24', borderRadius: 10,
+              padding: '1rem', marginBottom: '1rem',
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+                <AlertTriangle size={20} style={{ color: '#d97706' }} />
+                <span style={{ fontWeight: 700, fontSize: '0.95rem', color: '#92400e' }}>
+                  Đã đảo chuyển container chặn
+                </span>
+              </div>
+              <p style={{ fontSize: '0.8rem', color: '#78350f', margin: '0 0 8px 0', lineHeight: 1.5 }}>
+                Để xuất container <strong>{selectedExport?.containerCode}</strong>, hệ thống đã tự động đảo các container xếp phía trên sang vị trí mới.
+              </p>
+            </div>
+
+            {relocationResult.relocationMoves && relocationResult.relocationMoves.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginBottom: '1rem' }}>
+                {relocationResult.relocationMoves.map((m, idx) => (
+                  <div key={idx} style={{
+                    background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8,
+                    padding: '0.75rem',
+                  }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.85rem', color: '#166534', marginBottom: 6 }}>
+                      {idx + 1}. Container: {m.containerId}
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 6 }}>
+                      <div style={{ fontSize: '0.78rem', color: '#374151' }}>
+                        <div style={{ fontWeight: 600, color: '#dc2626', marginBottom: 2 }}>Từ:</div>
+                        <div>{m.fromZone}</div>
+                        <div>R{m.fromRow} B{m.fromBay} / T{m.fromTier}</div>
+                      </div>
+                      <div style={{ fontSize: '1.2rem', color: '#6b7280' }}>→</div>
+                      <div style={{ fontSize: '0.78rem', color: '#374151' }}>
+                        <div style={{ fontWeight: 600, color: '#16a34a', marginBottom: 2 }}>Đến:</div>
+                        <div>{m.toZone}</div>
+                        <div>R{m.toRow} B{m.toBay} / T{m.toTier}</div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {relocationResult.relocationMessage && (!relocationResult.relocationMoves || relocationResult.relocationMoves.length === 0) && (
+              <div style={{
+                background: '#f0fdf4', border: '1px solid #86efac', borderRadius: 8,
+                padding: '0.75rem', marginBottom: '1rem',
+                fontSize: '0.8rem', color: '#166534', whiteSpace: 'pre-wrap', lineHeight: 1.6,
+              }}>
+                {relocationResult.relocationMessage}
+              </div>
+            )}
+
+            <div style={{
+              background: '#ecfdf5', border: '1px solid #6ee7b7', borderRadius: 8,
+              padding: '0.75rem', marginBottom: '1rem', textAlign: 'center',
+            }}>
+              <CheckCircle size={24} style={{ color: '#16a34a', marginBottom: 4 }} />
+              <div style={{ fontWeight: 700, color: '#166534', fontSize: '0.9rem' }}>Xuất kho thành công!</div>
+              <div style={{ fontSize: '0.78rem', color: '#15803d' }}>Vị trí đã được cập nhật trong hệ thống.</div>
+            </div>
+
+            <button className="btn-primary ov-rp-submit-btn" onClick={onClose}>
+              Đóng
+            </button>
           </>
         )}
       </div>

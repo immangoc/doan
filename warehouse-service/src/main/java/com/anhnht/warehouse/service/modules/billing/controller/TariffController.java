@@ -22,7 +22,7 @@ public class TariffController {
     private final TariffService tariffService;
 
     @GetMapping
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','CUSTOMER')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','CUSTOMER','YARD')")
     public ResponseEntity<ApiResponse<List<TariffResponse>>> getAll() {
         List<TariffResponse> data = tariffService.getAll().stream()
                 .map(this::toResponse)

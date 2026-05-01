@@ -29,7 +29,7 @@ export interface RelocationRecommendation extends SuggestedPosition {
 }
 
 export interface RelocateParams {
-  containerId: number;
+  containerId: string;
   rowNo:   number;    // 1-based
   bayNo:   number;    // 1-based
   tier:    number;    // 1-based (floor)
@@ -44,7 +44,7 @@ export interface RelocateParams {
  * Returns top-5 results mapped to RelocationRecommendation[].
  */
 export async function fetchRelocationRecommendations(
-  containerId: number,
+  containerId: string,
   cargoType:   string,
   weight:      string,
   sizeType:    '20ft' | '40ft',
@@ -128,7 +128,7 @@ export async function relocateContainer(params: RelocateParams): Promise<void> {
  * POST /admin/yard/swap
  * On success, refreshes the 3D occupancy grid.
  */
-export async function swapContainers(containerIdA: number, containerIdB: number): Promise<void> {
+export async function swapContainers(containerIdA: string, containerIdB: string): Promise<void> {
   const res = await apiFetch('/admin/yard/swap', {
     method: 'POST',
     body: JSON.stringify({ containerIdA, containerIdB }),

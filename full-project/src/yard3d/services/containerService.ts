@@ -46,6 +46,8 @@ export interface ContainerFilter {
     statusName?: string;
     yardName?: string;
     containerType?: string;
+    cargoType?: string;
+    zoneName?: string;
 }
 
 export async function fetchContainers(
@@ -58,6 +60,8 @@ export async function fetchContainers(
     if (filter.statusName?.trim()) params.set('statusName', filter.statusName.trim());
     if (filter.yardName?.trim()) params.set('yardName', filter.yardName.trim());
     if (filter.containerType?.trim()) params.set('containerType', filter.containerType.trim());
+    if (filter.cargoType?.trim()) params.set('cargoType', filter.cargoType.trim());
+    if (filter.zoneName?.trim()) params.set('zoneName', filter.zoneName.trim());
 
     const res = await apiFetch(`/admin/containers?${params.toString()}`);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -122,6 +126,7 @@ export interface DamageDetailsPayload {
     repairStatus?: string;
     repairDate?: string;
     compensationCost?: number;
+    repairCost?: number;
 }
 
 export async function updateDamageDetails(

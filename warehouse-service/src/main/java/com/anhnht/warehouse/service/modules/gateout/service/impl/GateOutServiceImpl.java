@@ -483,16 +483,17 @@ public class GateOutServiceImpl implements GateOutService {
     static String buildRelocationMessage(List<RelocationMove> moves, String action) {
         if (moves == null || moves.isEmpty()) return null;
         StringBuilder sb = new StringBuilder();
-        sb.append("⚠️ Để ").append(action).append(", hệ thống đã đảo chuyển ")
-          .append(moves.size()).append(" container chặn:\n");
+        sb.append("⚠️ Để ").append(action).append(", hệ thống đã sử dụng thuật toán ML để đảo chuyển ")
+          .append(moves.size()).append(" container chặn phía trên:\n\n");
         for (int i = 0; i < moves.size(); i++) {
             RelocationMove m = moves.get(i);
-            sb.append(String.format("  %d. %s: %s R%dB%d Tier%d → %s R%dB%d Tier%d\n",
-                    i + 1,
-                    m.getContainerId(),
-                    m.getFromZone(), m.getFromRow(), m.getFromBay(), m.getFromTier(),
-                    m.getToZone(),   m.getToRow(),   m.getToBay(),   m.getToTier()));
+            sb.append(String.format("  %d. Container %s\n", i + 1, m.getContainerId()));
+            sb.append(String.format("     Từ: %s — Hàng %d, Cột %d, Tầng %d\n",
+                    m.getFromZone(), m.getFromRow(), m.getFromBay(), m.getFromTier()));
+            sb.append(String.format("     Đến: %s — Hàng %d, Cột %d, Tầng %d\n",
+                    m.getToZone(), m.getToRow(), m.getToBay(), m.getToTier()));
         }
+        sb.append("\n✅ Vị trí đảo đã tuân thủ đúng quy tắc: loại hàng → loại kho, kích thước container, trọng lượng.");
         return sb.toString().trim();
     }
 }

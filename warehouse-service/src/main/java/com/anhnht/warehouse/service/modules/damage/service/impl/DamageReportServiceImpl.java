@@ -20,6 +20,7 @@ import com.anhnht.warehouse.service.modules.damage.service.DamageReportService;
 import com.anhnht.warehouse.service.modules.gatein.entity.ContainerPosition;
 import com.anhnht.warehouse.service.modules.gatein.entity.YardStorage;
 import com.anhnht.warehouse.service.modules.gatein.repository.ContainerPositionRepository;
+import com.anhnht.warehouse.service.modules.gatein.repository.PlacementTaskRepository;
 import com.anhnht.warehouse.service.modules.gatein.repository.YardStorageRepository;
 import com.anhnht.warehouse.service.modules.optimization.dto.request.PlacementRequest;
 import com.anhnht.warehouse.service.modules.optimization.dto.response.PlacementRecommendation;
@@ -73,6 +74,7 @@ public class DamageReportServiceImpl implements DamageReportService {
     private final com.anhnht.warehouse.service.modules.alert.service.NotificationService notificationService;
     private final com.anhnht.warehouse.service.modules.booking.repository.OrderRepository orderRepository;
     private final com.anhnht.warehouse.service.modules.booking.repository.OrderStatusRepository orderStatusRepository;
+    private final PlacementTaskRepository placementTaskRepository;
 
     // ─── Pha 1 ──────────────────────────────────────────────────────────────
 
@@ -485,8 +487,35 @@ public class DamageReportServiceImpl implements DamageReportService {
     private void executeMove(RelocationMove move, DamageReport report) {
         ContainerPosition before = positionRepository
                 .findByContainerContainerId(move.getContainerId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.BAD_REQUEST,
-                        "Container không có vị trí: " + move.getContainerId()));
+                .orElse(null);
+
+        if (before == null) {
+            // Container chưa có vị trí (ví dụ: đang là PlacementTask)
+            Container c = containerRepository.findById(move.getContainerId())
+                    .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "Không tìm thấy container"));
+            
+            ContainerPosition newPos = new ContainerPosition();
+            newPos.setContainer(c);
+            newPos.setSlot(slotRepository.findById(move.getToSlotId()).orElse(null));
+            newPos.setTier(move.getToTier());
+            positionRepository.save(newPos);
+            
+            placementTaskRepository.findByContainerContainerIdAndStatus(move.getContainerId(), "PENDING").stream()
+                    .findFirst()
+                    .ifPresent(task -> {
+                        task.setStatus("CANCELLED");
+                        placementTaskRepository.save(task);
+                    });
+            
+            ContainerPositionHistory hist = new ContainerPositionHistory();
+            hist.setContainer(c);
+            hist.setToSlot(newPos.getSlot());
+            hist.setToTier(newPos.getTier());
+            hist.setReason(move.getPurpose());
+            hist.setDamageReport(report);
+            historyRepository.save(hist);
+            return;
+        }
 
         Integer fromSlotId = before.getSlot().getSlotId();
         Integer fromTier   = before.getTier();

@@ -474,27 +474,49 @@ export default function DonHang() {
                 </div>
                 {/* Status transitions for orders past approval, before gate-in. */}
                 {(['APPROVED', 'WAITING_CHECKIN', 'LATE_CHECKIN', 'READY_FOR_IMPORT'] as const).includes(detailOrder.statusName as never) && (
-                  <div style={{ marginBottom: 12, padding: 12, borderRadius: 8, background: 'var(--bg2)' }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--primary)' }}>Chuyển trạng thái</div>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <div style={{ marginBottom: 12, padding: '16px 20px', borderRadius: 12, background: 'linear-gradient(to right, #f8fafc, #f1f5f9)', border: '1px solid #e2e8f0' }}>
+                    <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 12, color: '#334155', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      ⚡ Thao tác trạng thái
+                    </div>
+                    <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                       {CHECKIN_TRANSITIONS.map((s) => {
                         const isCurrent = detailOrder.statusName === s;
+                        const btnStyle: React.CSSProperties = {
+                          ...(isCurrent
+                            ? { opacity: 0.5, cursor: 'not-allowed', background: '#e2e8f0', color: '#64748b', border: 'none' }
+                            : s === 'WAITING_CHECKIN'
+                              ? { background: '#4f46e5', color: '#fff', border: 'none', boxShadow: '0 2px 4px rgba(79, 70, 229, 0.2)' }
+                              : s === 'LATE_CHECKIN'
+                                ? { background: '#ef4444', color: '#fff', border: 'none', boxShadow: '0 2px 4px rgba(239, 68, 68, 0.2)' }
+                                : { background: '#10b981', color: '#fff', border: 'none', boxShadow: '0 2px 4px rgba(16, 185, 129, 0.2)' }
+                          ),
+                          padding: '8px 16px',
+                          borderRadius: '8px',
+                          fontWeight: 600,
+                          fontSize: '13px',
+                          transition: 'all 0.2s ease'
+                        };
                         return (
                           <button
                             key={s}
                             type="button"
-                            className={`btn btn-sm ${isCurrent ? 'btn-primary' : 'btn-secondary'}`}
                             disabled={isCurrent}
                             onClick={() => handleChangeStatus(detailOrder.orderId, s)}
-                            style={s === 'READY_FOR_IMPORT' && !isCurrent ? { background: '#059669', color: '#fff', border: 'none' } : undefined}
+                            style={btnStyle}
+                            onMouseEnter={(e) => {
+                              if (!isCurrent) e.currentTarget.style.transform = 'translateY(-1px)';
+                            }}
+                            onMouseLeave={(e) => {
+                              if (!isCurrent) e.currentTarget.style.transform = 'none';
+                            }}
                           >
-                            {s === 'READY_FOR_IMPORT' ? '📦 Chờ nhập kho' : STATUS_LABEL[s]}
+                            {STATUS_LABEL[s]}
                           </button>
                         );
                       })}
                     </div>
                     <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8, padding: '6px 8px', background: 'var(--bg3, #f3f4f6)', borderRadius: 6 }}>
-                      💡 Chuyển sang <strong>"Chờ nhập kho"</strong> → container sẽ xuất hiện trong danh sách chờ nhập trên sơ đồ 3D.
+                      Chuyển sang <strong>"Chờ nhập kho"</strong> → container sẽ xuất hiện trong danh sách chờ nhập trên sơ đồ 3D.
                     </div>
                   </div>
                 )}

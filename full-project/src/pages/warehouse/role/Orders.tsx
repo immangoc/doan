@@ -50,7 +50,8 @@ const STATUS_LABELS: Record<string, string> = {
   EDIT_REQUESTED:   'Chờ duyệt sửa',
   EDIT_APPROVED:    'Đã duyệt sửa',
   EDIT_REJECTED:    'Không duyệt sửa',
-  DAMAGED:          'Đang hỏng',
+  DAMAGED:          'Đang sửa',
+  REPAIRING:        'Đang sửa',
   REPAIRED:         'Đã sửa',
 };
 
@@ -70,6 +71,7 @@ const STATUS_CLASS: Record<string, string> = {
   EDIT_APPROVED:    'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200',
   EDIT_REJECTED:    'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200',
   DAMAGED:          'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200',
+  REPAIRING:        'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-200',
   REPAIRED:         'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200',
 };
 
@@ -126,6 +128,12 @@ export default function Orders() {
   const [openBill, setOpenBill] = useState(false);
   const [billData, setBillData] = useState<BillItem | null>(null);
   const [billLoading, setBillLoading] = useState(false);
+
+  // Container status history (shown in bill dialog)
+  type StatusHistoryItem = { statusName: string; description?: string; createdAt?: string };
+  const [containerHistory, setContainerHistory] = useState<Record<string, StatusHistoryItem[]>>({});
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [billOrderContainers, setBillOrderContainers] = useState<string[]>([]);
 
   // Change export date (STORED orders only)
   const [openExportEdit, setOpenExportEdit] = useState(false);
@@ -209,7 +217,11 @@ export default function Orders() {
   const submitCreate = async () => {
     try {
       if (!createForm.customerName.trim()) return toast.error('Tên khách hàng không được để trống');
+      if (!createForm.phone.trim()) return toast.error('Số điện thoại không được để trống');
+      if (!createForm.email.trim()) return toast.error('Email không được để trống');
+      if (!createForm.address.trim()) return toast.error('Địa chỉ không được để trống');
       if (!createForm.importDate || !createForm.exportDate) return toast.error('Vui lòng chọn ngày nhập và xuất kho');
+      if (createForm.containerIds.length === 0) return toast.error('Vui lòng chọn ít nhất 1 container');
       
       setCreateLoading(true);
       const body: Record<string, any> = {
@@ -290,6 +302,12 @@ export default function Orders() {
     if (!editTarget) return;
     try {
       if (!editForm.customerName.trim()) return toast.error('Tên khách hàng không được để trống');
+      if (!editForm.phone.trim()) return toast.error('Số điện thoại không được để trống');
+      if (!editForm.email.trim()) return toast.error('Email không được để trống');
+      if (!editForm.address.trim()) return toast.error('Địa chỉ không được để trống');
+      if (!editForm.importDate || !editForm.exportDate) return toast.error('Vui lòng chọn ngày nhập và xuất kho');
+      if (editForm.containerIds.length === 0) return toast.error('Vui lòng chọn ít nhất 1 container');
+
       const body: Record<string, any> = {
         customerName: editForm.customerName,
         phone: editForm.phone || undefined,
@@ -340,6 +358,8 @@ export default function Orders() {
     setOpenBill(true);
     setBillData(null);
     setBillLoading(true);
+    setBillOrderContainers(order.containerIds || []);
+    setContainerHistory({});
     try {
       const res = await fetch(`${apiUrl}/orders/${order.orderId}/bill`, { headers });
       const data = await res.json();
@@ -351,6 +371,28 @@ export default function Orders() {
     } finally {
       setBillLoading(false);
     }
+    // Fetch container status history for each container
+    if (order.containerIds && order.containerIds.length > 0) {
+      setHistoryLoading(true);
+      const histMap: Record<string, StatusHistoryItem[]> = {};
+      await Promise.all(
+        order.containerIds.map(async (cid) => {
+          try {
+            const res = await fetch(`${apiUrl}/admin/containers/${encodeURIComponent(cid)}/status-history`, { headers });
+            const data = await res.json();
+            if (res.ok && data.data) {
+              histMap[cid] = (data.data as any[]).map((h: any) => ({
+                statusName: h.statusName || h.status || '',
+                description: h.description || '',
+                createdAt: h.createdAt || h.changedAt || '',
+              }));
+            }
+          } catch { /* ignore per-container errors */ }
+        })
+      );
+      setContainerHistory(histMap);
+      setHistoryLoading(false);
+    }
   };
 
   const canCancel = (o: OrderItem) =>
@@ -358,7 +400,8 @@ export default function Orders() {
   const canEdit   = (o: OrderItem) => o.statusName === 'PENDING';
   const canChangeExport = (o: OrderItem) => o.statusName === 'STORED' || o.statusName === 'IMPORTED';
 
-  const todayISO = new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const todayISO = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
 
   const openExportDialog = (order: OrderItem) => {
     setExportTarget(order);
@@ -640,31 +683,38 @@ export default function Orders() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <div className="text-sm font-medium text-gray-700">Số điện thoại</div>
+                  <div className="text-sm font-medium text-gray-700">Số điện thoại <span className="text-red-500">*</span></div>
                   <Input value={createForm.phone} onChange={(e) => setCreateForm((f) => ({ ...f, phone: e.target.value }))} placeholder="0901234567" />
                 </div>
                 <div className="space-y-1">
-                  <div className="text-sm font-medium text-gray-700">Email</div>
+                  <div className="text-sm font-medium text-gray-700">Email <span className="text-red-500">*</span></div>
                   <Input type="email" value={createForm.email} onChange={(e) => setCreateForm((f) => ({ ...f, email: e.target.value }))} placeholder="user@example.com" />
                 </div>
               </div>
               <div className="space-y-1">
-                <div className="text-sm font-medium text-gray-700">Địa chỉ</div>
+                <div className="text-sm font-medium text-gray-700">Địa chỉ <span className="text-red-500">*</span></div>
                 <Input value={createForm.address} onChange={(e) => setCreateForm((f) => ({ ...f, address: e.target.value }))} placeholder="123 Đường ABC, TP.HCM" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <div className="text-sm font-medium text-gray-700">Ngày nhập kho</div>
-                  <Input type="date" value={createForm.importDate} onChange={(e) => { setCreateForm((f) => ({ ...f, importDate: e.target.value })); setCreateFeePreview(null); }} />
+                  <div className="text-sm font-medium text-gray-700">Ngày nhập kho <span className="text-red-500">*</span></div>
+                  <Input type="date" value={createForm.importDate} min={todayISO} onChange={(e) => {
+                    const v = e.target.value;
+                    setCreateForm((f) => ({
+                      ...f, importDate: v,
+                      exportDate: f.exportDate && f.exportDate < v ? v : f.exportDate,
+                    }));
+                    setCreateFeePreview(null);
+                  }} />
                 </div>
                 <div className="space-y-1">
-                  <div className="text-sm font-medium text-gray-700">Ngày xuất kho</div>
-                  <Input type="date" value={createForm.exportDate} onChange={(e) => { setCreateForm((f) => ({ ...f, exportDate: e.target.value })); setCreateFeePreview(null); }} />
+                  <div className="text-sm font-medium text-gray-700">Ngày xuất kho <span className="text-red-500">*</span></div>
+                  <Input type="date" value={createForm.exportDate} min={createForm.importDate || todayISO} onChange={(e) => { setCreateForm((f) => ({ ...f, exportDate: e.target.value })); setCreateFeePreview(null); }} />
                 </div>
               </div>
               {myContainers.length > 0 && (
                 <div className="space-y-1">
-                  <div className="text-sm font-medium text-gray-700">Container ({createForm.containerIds.length} đã chọn)</div>
+                  <div className="text-sm font-medium text-gray-700">Container ({createForm.containerIds.length} đã chọn) <span className="text-red-500">*</span></div>
                   <div className="max-h-32 overflow-y-auto border border-gray-200 rounded-md p-2 space-y-1">
                     {myContainers.map((c) => (
                       <label key={c.containerId} className="flex items-center gap-2 cursor-pointer text-sm">
@@ -692,15 +742,15 @@ export default function Orders() {
                   </div>
                   <div className="border-t border-indigo-200 pt-2 space-y-1">
                     <div className="flex justify-between text-sm text-gray-700">
-                      <span>📅 Số ngày lưu kho:</span>
+                      <span>Số ngày lưu kho:</span>
                       <span className="font-medium">{createFeePreview.storageDays} ngày</span>
                     </div>
                     <div className="flex justify-between text-sm text-gray-700">
-                      <span>⏱️ Hệ số thời gian:</span>
+                      <span>Hệ số thời gian:</span>
                       <span className="font-medium">×{createFeePreview.timeMultiplier}</span>
                     </div>
                     <div className="flex justify-between text-sm text-gray-700">
-                      <span>⚖️ Hệ số trọng lượng:</span>
+                      <span>Hệ số trọng lượng:</span>
                       <span className="font-medium">×{createFeePreview.weightMultiplier}</span>
                     </div>
                   </div>
@@ -759,31 +809,37 @@ export default function Orders() {
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <div className="text-sm font-medium text-gray-700">Số điện thoại</div>
+                  <div className="text-sm font-medium text-gray-700">Số điện thoại <span className="text-red-500">*</span></div>
                   <Input value={editForm.phone} onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))} />
                 </div>
                 <div className="space-y-1">
-                  <div className="text-sm font-medium text-gray-700">Email</div>
+                  <div className="text-sm font-medium text-gray-700">Email <span className="text-red-500">*</span></div>
                   <Input type="email" value={editForm.email} onChange={(e) => setEditForm((f) => ({ ...f, email: e.target.value }))} />
                 </div>
               </div>
               <div className="space-y-1">
-                <div className="text-sm font-medium text-gray-700">Địa chỉ</div>
+                <div className="text-sm font-medium text-gray-700">Địa chỉ <span className="text-red-500">*</span></div>
                 <Input value={editForm.address} onChange={(e) => setEditForm((f) => ({ ...f, address: e.target.value }))} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
-                  <div className="text-sm font-medium text-gray-700">Ngày nhập kho</div>
-                  <Input type="date" value={editForm.importDate} onChange={(e) => setEditForm((f) => ({ ...f, importDate: e.target.value }))} />
+                  <div className="text-sm font-medium text-gray-700">Ngày nhập kho <span className="text-red-500">*</span></div>
+                  <Input type="date" value={editForm.importDate} min={todayISO} onChange={(e) => {
+                    const v = e.target.value;
+                    setEditForm((f) => ({
+                      ...f, importDate: v,
+                      exportDate: f.exportDate && f.exportDate < v ? v : f.exportDate,
+                    }));
+                  }} />
                 </div>
                 <div className="space-y-1">
-                  <div className="text-sm font-medium text-gray-700">Ngày xuất kho</div>
-                  <Input type="date" value={editForm.exportDate} onChange={(e) => setEditForm((f) => ({ ...f, exportDate: e.target.value }))} />
+                  <div className="text-sm font-medium text-gray-700">Ngày xuất kho <span className="text-red-500">*</span></div>
+                  <Input type="date" value={editForm.exportDate} min={editForm.importDate || todayISO} onChange={(e) => setEditForm((f) => ({ ...f, exportDate: e.target.value }))} />
                 </div>
               </div>
               {myContainers.length > 0 && (
                 <div className="space-y-1">
-                  <div className="text-sm font-medium text-gray-700">Container ({editForm.containerIds.length} đã chọn)</div>
+                  <div className="text-sm font-medium text-gray-700">Container ({editForm.containerIds.length} đã chọn) <span className="text-red-500">*</span></div>
                   <div className="max-h-32 overflow-y-auto border border-gray-200 rounded-md p-2 space-y-1">
                     {myContainers.map((c) => (
                       <label key={c.containerId} className="flex items-center gap-2 cursor-pointer text-sm">
@@ -832,16 +888,18 @@ export default function Orders() {
           </DialogContent>
         </Dialog>
 
-        {/* View bill dialog */}
-        <Dialog open={openBill} onOpenChange={(o) => { setOpenBill(o); if (!o) setBillData(null); }}>
-          <DialogContent className="max-w-md">
+        {/* View bill + Container History dialog */}
+        <Dialog open={openBill} onOpenChange={(o) => { setOpenBill(o); if (!o) { setBillData(null); setContainerHistory({}); } }}>
+          <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
             <DialogHeader>
-              <DialogTitle>Vận đơn (Bill of Lading)</DialogTitle>
+              <DialogTitle>Vận đơn & Lịch sử container</DialogTitle>
             </DialogHeader>
+
+            {/* Bill info */}
             {billLoading ? (
-              <div className="py-6 text-center text-gray-500">Đang tải vận đơn...</div>
+              <div className="py-4 text-center text-gray-500">Đang tải vận đơn...</div>
             ) : billData ? (
-              <div className="space-y-2 text-sm">
+              <div className="space-y-2 text-sm border border-gray-200 rounded-lg p-4 bg-gray-50/50">
                 <div className="flex justify-between"><span className="text-gray-500">Số vận đơn:</span> <span className="font-semibold font-mono">{billData.billNumber}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">Mã đơn hàng:</span> <span>#{billData.orderId}</span></div>
                 <div className="flex justify-between"><span className="text-gray-500">Ngày cấp:</span> <span>{billData.createdDate || '—'}</span></div>
@@ -853,8 +911,89 @@ export default function Orders() {
                 {billData.note && <div className="flex justify-between"><span className="text-gray-500">Ghi chú:</span> <span>{billData.note}</span></div>}
               </div>
             ) : (
-              <div className="py-6 text-center text-gray-500">Đơn hàng này chưa có vận đơn.</div>
+              <div className="py-4 text-center text-gray-400 text-sm">Đơn hàng này chưa có vận đơn.</div>
             )}
+
+            {/* Container Status History Timeline */}
+            {billOrderContainers.length > 0 && (
+              <div className="mt-2">
+                <div className="text-sm font-semibold text-gray-700 mb-3">Lịch sử trạng thái container</div>
+                {historyLoading ? (
+                  <div className="py-4 text-center text-gray-400 text-sm">Đang tải lịch sử...</div>
+                ) : billOrderContainers.map((cid) => {
+                  const history = containerHistory[cid];
+                  if (!history || history.length === 0) return (
+                    <div key={cid} className="mb-3 p-3 rounded-lg border border-gray-200 bg-gray-50/50">
+                      <div className="font-mono text-sm font-semibold text-gray-700">{cid}</div>
+                      <div className="text-xs text-gray-400 mt-1">Chưa có lịch sử trạng thái.</div>
+                    </div>
+                  );
+
+                  const STATUS_VN: Record<string, string> = {
+                    'AVAILABLE': 'Đã đăng ký',
+                    'GATE_IN': 'Đã vào cổng',
+                    'IN_YARD': 'Trong bãi',
+                    'GATE_OUT': 'Đã xuất cổng',
+                    'DAMAGED': 'Hư hỏng',
+                    'REPAIRED': 'Đã sửa',
+                  };
+                  const STATUS_COLOR: Record<string, string> = {
+                    'AVAILABLE': '#6366f1',
+                    'GATE_IN': '#3b82f6',
+                    'IN_YARD': '#10b981',
+                    'GATE_OUT': '#8b5cf6',
+                    'DAMAGED': '#ef4444',
+                    'REPAIRED': '#f59e0b',
+                  };
+
+                  return (
+                    <div key={cid} className="mb-4 p-4 rounded-xl border border-gray-200 bg-white shadow-sm">
+                      <div className="font-mono text-sm font-bold text-indigo-700 mb-3">{cid}</div>
+                      <div className="relative pl-6">
+                        {history.map((h, i) => {
+                          const color = STATUS_COLOR[h.statusName] || '#6b7280';
+                          const isLast = i === history.length - 1;
+                          const dt = h.createdAt ? (() => {
+                            if (Array.isArray(h.createdAt)) {
+                              const [y, mo, d, hr, mi] = h.createdAt as unknown as number[];
+                              return `${String(d).padStart(2, '0')}/${String(mo).padStart(2, '0')}/${y} ${String(hr ?? 0).padStart(2, '0')}:${String(mi ?? 0).padStart(2, '0')}`;
+                            }
+                            const dd = new Date(h.createdAt);
+                            return isNaN(dd.getTime()) ? h.createdAt : dd.toLocaleString('vi-VN');
+                          })() : '';
+                          return (
+                            <div key={i} className="relative pb-5 last:pb-0">
+                              {/* Vertical line */}
+                              {!isLast && (
+                                <div className="absolute left-[-16px] top-[10px] w-[2px] h-full" style={{ background: '#e5e7eb' }} />
+                              )}
+                              {/* Dot */}
+                              <div
+                                className="absolute left-[-20px] top-[4px] w-[10px] h-[10px] rounded-full border-2"
+                                style={{ background: color, borderColor: color, boxShadow: `0 0 0 3px ${color}22` }}
+                              />
+                              {/* Content */}
+                              <div>
+                                <div className="text-sm font-semibold" style={{ color }}>
+                                  {STATUS_VN[h.statusName] || h.statusName}
+                                </div>
+                                {h.description && (
+                                  <div className="text-xs text-gray-500 mt-0.5">{h.description}</div>
+                                )}
+                                {dt && (
+                                  <div className="text-[11px] text-gray-400 mt-0.5">{dt}</div>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             <DialogFooter>
               <Button variant="outline" onClick={() => setOpenBill(false)}>Đóng</Button>
             </DialogFooter>

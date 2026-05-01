@@ -1,22 +1,23 @@
 /**
- * Phase 8 — Optimization Panel (Relocate & Swap).
- * Used inside Warehouse3D right-panel slot.
+ * Phase 8 — Smart Optimization Panel.
  *
- * Props:
- *  - onClose              → clear state and close
- *  - onPreviewChange      → show GhostContainer on target slot in 3D
- *  - onSourceHighlight    → pass source containerCode as highlightId for amber glow
- *  - warehouseType        → filter containers in current warehouse
- *  - panelClass           → outer wrapper class ('w3d-right-panel')
+ * New flow:
+ *  1. On mount → fetch all IN_YARD containers
+ *  2. Filter containers due for gate-out today (expectedExitDate ≤ today)
+ *  3. Detect which have blockers above them (higher tier in same slot)
+ *  4. For each blocker → call ML to find optimal relocation destination
+ *  5. Show the optimization plan → user confirms → execute all relocations
  */
-import { useState, useMemo, useSyncExternalStore } from 'react';
-import { ChevronLeft, X, Target, ArrowRightLeft, BarChart2 } from 'lucide-react';
-import { subscribeOccupancy, getOccupancyData } from '../store/occupancyStore';
-import type { OccupancyMap } from '../store/occupancyStore';
+import { useState, useEffect, useCallback } from 'react';
+import {
+  ChevronLeft, X, Zap, Package, ArrowRight, CheckCircle,
+  AlertTriangle, Loader2, RefreshCw, Calendar,
+} from 'lucide-react';
+import { searchInYardContainers } from '../services/gateOutService';
+import type { InYardContainer } from '../services/gateOutService';
 import {
   fetchRelocationRecommendations,
   relocateContainer,
-  swapContainers,
 } from '../services/relocationService';
 import type { RelocationRecommendation, RelocateParams } from '../services/relocationService';
 import type { WHType, PreviewPosition } from '../data/warehouse';
@@ -24,20 +25,22 @@ import './OptimizationPanel.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface ContainerEntry {
-  containerId:   number;
-  containerCode: string;
-  cargoType:     string;
-  sizeType:      '20ft' | '40ft';
-  weight:        string;
-  whType:        string;
-  zoneName:      string;
-  row:           number;
-  col:           number;
-  tier:          number;
+/** Container that needs to be gate-out today but has blockers */
+interface BlockedContainer {
+  container: InYardContainer;
+  blockers: InYardContainer[];   // containers above it in same slot
 }
 
-type OptStep = 'select' | 'suggestions' | 'swap-select';
+/** A planned relocation move for a single blocker */
+interface PlannedMove {
+  blocker: InYardContainer;
+  targetContainer: InYardContainer;   // which exit container it's blocking
+  recommendation: RelocationRecommendation | null;
+  status: 'pending' | 'loading' | 'ready' | 'executing' | 'done' | 'error';
+  error?: string;
+}
+
+type OptStep = 'analyzing' | 'plan' | 'executing' | 'done';
 
 export interface OptimizationPanelProps {
   onClose:           () => void;
@@ -49,28 +52,52 @@ export interface OptimizationPanelProps {
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function listContainersFromMap(map: OccupancyMap, filterWhType: WHType): ContainerEntry[] {
-  const seen   = new Set<number>();
-  const result: ContainerEntry[] = [];
-  for (const [key, occ] of map.entries()) {
-    if (seen.has(occ.containerId)) continue;
-    const parts = key.split('/');
-    if (parts[0] !== filterWhType) continue;
-    seen.add(occ.containerId);
-    result.push({
-      containerId:   occ.containerId,
-      containerCode: occ.containerCode,
-      cargoType:     occ.cargoType,
-      sizeType:      occ.sizeType,
-      weight:        occ.weight,
-      whType:        parts[0],
-      zoneName:      parts[1],
-      row:           Number(parts[2]),
-      col:           Number(parts[3]),
-      tier:          Number(parts[4]),
-    });
+function todayStr(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Group containers by slot key (zone + row + bay) */
+function slotKey(c: InYardContainer): string {
+  return `${c.zone}/${c.rowNo}/${c.bayNo}`;
+}
+
+/** Find containers needing exit today that have blockers above them */
+function findBlockedContainers(all: InYardContainer[]): BlockedContainer[] {
+  const today = todayStr();
+
+  // Group by slot
+  const bySlot = new Map<string, InYardContainer[]>();
+  for (const c of all) {
+    if (c.rowNo == null || c.bayNo == null || c.tier == null) continue;
+    const key = slotKey(c);
+    const arr = bySlot.get(key) ?? [];
+    arr.push(c);
+    bySlot.set(key, arr);
   }
-  return result;
+
+  const results: BlockedContainer[] = [];
+
+  for (const [, group] of bySlot) {
+    // Sort by tier ascending
+    group.sort((a, b) => (a.tier ?? 0) - (b.tier ?? 0));
+
+    // Find containers due today (or overdue)
+    for (const c of group) {
+      if (!c.expectedExitDate) continue;
+      if (c.expectedExitDate > today) continue; // not due yet
+
+      // Containers above this one in the same slot
+      const blockers = group.filter((b) => (b.tier ?? 0) > (c.tier ?? 0));
+      if (blockers.length > 0) {
+        results.push({ container: c, blockers });
+      }
+    }
+  }
+
+  // Sort by exit date (most urgent first)
+  results.sort((a, b) => a.container.expectedExitDate.localeCompare(b.container.expectedExitDate));
+  return results;
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -79,341 +106,311 @@ export function OptimizationPanel({
   onClose,
   onPreviewChange,
   onSourceHighlight,
-  warehouseType,
   panelClass,
 }: OptimizationPanelProps) {
-  const occupancyMap = useSyncExternalStore(subscribeOccupancy, getOccupancyData);
-  const containers   = useMemo(
-    () => listContainersFromMap(occupancyMap, warehouseType),
-    [occupancyMap, warehouseType],
-  );
+  const [step, setStep] = useState<OptStep>('analyzing');
+  const [blocked, setBlocked] = useState<BlockedContainer[]>([]);
+  const [moves, setMoves] = useState<PlannedMove[]>([]);
+  const [error, setError] = useState<string | null>(null);
+  const [executingIdx, setExecutingIdx] = useState(-1);
+  const [doneCount, setDoneCount] = useState(0);
+  const [allContainers, setAllContainers] = useState<InYardContainer[]>([]);
 
-  const [step, setStep]               = useState<OptStep>('select');
-  const [source, setSource]           = useState<ContainerEntry | null>(null);
-  const [swapTarget, setSwapTarget]   = useState<ContainerEntry | null>(null);
-  const [suggestions, setSuggestions] = useState<RelocationRecommendation[]>([]);
-  const [selected, setSelected]       = useState<RelocationRecommendation | null>(null);
-  const [loading, setLoading]         = useState(false);
-  const [error, setError]             = useState<string | null>(null);
-  const [success, setSuccess]         = useState<string | null>(null);
+  // ── Step 1: Analyze ─────────────────────────────────────────────────────────
 
-  const swapCandidates = useMemo(
-    () => containers.filter((c) => c.containerId !== source?.containerId),
-    [containers, source?.containerId],
-  );
-
-  function clearAndClose() {
-    onPreviewChange(null);
-    onSourceHighlight(undefined);
-    onClose();
-  }
-
-  function resetRelocateState() {
-    setSource(null);
-    setSuggestions([]);
-    setSelected(null);
+  const analyze = useCallback(async () => {
+    setStep('analyzing');
     setError(null);
-    setLoading(false);
-    onPreviewChange(null);
-    onSourceHighlight(undefined);
-  }
+    setMoves([]);
+    setBlocked([]);
+    setDoneCount(0);
+    setExecutingIdx(-1);
 
-  function resetSwapState() {
-    setSwapTarget(null);
-    setError(null);
-    setLoading(false);
-    onSourceHighlight(undefined);
-  }
-
-  function goBack() {
-    if (loading) return;
-    setError(null);
-    if (step === 'suggestions') {
-      setStep('select');
-      resetRelocateState();
-    } else if (step === 'swap-select') {
-      setStep('select');
-      resetSwapState();
-    }
-  }
-
-  // ── Relocate flow ────────────────────────────────────────────────────────────
-
-  async function handleSelectSource(ctn: ContainerEntry) {
-    setSource(ctn);
-    onSourceHighlight(ctn.containerCode);
-    onPreviewChange(null);
-    setSelected(null);
-    setError(null);
-    setSuccess(null);
-    setLoading(true);
-    setStep('suggestions');
     try {
-      const recs = await fetchRelocationRecommendations(
-        ctn.containerId,
-        ctn.cargoType,
-        ctn.weight,
-        ctn.sizeType,
-      );
-      setSuggestions(recs);
+      // Fetch all IN_YARD containers
+      const containers = await searchInYardContainers('');
+      setAllContainers(containers);
+
+      // Find blocked containers needing exit today
+      const blockedList = findBlockedContainers(containers);
+      setBlocked(blockedList);
+
+      if (blockedList.length === 0) {
+        setStep('plan');
+        return;
+      }
+
+      // For each blocker → get ML recommendation
+      const plannedMoves: PlannedMove[] = [];
+      const seenBlockers = new Set<string>();
+
+      for (const bc of blockedList) {
+        // Process blockers top-down (highest tier first)
+        const sorted = [...bc.blockers].sort((a, b) => (b.tier ?? 0) - (a.tier ?? 0));
+        for (const blocker of sorted) {
+          if (seenBlockers.has(blocker.containerId)) continue;
+          seenBlockers.add(blocker.containerId);
+
+          plannedMoves.push({
+            blocker,
+            targetContainer: bc.container,
+            recommendation: null,
+            status: 'loading',
+          });
+        }
+      }
+
+      setMoves([...plannedMoves]);
+
+      // Fetch ML recommendations for each blocker
+      for (let i = 0; i < plannedMoves.length; i++) {
+        const move = plannedMoves[i];
+        try {
+          const sizeType = move.blocker.containerType?.toUpperCase().includes('40') ? '40ft' : '20ft';
+          const recs = await fetchRelocationRecommendations(
+            move.blocker.containerId,
+            move.blocker.cargoType,
+            move.blocker.grossWeight || '0',
+            sizeType as '20ft' | '40ft',
+          );
+          move.recommendation = recs.length > 0 ? recs[0] : null;
+          move.status = recs.length > 0 ? 'ready' : 'error';
+          if (recs.length === 0) move.error = 'ML không tìm được vị trí phù hợp';
+        } catch (e) {
+          move.status = 'error';
+          move.error = e instanceof Error ? e.message : 'Lỗi gọi ML';
+        }
+        setMoves([...plannedMoves]);
+      }
+
+      setStep('plan');
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Lỗi tải gợi ý vị trí');
-      setSuggestions([]);
-    } finally {
-      setLoading(false);
+      setError(e instanceof Error ? e.message : 'Lỗi phân tích kho');
+      setStep('plan');
     }
-  }
+  }, []);
 
-  function handleSelectSuggestion(rec: RelocationRecommendation) {
-    setSelected(rec);
-    // Show ghost at target slot in 3D scene
-    onPreviewChange({
-      whType:        rec.whType,
-      zone:          rec.zone,
-      floor:         rec.floor,
-      row:           rec.row,
-      col:           rec.col,
-      sizeType:      rec.sizeType,
-      containerCode: `→ ${source?.containerCode ?? ''}`,
-    });
-  }
+  useEffect(() => { analyze(); }, [analyze]);
 
-  async function handleConfirmRelocate() {
-    if (!source || !selected) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const params: RelocateParams = {
-        containerId: source.containerId,
-        rowNo:       selected.row + 1,
-        bayNo:       selected.col + 1,
-        tier:        selected.floor,
-        slotId:      selected.slotId,
-        blockId:     selected.blockId,
-      };
-      await relocateContainer(params);
-      onPreviewChange(null);
-      onSourceHighlight(undefined);
-      setSuccess(`Đã dời ${source.containerCode} → ${selected.zone} ${selected.slot}`);
-      setStep('select');
-      setSource(null);
-      setSuggestions([]);
-      setSelected(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Dời container thất bại');
-    } finally {
-      setLoading(false);
+  // ── Step 2: Execute all moves ───────────────────────────────────────────────
+
+  async function executeAll() {
+    const readyMoves = moves.filter((m) => m.status === 'ready' && m.recommendation);
+    if (readyMoves.length === 0) return;
+
+    setStep('executing');
+    let done = 0;
+
+    for (let i = 0; i < moves.length; i++) {
+      const move = moves[i];
+      if (move.status !== 'ready' || !move.recommendation) continue;
+
+      setExecutingIdx(i);
+      move.status = 'executing';
+      setMoves([...moves]);
+
+      try {
+        const rec = move.recommendation;
+        const params: RelocateParams = {
+          containerId: move.blocker.containerId,
+          rowNo:   rec.row + 1,
+          bayNo:   rec.col + 1,
+          tier:    rec.floor,
+          slotId:  rec.slotId,
+          blockId: rec.blockId,
+        };
+        await relocateContainer(params);
+        move.status = 'done';
+        done++;
+      } catch (e) {
+        move.status = 'error';
+        move.error = e instanceof Error ? e.message : 'Lỗi dời container';
+      }
+      setMoves([...moves]);
+      setDoneCount(done);
     }
+
+    setExecutingIdx(-1);
+    setStep('done');
   }
 
-  // ── Swap flow ────────────────────────────────────────────────────────────────
+  // ── Render ──────────────────────────────────────────────────────────────────
 
-  function handleStartSwap(ctn: ContainerEntry) {
-    setSource(ctn);
-    onSourceHighlight(ctn.containerCode);
-    setSwapTarget(null);
-    setError(null);
-    setSuccess(null);
-    setStep('swap-select');
-  }
-
-  async function handleConfirmSwap() {
-    if (!source || !swapTarget) return;
-    setLoading(true);
-    setError(null);
-    try {
-      await swapContainers(source.containerId, swapTarget.containerId);
-      onSourceHighlight(undefined);
-      setSuccess(`Hoán đổi ${source.containerCode} ↔ ${swapTarget.containerCode} thành công`);
-      setStep('select');
-      setSource(null);
-      setSwapTarget(null);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Hoán đổi thất bại');
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  // ── Render ───────────────────────────────────────────────────────────────────
-
-  const titleMap: Record<OptStep, string> = {
-    'select':      'Tối ưu hóa vị trí',
-    'suggestions': 'Gợi ý vị trí mới',
-    'swap-select': 'Chọn container hoán đổi',
-  };
+  const readyCount = moves.filter((m) => m.status === 'ready').length;
+  const errorCount = moves.filter((m) => m.status === 'error').length;
+  const totalDueToday = blocked.length;
 
   return (
     <div className={panelClass} style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-
       {/* ── Header ── */}
       <div className="opt-header">
-        <button className="opt-back-btn" onClick={step === 'select' ? clearAndClose : goBack}>
-          <ChevronLeft size={18} />
-        </button>
-        <h2 className="opt-title">{titleMap[step]}</h2>
-        <button className="opt-close-btn" onClick={clearAndClose}><X size={16} /></button>
+        <button className="opt-back-btn" onClick={onClose}><ChevronLeft size={18} /></button>
+        <h2 className="opt-title">
+          <Zap size={16} style={{ verticalAlign: 'middle', marginRight: 4, color: '#f59e0b' }} />
+          Tối ưu hóa vị trí
+        </h2>
+        <button className="opt-close-btn" onClick={onClose}><X size={16} /></button>
       </div>
 
       {/* ── Body ── */}
       <div className="opt-body">
 
-        {success && <div className="opt-success-banner">✓ {success}</div>}
-        {error   && <div className="opt-error-banner">{error}</div>}
-
-        {/* ── Select source container ─────────────────────────────────────── */}
-        {step === 'select' && (
-          <>
-            <p className="opt-hint">
-              Chọn container để tìm vị trí tối ưu hơn (<Target size={11} style={{ verticalAlign: 'middle' }} /> Dời)
-              hoặc hoán đổi với container khác (<ArrowRightLeft size={11} style={{ verticalAlign: 'middle' }} /> Đổi).
-            </p>
-
-            {containers.length === 0 && (
-              <p className="opt-empty">
-                {occupancyMap.size === 0
-                  ? 'Chưa tải dữ liệu container. Vui lòng đợi...'
-                  : 'Không có container trong kho này.'}
-              </p>
-            )}
-
-            <div className="opt-list">
-              {containers.map((ctn) => (
-                <div key={ctn.containerId} className="opt-item">
-                  <div className="opt-item-info">
-                    <span className="opt-item-code">
-                      {ctn.containerCode || `CTN-${ctn.containerId}`}
-                    </span>
-                    <span className="opt-item-meta">
-                      {ctn.cargoType || '—'} · {ctn.zoneName} T{ctn.tier}
-                    </span>
-                  </div>
-                  <div className="opt-item-actions">
-                    <button
-                      className="opt-btn opt-btn-primary"
-                      onClick={() => handleSelectSource(ctn)}
-                      title="Tìm vị trí tối ưu hơn"
-                    >
-                      <Target size={12} />
-                      Dời
-                    </button>
-                    <button
-                      className="opt-btn opt-btn-secondary"
-                      onClick={() => handleStartSwap(ctn)}
-                      title="Hoán đổi với container khác"
-                    >
-                      <ArrowRightLeft size={12} />
-                      Đổi
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </>
+        {/* ── Analyzing ── */}
+        {step === 'analyzing' && (
+          <div className="opt-analyzing">
+            <Loader2 size={32} className="opt-spin" />
+            <p className="opt-analyzing-text">Đang phân tích kho bãi…</p>
+            <p className="opt-analyzing-sub">Lọc container cần xuất hôm nay & tìm vị trí tối ưu bằng ML</p>
+          </div>
         )}
 
-        {/* ── Suggestions list ────────────────────────────────────────────── */}
-        {step === 'suggestions' && (
+        {/* ── Plan / Results ── */}
+        {(step === 'plan' || step === 'executing' || step === 'done') && (
           <>
-            {source && (
-              <div className="opt-source-card">
-                <span className="opt-source-label">Container cần dời</span>
-                <span className="opt-source-code">{source.containerCode || `CTN-${source.containerId}`}</span>
-                <span className="opt-source-meta">
-                  {source.zoneName} · Tầng {source.tier} · {source.cargoType}
-                </span>
+            {/* Summary bar */}
+            <div className="opt-summary">
+              <div className="opt-summary-item">
+                <Calendar size={14} />
+                <span>{todayStr()}</span>
+              </div>
+              <div className="opt-summary-item">
+                <Package size={14} />
+                <span>{allContainers.length} container trong kho</span>
+              </div>
+            </div>
+
+            {error && <div className="opt-error-banner">{error}</div>}
+
+            {/* No optimization needed */}
+            {totalDueToday === 0 && !error && (
+              <div className="opt-empty-state">
+                <CheckCircle size={40} style={{ color: '#16a34a', marginBottom: 8 }} />
+                <p className="opt-empty-title">Kho đã tối ưu!</p>
+                <p className="opt-empty-sub">
+                  Không có container nào cần xuất hôm nay bị chặn bởi container khác.
+                </p>
               </div>
             )}
 
-            {loading && <p className="opt-empty">Đang tải gợi ý...</p>}
-
-            {!loading && !error && suggestions.length === 0 && (
-              <p className="opt-empty">Không có gợi ý vị trí phù hợp.</p>
-            )}
-
-            {!loading && suggestions.map((rec) => (
-              <div
-                key={rec.rank}
-                className={`opt-rec-card ${selected?.rank === rec.rank ? 'opt-rec-selected' : ''}`}
-                onClick={() => handleSelectSuggestion(rec)}
-              >
-                <div className="opt-rec-rank">#{rec.rank}</div>
-                <div className="opt-rec-info">
-                  <div className="opt-rec-slot">{rec.zone} · Tầng {rec.floor} · {rec.slot}</div>
-                  <div className="opt-rec-meta">
-                    <span className="opt-rec-efficiency">
-                      <BarChart2 size={11} /> {rec.efficiency}%
-                    </span>
-                    <span className="opt-rec-moves">{rec.moves} lần đảo</span>
-                  </div>
+            {/* Blocked containers summary */}
+            {totalDueToday > 0 && (
+              <>
+                <div className="opt-alert-bar">
+                  <AlertTriangle size={16} />
+                  <span>
+                    <strong>{totalDueToday}</strong> container cần xuất hôm nay bị chặn
+                    — cần đảo <strong>{moves.length}</strong> container
+                  </span>
                 </div>
-                {selected?.rank === rec.rank && <div className="opt-rec-check">✓</div>}
-              </div>
-            ))}
 
-            {selected && !loading && (
+                {/* Move list */}
+                <div className="opt-move-list">
+                  {moves.map((move, idx) => (
+                    <div
+                      key={idx}
+                      className={`opt-move-card opt-move-${move.status}`}
+                      onMouseEnter={() => {
+                        onSourceHighlight(move.blocker.containerCode);
+                        if (move.recommendation) {
+                          onPreviewChange({
+                            whType: move.recommendation.whType,
+                            zone: move.recommendation.zone,
+                            floor: move.recommendation.floor,
+                            row: move.recommendation.row,
+                            col: move.recommendation.col,
+                            sizeType: move.recommendation.sizeType,
+                            containerCode: `→ ${move.blocker.containerCode}`,
+                          });
+                        }
+                      }}
+                      onMouseLeave={() => {
+                        onSourceHighlight(undefined);
+                        onPreviewChange(null);
+                      }}
+                    >
+                      {/* Move number badge */}
+                      <div className="opt-move-badge">
+                        {move.status === 'done' ? <CheckCircle size={14} /> :
+                         move.status === 'executing' ? <Loader2 size={14} className="opt-spin" /> :
+                         move.status === 'error' ? <AlertTriangle size={14} /> :
+                         <span>{idx + 1}</span>}
+                      </div>
+
+                      {/* Move details */}
+                      <div className="opt-move-info">
+                        <div className="opt-move-container">
+                          {move.blocker.containerCode}
+                        </div>
+                        <div className="opt-move-reason">
+                          Chặn {move.targetContainer.containerCode} (T{move.blocker.tier} → T{move.targetContainer.tier})
+                        </div>
+
+                        {/* Loading state */}
+                        {move.status === 'loading' && (
+                          <div className="opt-move-dest opt-move-loading">
+                            <Loader2 size={11} className="opt-spin" /> ML đang phân tích…
+                          </div>
+                        )}
+
+                        {/* Destination */}
+                        {move.recommendation && move.status !== 'loading' && (
+                          <div className="opt-move-dest">
+                            <ArrowRight size={11} />
+                            <span>
+                              {move.recommendation.zone} · R{move.recommendation.row + 1}B{move.recommendation.col + 1} / T{move.recommendation.floor}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Error */}
+                        {move.status === 'error' && move.error && (
+                          <div className="opt-move-error-text">{move.error}</div>
+                        )}
+                      </div>
+
+                      {/* Status indicator */}
+                      <div className={`opt-move-status opt-status-${move.status}`}>
+                        {move.status === 'ready' && 'Sẵn sàng'}
+                        {move.status === 'done' && 'Xong'}
+                        {move.status === 'executing' && 'Đang chạy'}
+                        {move.status === 'error' && 'Lỗi'}
+                        {move.status === 'loading' && '...'}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Execute button */}
+                {step === 'plan' && readyCount > 0 && (
+                  <button className="opt-submit-btn" onClick={executeAll}>
+                    <Zap size={15} />
+                    Thực hiện {readyCount} lệnh đảo
+                  </button>
+                )}
+
+                {/* Done state */}
+                {step === 'done' && (
+                  <div className="opt-done-bar">
+                    <CheckCircle size={18} />
+                    <span>Đã hoàn thành {doneCount}/{moves.length} lệnh đảo</span>
+                    {errorCount > 0 && <span className="opt-done-error">({errorCount} lỗi)</span>}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Refresh button */}
+            {(step === 'plan' || step === 'done') && (
               <button
-                className="opt-submit-btn"
-                onClick={handleConfirmRelocate}
-                disabled={loading}
+                className="opt-refresh-btn"
+                onClick={() => { onPreviewChange(null); onSourceHighlight(undefined); analyze(); }}
               >
-                {loading
-                  ? 'Đang xử lý...'
-                  : `Xác nhận dời → ${selected.zone} ${selected.slot}`}
+                <RefreshCw size={14} />
+                Phân tích lại
               </button>
             )}
           </>
         )}
-
-        {/* ── Swap target selection ────────────────────────────────────────── */}
-        {step === 'swap-select' && (
-          <>
-            {source && (
-              <div className="opt-source-card">
-                <span className="opt-source-label">Container A (nguồn)</span>
-                <span className="opt-source-code">{source.containerCode || `CTN-${source.containerId}`}</span>
-                <span className="opt-source-meta">{source.zoneName} · Tầng {source.tier}</span>
-              </div>
-            )}
-
-            <p className="opt-hint">Chọn container B để hoán đổi vị trí với container A:</p>
-
-            <div className="opt-list">
-              {swapCandidates.map((ctn) => (
-                <div
-                  key={ctn.containerId}
-                  className={`opt-item ${swapTarget?.containerId === ctn.containerId ? 'opt-item-selected' : ''}`}
-                  onClick={() => setSwapTarget(ctn)}
-                >
-                  <div className="opt-item-info">
-                    <span className="opt-item-code">
-                      {ctn.containerCode || `CTN-${ctn.containerId}`}
-                    </span>
-                    <span className="opt-item-meta">
-                      {ctn.cargoType || '—'} · {ctn.zoneName} T{ctn.tier}
-                    </span>
-                  </div>
-                  {swapTarget?.containerId === ctn.containerId && (
-                    <span style={{ color: '#1e3a8a', fontWeight: 700, flexShrink: 0 }}>✓</span>
-                  )}
-                </div>
-              ))}
-            </div>
-
-            {swapTarget && (
-              <button
-                className="opt-submit-btn"
-                onClick={handleConfirmSwap}
-                disabled={loading}
-              >
-                {loading
-                  ? 'Đang xử lý...'
-                  : `Hoán đổi: ${source?.containerCode} ↔ ${swapTarget.containerCode}`}
-              </button>
-            )}
-          </>
-        )}
-
       </div>
     </div>
   );

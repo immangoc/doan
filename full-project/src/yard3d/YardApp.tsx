@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { Toaster } from 'sonner';
 import { Routes, Route, Navigate, useLocation } from 'react-router';
 import { AuthProvider } from './contexts/AuthContext';
 import { WarehouseOverview } from './pages/WarehouseOverview';
@@ -85,6 +86,7 @@ export default function YardApp() {
 
   return (
     <AuthProvider>
+      <Toaster position="top-right" richColors closeButton />
       <Routes>
         <Route index element={<Navigate to="tong-quan" replace />} />
         <Route path="tong-quan" element={<WarehouseOverview />} />

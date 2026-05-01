@@ -318,6 +318,13 @@ def is_valid_slot(container: Dict[str, Any], slot: pd.Series) -> bool:
             return False
     if float(container["grossWeight"]) > float(slot["max_weight_kg"]):
         return False
+
+    # ★ Check slot is not full — current_occupancy must be less than max capacity
+    max_tier = _safe_int(slot.get("max_tier") if "max_tier" in slot.index else slot.get("floor_no"), 4)
+    current_occ = _safe_int(slot.get("current_occupancy"), 0)
+    if current_occ >= max_tier:
+        return False
+
     return True
 
 
@@ -605,7 +612,8 @@ def recommend_placement(request: PlacementRequest) -> PlacementResponse:
                 "slotId": str(slot["slot_id"]),
                 "rowNo": row_no,
                 "bayNo": bay_no,
-                "recommendedTier": int(slot["current_occupancy"]) + 1,
+                "recommendedTier": min(int(slot["current_occupancy"]) + 1,
+                                       _safe_int(slot.get("max_tier") if "max_tier" in slot.index else slot.get("floor_no"), 4)),
                 "blockName": block_name,
                 "zoneName": zone_name,
                 "yardName": yard_name,

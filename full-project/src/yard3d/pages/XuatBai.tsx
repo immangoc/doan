@@ -6,6 +6,8 @@ import type { Container, StatusHistoryEntry, ContainerFilter } from '../services
 import './management.css';
 
 const TYPE_OPTIONS = ['', '20ft', '40ft'];
+const CARGO_OPTIONS = ['', 'Thường', 'Đông lạnh', 'Nguy hiểm', 'Quá khổ'];
+const STATUS_OPTIONS = ['', 'GATE_OUT', 'EXPORTED'];
 
 function statusBadgeClass(status: string): string {
   const s = status.toUpperCase();
@@ -131,27 +133,18 @@ export function XuatBai() {
         </div>
 
         <div className="mgmt-filter-bar">
-          <div className="mgmt-search-wrap">
+          <div className="mgmt-search-wrap" style={{ flex: 1 }}>
             <Search size={14} className="mgmt-search-ico" />
             <input
               type="text"
-              placeholder="Tìm mã container đã xuất..."
+              placeholder="Tìm kiếm mã, loại, kho, trọng lượng..."
               value={pendingFilter.keyword ?? ''}
               onChange={(e) => setPendingFilter((f) => ({ ...f, keyword: e.target.value }))}
               onKeyDown={(e) => e.key === 'Enter' && applyFilter()}
+              style={{ width: '100%' }}
             />
           </div>
-
-          <select
-            className="mgmt-select"
-            value={pendingFilter.containerType ?? ''}
-            onChange={(e) => setPendingFilter((f) => ({ ...f, containerType: e.target.value }))}
-          >
-            {TYPE_OPTIONS.map((t) => (
-              <option key={t} value={t}>{t || 'Tất cả loại'}</option>
-            ))}
-          </select>
-          <button className="mgmt-apply-btn" onClick={applyFilter}>Tìm kiếm</button>
+          <button className="mgmt-apply-btn" onClick={applyFilter}>Tìm</button>
         </div>
 
         <div className="mgmt-content-row">

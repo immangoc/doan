@@ -56,6 +56,9 @@ public class ContainerController {
             @RequestParam(required = false) String keyword,
             @RequestParam(required = false) String statusName,
             @RequestParam(required = false) String yardName,
+            @RequestParam(required = false) String containerType,
+            @RequestParam(required = false) String cargoType,
+            @RequestParam(required = false) String zoneName,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size,
             @RequestParam(defaultValue = "containerId") String sortBy,
@@ -63,7 +66,7 @@ public class ContainerController {
 
         Pageable pageable = PageableUtils.of(page, size, sortBy, direction);
         Page<ContainerResponse> responsePage = containerService
-                .findAll(keyword, statusName, yardName, pageable)
+                .findAll(keyword, statusName, yardName, containerType, cargoType, zoneName, pageable)
                 .map(containerMapper::toContainerResponse);
 
         // Batch-fetch positions and enrich responses (single extra query, no N+1)
@@ -222,7 +225,7 @@ public class ContainerController {
     }
 
     @GetMapping("/{id}/status-history")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF','CUSTOMER')")
     public ResponseEntity<ApiResponse<List<ContainerStatusHistoryResponse>>> getStatusHistory(
             @PathVariable String id) {
         return ResponseEntity.ok(ApiResponse.success(

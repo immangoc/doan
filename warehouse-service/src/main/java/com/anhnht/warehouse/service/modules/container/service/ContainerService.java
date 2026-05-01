@@ -12,7 +12,7 @@ import java.util.List;
 
 public interface ContainerService {
 
-    Page<Container> findAll(String keyword, String statusName, String yardName, Pageable pageable);
+    Page<Container> findAll(String keyword, String statusName, String yardName, String containerType, String cargoType, String zoneName, Pageable pageable);
 
     Page<Container> findByCustomer(Integer customerId, Pageable pageable);
 

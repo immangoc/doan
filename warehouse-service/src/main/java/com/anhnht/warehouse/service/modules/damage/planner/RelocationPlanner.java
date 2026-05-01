@@ -1,5 +1,7 @@
 package com.anhnht.warehouse.service.modules.damage.planner;
 
+import com.anhnht.warehouse.service.modules.container.entity.Container;
+import com.anhnht.warehouse.service.modules.container.repository.ContainerRepository;
 import com.anhnht.warehouse.service.modules.damage.dto.RelocationMove;
 import com.anhnht.warehouse.service.modules.damage.dto.RelocationPlanResponse;
 import com.anhnht.warehouse.service.modules.gatein.entity.ContainerPosition;
@@ -38,13 +40,42 @@ public class RelocationPlanner {
 
     private final ContainerPositionRepository positionRepository;
     private final SlotRepository              slotRepository;
+    private final ContainerRepository         containerRepository;
 
     public RelocationPlanResponse plan(String containerId) {
         ContainerPosition target = positionRepository
                 .findByContainerContainerId(containerId)
                 .orElse(null);
         if (target == null) {
-            return infeasible(containerId, 0, "Container chưa có vị trí trong kho");
+            boolean is40ft = is40ftContainer(containerId);
+            Set<String> occupied = new HashSet<>();
+            positionRepository.findAll().forEach(p -> occupied.add(key(p.getSlot().getSlotId(), p.getTier())));
+            
+            Slot damagedSlot = findFreeDamagedSlot(occupied, is40ft);
+            if (damagedSlot == null) {
+                return infeasible(containerId, 0, "Kho hỏng đã đầy ở tier 1");
+            }
+            
+            RelocationMove move = RelocationMove.builder()
+                    .containerId(containerId)
+                    .fromSlotId(null)
+                    .fromZone(null)
+                    .fromRow(null)
+                    .fromBay(null)
+                    .fromTier(null)
+                    .toSlotId(damagedSlot.getSlotId())
+                    .toZone(damagedSlot.getBlock().getZone().getZoneName())
+                    .toRow(damagedSlot.getRowNo())
+                    .toBay(damagedSlot.getBayNo())
+                    .toTier(1)
+                    .purpose("DAMAGE_RELOCATION")
+                    .build();
+            return RelocationPlanResponse.builder()
+                    .targetContainerId(containerId)
+                    .feasible(true)
+                    .moves(List.of(move))
+                    .blockerCount(0)
+                    .build();
         }
 
         List<ContainerPosition> blockers = positionRepository
@@ -86,7 +117,8 @@ public class RelocationPlanner {
 
         // Free up target cell, then place target into damaged yard tier 1.
         occupied.remove(key(target.getSlot().getSlotId(), target.getTier()));
-        Slot damagedSlot = findFreeDamagedSlot(occupied);
+        boolean is40ft = is40ftContainer(containerId);
+        Slot damagedSlot = findFreeDamagedSlot(occupied, is40ft);
         if (damagedSlot == null) {
             return infeasible(containerId, blockers.size(), "Kho hỏng đã đầy ở tier 1");
         }
@@ -138,11 +170,35 @@ public class RelocationPlanner {
         return best;
     }
 
-    private Slot findFreeDamagedSlot(Set<String> occupied) {
+    /**
+     * Find a free slot in the damaged yard matching container size.
+     * Layout rules (same as V47):
+     *   bay 1-4: 20FT slots
+     *   bay 5-8 row odd: 40FT slots (tier 1)
+     *   bay 5-8 row even: continuation of 40FT, skip
+     */
+    private Slot findFreeDamagedSlot(Set<String> occupied, boolean is40ft) {
         return slotRepository.findByYardTypeName("damaged").stream()
                 .filter(s -> !occupied.contains(key(s.getSlotId(), 1)))
+                .filter(s -> {
+                    if (is40ft) {
+                        // 40FT: bay >= 5, anchor row (odd)
+                        return s.getBayNo() >= 5 && s.getRowNo() % 2 == 1;
+                    } else {
+                        // 20FT: bay <= 4
+                        return s.getBayNo() <= 4;
+                    }
+                })
                 .min(Comparator.comparingInt(Slot::getRowNo).thenComparingInt(Slot::getBayNo))
                 .orElse(null);
+    }
+
+    private boolean is40ftContainer(String containerId) {
+        return containerRepository.findById(containerId)
+                .map(c -> c.getContainerType() != null
+                        && c.getContainerType().getContainerTypeName() != null
+                        && c.getContainerType().getContainerTypeName().toUpperCase().contains("40"))
+                .orElse(false);
     }
 
     // ──────────────────────────────────────────────────────────── helpers

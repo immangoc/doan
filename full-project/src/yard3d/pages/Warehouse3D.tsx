@@ -970,7 +970,19 @@ function ExportPanel({ onClose, onDone, warehouseType }: {
 
       // Show relocation info if any containers were moved
       if (result.relocationMessage) {
-        alert(result.relocationMessage);
+        toast.success('Đã đảo chuyển container chặn', {
+          description: result.relocationMessage,
+          duration: 12000,
+          style: {
+            background: '#fffbeb',
+            border: '1px solid #fbbf24',
+            color: '#78350f',
+            maxWidth: 480,
+            whiteSpace: 'pre-wrap' as const,
+            fontSize: '0.82rem',
+            lineHeight: '1.5',
+          },
+        });
       }
 
       try { setInvoice(await fetchGateOutInvoice(result.gateOutId)); } catch { /* non-critical */ }
@@ -999,13 +1011,10 @@ function ExportPanel({ onClose, onDone, warehouseType }: {
             ['Loại container', invoice.containerType, false],
             ['Thời gian nhập', invoice.gateInTime, false],
             ['Thời gian xuất', invoice.gateOutTime, false],
-            ['Số ngày lưu', `${invoice.storageDays} ngày`, false],
-            ['Phí / ngày', invoice.feePerDay, false],
-            ['Phí cơ bản', invoice.baseFee, false],
             ...(invoice.isOverdue
               ? [[`Phí trễ hạn (${invoice.overdueDays} ngày)`, invoice.overduePenalty, false] as [string, string, boolean]]
               : []),
-            ['Tổng tiền đơn hàng', invoice.totalAmount, true],
+            ['Tổng tiền đơn hàng', invoice.orderPaidAmount !== '—' ? invoice.orderPaidAmount : invoice.totalAmount, true],
           ] as [string, string, boolean][]).map(([label, value, total]) => (
             <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #f1f5f9', fontSize: total ? '0.92rem' : '0.82rem' }}>
               <span style={{ color: total ? '#0f172a' : '#64748b', fontWeight: total ? 700 : 400 }}>{label}</span>

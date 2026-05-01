@@ -25,6 +25,9 @@ public interface OrderRepository extends JpaRepository<Order, Integer> {
     @Query("SELECT COUNT(o) FROM Order o WHERE o.createdAt BETWEEN :from AND :to")
     long countByDateRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
 
+    @Query("SELECT COALESCE(SUM(o.paidAmount), 0) FROM Order o WHERE o.createdAt BETWEEN :from AND :to AND o.paidAmount IS NOT NULL")
+    java.math.BigDecimal sumPaidAmountByDateRange(@Param("from") LocalDateTime from, @Param("to") LocalDateTime to);
+
     long countByCustomerUserId(Integer customerId);
 
     long countByCustomerUserIdAndStatusStatusName(Integer customerId, String statusName);

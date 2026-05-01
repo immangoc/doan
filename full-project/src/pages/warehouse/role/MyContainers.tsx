@@ -140,6 +140,14 @@ export default function MyContainers() {
       setCreateError('Vui lòng chọn loại container và loại hàng');
       return;
     }
+    if (!createForm.grossWeight || parseFloat(createForm.grossWeight) <= 0) {
+      setCreateError('Vui lòng nhập trọng lượng hợp lệ');
+      return;
+    }
+    if (!createForm.declaredValue || parseFloat(createForm.declaredValue) <= 0) {
+      setCreateError('Vui lòng nhập giá trị hàng hóa hợp lệ');
+      return;
+    }
     setCreating(true);
     try {
       const containerRes = await fetch(`${API_BASE}/admin/containers`, {
@@ -241,7 +249,7 @@ export default function MyContainers() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-1">Trọng lượng (kg)</label>
+                  <label className="block text-sm font-medium mb-1">Trọng lượng (kg) <span className="text-red-500">*</span></label>
                   <Input
                     type="number"
                     value={createForm.grossWeight}
@@ -252,7 +260,7 @@ export default function MyContainers() {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium mb-1">Giá trị hàng hóa (VND)</label>
+                  <label className="block text-sm font-medium mb-1">Giá trị hàng hóa (VND) <span className="text-red-500">*</span></label>
                   <Input
                     type="number"
                     value={createForm.declaredValue}

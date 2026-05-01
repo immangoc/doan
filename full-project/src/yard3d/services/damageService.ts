@@ -46,6 +46,7 @@ export interface DamageReport {
   compensationCost?: number;
   compensationRefunded?: boolean;
   compensationRefundedAt?: string;
+  relocationMessage?:      string;
 }
 
 export interface RelocationMove {

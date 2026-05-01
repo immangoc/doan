@@ -31,21 +31,44 @@ public interface ContainerRepository extends JpaRepository<Container, String> {
     @EntityGraph(attributePaths = {"containerType", "status", "cargoType", "attribute", "manifest"})
     @Query(value = "SELECT c FROM Container c WHERE " +
                    "(:keyword = '' OR LOWER(c.containerId) LIKE LOWER(CONCAT('%',:keyword,'%')) OR " +
+                   "LOWER(c.cargoType.cargoTypeName) LIKE LOWER(CONCAT('%',:keyword,'%')) OR " +
+                   "LOWER(c.containerType.containerTypeName) LIKE LOWER(CONCAT('%',:keyword,'%')) OR " +
+                   "CAST(c.grossWeight AS string) LIKE LOWER(CONCAT('%',:keyword,'%')) OR " +
+                   "LOWER(c.status.statusName) LIKE LOWER(CONCAT('%',:keyword,'%')) OR " +
+                   "EXISTS (SELECT 1 FROM ContainerPosition cp WHERE cp.container.containerId = c.containerId AND (LOWER(cp.slot.block.zone.yard.yardName) LIKE LOWER(CONCAT('%',:keyword,'%')) OR LOWER(cp.slot.block.zone.zoneName) LIKE LOWER(CONCAT('%',:keyword,'%')))) OR " +
                    "EXISTS (SELECT 1 FROM Order o JOIN o.containers oc WHERE oc.containerId = c.containerId AND CAST(o.orderId AS string) LIKE CONCAT('%',:keyword,'%'))) AND " +
                    "(:statusName = '' OR c.status.statusName = :statusName) AND " +
+                   "(:cargoType = '' OR c.cargoType.cargoTypeName = :cargoType) AND " +
+                   "(:containerType = '' OR c.containerType.containerTypeName = :containerType) AND " +
                    "(:yardName = '' OR EXISTS (" +
                    "  SELECT 1 FROM ContainerPosition cp WHERE cp.container.containerId = c.containerId " +
-                   "  AND cp.slot.block.zone.yard.yardName = :yardName))",
+                   "  AND cp.slot.block.zone.yard.yardName = :yardName)) AND " +
+                   "(:zoneName = '' OR EXISTS (" +
+                   "  SELECT 1 FROM ContainerPosition cp WHERE cp.container.containerId = c.containerId " +
+                   "  AND cp.slot.block.zone.zoneName = :zoneName))",
            countQuery = "SELECT COUNT(c) FROM Container c WHERE " +
                         "(:keyword = '' OR LOWER(c.containerId) LIKE LOWER(CONCAT('%',:keyword,'%')) OR " +
+                        "LOWER(c.cargoType.cargoTypeName) LIKE LOWER(CONCAT('%',:keyword,'%')) OR " +
+                        "LOWER(c.containerType.containerTypeName) LIKE LOWER(CONCAT('%',:keyword,'%')) OR " +
+                        "CAST(c.grossWeight AS string) LIKE LOWER(CONCAT('%',:keyword,'%')) OR " +
+                        "LOWER(c.status.statusName) LIKE LOWER(CONCAT('%',:keyword,'%')) OR " +
+                        "EXISTS (SELECT 1 FROM ContainerPosition cp WHERE cp.container.containerId = c.containerId AND (LOWER(cp.slot.block.zone.yard.yardName) LIKE LOWER(CONCAT('%',:keyword,'%')) OR LOWER(cp.slot.block.zone.zoneName) LIKE LOWER(CONCAT('%',:keyword,'%')))) OR " +
                         "EXISTS (SELECT 1 FROM Order o JOIN o.containers oc WHERE oc.containerId = c.containerId AND CAST(o.orderId AS string) LIKE CONCAT('%',:keyword,'%'))) AND " +
                         "(:statusName = '' OR c.status.statusName = :statusName) AND " +
+                        "(:cargoType = '' OR c.cargoType.cargoTypeName = :cargoType) AND " +
+                        "(:containerType = '' OR c.containerType.containerTypeName = :containerType) AND " +
                         "(:yardName = '' OR EXISTS (" +
                         "  SELECT 1 FROM ContainerPosition cp WHERE cp.container.containerId = c.containerId " +
-                        "  AND cp.slot.block.zone.yard.yardName = :yardName))")
+                        "  AND cp.slot.block.zone.yard.yardName = :yardName)) AND " +
+                        "(:zoneName = '' OR EXISTS (" +
+                        "  SELECT 1 FROM ContainerPosition cp WHERE cp.container.containerId = c.containerId " +
+                        "  AND cp.slot.block.zone.zoneName = :zoneName))")
     Page<Container> search(@Param("keyword") String keyword,
                            @Param("statusName") String statusName,
                            @Param("yardName") String yardName,
+                           @Param("containerType") String containerType,
+                           @Param("cargoType") String cargoType,
+                           @Param("zoneName") String zoneName,
                            Pageable pageable);
 
     @EntityGraph(attributePaths = {"containerType", "status", "cargoType", "attribute", "manifest"})

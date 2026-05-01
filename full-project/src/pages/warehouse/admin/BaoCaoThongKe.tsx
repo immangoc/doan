@@ -5,6 +5,8 @@ import {
 } from 'recharts';
 import { useWarehouseAuth, API_BASE } from '../../../contexts/WarehouseAuthContext';
 import PageHeader from '../../../components/warehouse/PageHeader';
+import ExcelJS from 'exceljs';
+import { saveAs } from 'file-saver';
 
 /* ─── Types ─────────────────────────────────────────────────── */
 type RevenueReport = {
@@ -71,6 +73,29 @@ const KHO_KEYWORDS: Record<string, string[]> = {
   'kho-de-vo': ['vỡ', 'vo', 'fragile'],
 };
 
+const STATUS_MAP: Record<string, string> = {
+  'READY_FOR_IMPORT': 'Chờ nhập bãi',
+  'LATE_CHECKIN': 'Nhập bãi trễ',
+  'EDIT_REJECTED': 'Từ chối sửa',
+  'PENDING': 'Chờ xử lý',
+  'REPAIRED': 'Đã sửa chữa',
+  'DAMAGED': 'Báo hỏng',
+  'CANCELLED': 'Đã huỷ',
+  'EDIT_APPROVED': 'Đã duyệt sửa',
+  'REJECTED': 'Đã từ chối',
+  'EXPORTED': 'Đã xuất bãi',
+  'APPROVED': 'Đã duyệt',
+  'STORED': 'Đang lưu kho',
+  'IMPORTED': 'Đã nhập bãi',
+  'IN_YARD': 'Trong bãi',
+  'GATE_OUT': 'Ra cổng',
+  'GATE_IN': 'Vào cổng'
+};
+
+function translateStatus(s: string) {
+  return STATUS_MAP[s] || s;
+}
+
 function matchesKho(cargoTypeName: string | undefined, tabId: string): boolean {
   if (!cargoTypeName) return tabId === 'kho-khac';
   const lower = cargoTypeName.toLowerCase();
@@ -90,9 +115,27 @@ function getCargoCountForTab(byCargoType: Record<string, number> | undefined, ta
 
 function getDefaultDates() {
   const now = new Date();
-  const from = `${now.getFullYear()}-01-01`;
-  const to = now.toISOString().slice(0, 10);
-  return { from, to };
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return { from: `${y}-01-01`, to: `${y}-${m}-${d}` };
+}
+
+/** Normalize a date (Java LocalDateTime array or ISO string) to YYYY-MM-DD local date */
+function normalizeDate(raw: unknown): string {
+  if (!raw) return '';
+  // Java serializes LocalDateTime as [2026,5,2,10,30,...]
+  if (Array.isArray(raw) && raw.length >= 3) {
+    const [y, m, d] = raw;
+    return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+  const s = String(raw);
+  // Already YYYY-MM-DD
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  // ISO string or datetime — extract local date
+  const dt = new Date(s);
+  if (isNaN(dt.getTime())) return s;
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
 }
 
 /* ─── Component ─────────────────────────────────────────────── */
@@ -118,6 +161,12 @@ export default function BaoCaoThongKe() {
   const [orderReport, setOrderReport] = useState<OrderReport | null>(null);
   const [tqLoading, setTqLoading]     = useState(false);
   const [tqError, setTqError]         = useState('');
+
+  // orders list
+  const [ordersList, setOrdersList]   = useState<any[]>([]);
+  const [ordersPage, setOrdersPage]   = useState(0);
+  const [ordersTotalPages, setOrdersTotalPages] = useState(0);
+  const [ordersLoading, setOrdersLoading] = useState(false);
 
   // hanghong
   const [alerts, setAlerts]         = useState<AlertItem[]>([]);
@@ -183,10 +232,28 @@ export default function BaoCaoThongKe() {
       if (gateRes.ok) setGateReport(gateData.data);
       if (ordRes.ok)  setOrderReport(ordData.data);
       if (!revRes.ok && !gateRes.ok) throw new Error(revData.message || 'Lỗi tải báo cáo');
+      
+      // Also fetch first page of orders
+      fetchOrdersList(0);
     } catch (e: any) {
       setTqError(e.message || 'Lỗi không xác định');
     } finally {
       setTqLoading(false);
+    }
+  };
+
+  const fetchOrdersList = async (pg = 0) => {
+    setOrdersLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/admin/orders?page=${pg}&size=6&sortBy=createdAt&direction=desc`, { headers });
+      const d = await res.json();
+      if (res.ok) {
+        setOrdersList(d.data?.content || []);
+        setOrdersTotalPages(d.data?.totalPages || 0);
+        setOrdersPage(pg);
+      }
+    } catch { /* ignore */ } finally {
+      setOrdersLoading(false);
     }
   };
 
@@ -209,7 +276,7 @@ export default function BaoCaoThongKe() {
           repairCost:         r.repairCost ? Number(r.repairCost) : 0,
           compensationCost:   r.compensationCost ? Number(r.compensationCost) : 0,
           compensationRefunded: r.compensationRefunded,
-          reportedAt:         r.reportedAt,
+          reportedAt:         normalizeDate(r.reportedAt),
           severity:           r.severity,
           reason:             r.reason,
         }));
@@ -308,7 +375,7 @@ export default function BaoCaoThongKe() {
 
   const orderStatusData = useMemo(() => {
     if (!orderReport?.byStatus) return [];
-    return Object.entries(orderReport.byStatus).map(([name, value]) => ({ name, value }));
+    return Object.entries(orderReport.byStatus).map(([name, value]) => ({ name: translateStatus(name), value }));
   }, [orderReport]);
 
   /* ── kho tab containers ── */
@@ -318,6 +385,217 @@ export default function BaoCaoThongKe() {
 
   const khoCount     = getCargoCountForTab(inventory?.byCargoType, tab);
   const khoTabLabel  = REPORT_TABS.find((t) => t.id === tab)?.label || '';
+
+  const filteredDamageHistory = useMemo(() => {
+    return damageHistory.filter((r) => {
+      if (!r.reportedAt) return true;
+      // reportedAt is already normalized to YYYY-MM-DD by fetchDamageHistory
+      return r.reportedAt >= from && r.reportedAt <= to;
+    });
+  }, [damageHistory, from, to]);
+
+  async function handleExportReport() {
+    // Ensure damage data is loaded for repair/refund amounts
+    let dmgData = filteredDamageHistory;
+    if (damageHistory.length === 0) {
+      try {
+        const res = await fetch(`${API_BASE}/admin/damage/history`, { headers });
+        const d = await res.json();
+        if (res.ok) {
+          const list: DamageHistoryItem[] = (d.data || []).map((r: any) => ({
+            reportId: r.reportId, containerId: r.containerId, containerCode: r.containerCode,
+            cargoTypeName: r.cargoTypeName, sizeType: r.sizeType, reportStatus: r.reportStatus,
+            repairStatus: r.repairStatus, repairDate: r.repairDate,
+            repairCost: r.repairCost ? Number(r.repairCost) : 0,
+            compensationCost: r.compensationCost ? Number(r.compensationCost) : 0,
+            compensationRefunded: r.compensationRefunded,
+            reportedAt: normalizeDate(r.reportedAt), severity: r.severity, reason: r.reason,
+          }));
+          setDamageHistory(list);
+          dmgData = list.filter((r) => {
+            if (!r.reportedAt) return true;
+            return r.reportedAt >= from && r.reportedAt <= to;
+          });
+        }
+      } catch { /* continue with empty */ }
+    }
+
+    let revAmt = revenue?.totalAmount;
+    if (revAmt == null) {
+      try {
+        const query = new URLSearchParams({ from, to });
+        const res = await fetch(`${API_BASE}/admin/reports/revenue?${query.toString()}`, { headers });
+        if (res.ok) { const json = await res.json(); revAmt = json.data?.totalAmount ?? 0; }
+      } catch { revAmt = 0; }
+    }
+    const finalRev = revAmt ?? 0;
+    const finalRepair = dmgData.reduce((sum, r) => sum + (r.repairCost ?? 0), 0);
+    const finalRefund = dmgData.reduce((sum, r) => sum + (r.compensationCost ?? 0), 0);
+
+    const workbook = new ExcelJS.Workbook();
+    workbook.creator = 'Hùng Thủy WMS';
+    const sheet = workbook.addWorksheet('Báo cáo thống kê');
+
+    // ── Column widths ──
+    sheet.columns = [
+      { width: 6 },   // A: STT
+      { width: 22 },  // B: Container
+      { width: 18 },  // C: Loại hàng
+      { width: 12 },  // D: Kích thước
+      { width: 18 },  // E: Trạng thái
+      { width: 16 },  // F: TT sửa chữa
+      { width: 22 },  // G: Tiền sửa
+      { width: 22 },  // H: Tiền hoàn
+      { width: 16 },  // I: Ngày báo
+    ];
+
+    // ── Styles ──
+    const titleFont: Partial<ExcelJS.Font> = { name: 'Arial', size: 16, bold: true, color: { argb: '1E3A8A' } };
+    const headerFont: Partial<ExcelJS.Font> = { name: 'Arial', size: 11, bold: true, color: { argb: 'FFFFFF' } };
+    const headerFill: ExcelJS.FillPattern = { type: 'pattern', pattern: 'solid', fgColor: { argb: '1E3A8A' } };
+    const summaryLabelFont: Partial<ExcelJS.Font> = { name: 'Arial', size: 11, bold: true };
+    const summaryValueFont: Partial<ExcelJS.Font> = { name: 'Arial', size: 11, bold: true, color: { argb: '059669' } };
+    const borderThin: Partial<ExcelJS.Borders> = {
+      top: { style: 'thin', color: { argb: 'D1D5DB' } },
+      bottom: { style: 'thin', color: { argb: 'D1D5DB' } },
+      left: { style: 'thin', color: { argb: 'D1D5DB' } },
+      right: { style: 'thin', color: { argb: 'D1D5DB' } },
+    };
+    const vndFmt = '#,##0';
+
+    // ── Title ──
+    sheet.mergeCells('A1:I1');
+    const titleCell = sheet.getCell('A1');
+    titleCell.value = 'BÁO CÁO THỐNG KÊ KHO BÃI';
+    titleCell.font = titleFont;
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    sheet.getRow(1).height = 36;
+
+    // ── Subtitle ──
+    sheet.mergeCells('A2:I2');
+    const subCell = sheet.getCell('A2');
+    subCell.value = `Kỳ báo cáo: ${from} → ${to}`;
+    subCell.font = { name: 'Arial', size: 10, italic: true, color: { argb: '6B7280' } };
+    subCell.alignment = { horizontal: 'center' };
+    sheet.getRow(2).height = 22;
+
+    // ── Summary section ──
+    const summaryStart = 4;
+    const summaryItems = [
+      ['Tổng doanh thu (VND)', finalRev, '059669'],
+      ['Tổng tiền sửa container (VND)', finalRepair, 'D97706'],
+      ['Tổng tiền hoàn do hỏng (VND)', finalRefund, '3B82F6'],
+      ['Tổng chi phí thiệt hại (VND)', finalRepair + finalRefund, 'DC2626'],
+    ] as const;
+
+    summaryItems.forEach(([label, value, color], i) => {
+      const row = sheet.getRow(summaryStart + i);
+      row.getCell(1).value = '';
+      sheet.mergeCells(summaryStart + i, 2, summaryStart + i, 5);
+      row.getCell(2).value = String(label);
+      row.getCell(2).font = summaryLabelFont;
+      row.getCell(2).border = borderThin;
+      sheet.mergeCells(summaryStart + i, 6, summaryStart + i, 9);
+      row.getCell(6).value = Number(value);
+      row.getCell(6).numFmt = vndFmt;
+      row.getCell(6).font = { ...summaryValueFont, color: { argb: color } };
+      row.getCell(6).alignment = { horizontal: 'right' };
+      row.getCell(6).border = borderThin;
+      row.height = 26;
+    });
+
+    // ── Damage detail header ──
+    const detailTitleRow = summaryStart + summaryItems.length + 1;
+    sheet.mergeCells(detailTitleRow, 1, detailTitleRow, 9);
+    const dtCell = sheet.getCell(`A${detailTitleRow}`);
+    dtCell.value = 'CHI TIẾT HÀNG HỎNG';
+    dtCell.font = { name: 'Arial', size: 12, bold: true, color: { argb: '374151' } };
+    sheet.getRow(detailTitleRow).height = 28;
+
+    const hdrRow = detailTitleRow + 1;
+    const headers = ['STT', 'Container', 'Loại hàng', 'Kích thước', 'Trạng thái', 'TT sửa chữa', 'Tiền sửa (VND)', 'Tiền hoàn (VND)', 'Ngày báo'];
+    const headerRowObj = sheet.getRow(hdrRow);
+    headers.forEach((h, i) => {
+      const cell = headerRowObj.getCell(i + 1);
+      cell.value = h;
+      cell.font = headerFont;
+      cell.fill = headerFill;
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.border = borderThin;
+    });
+    headerRowObj.height = 28;
+
+    // ── Data rows ──
+    dmgData.forEach((r, idx) => {
+      const rowNum = hdrRow + 1 + idx;
+      const dataRow = sheet.getRow(rowNum);
+      const isEven = idx % 2 === 0;
+      const bgFill: ExcelJS.FillPattern = isEven
+        ? { type: 'pattern', pattern: 'solid', fgColor: { argb: 'F9FAFB' } }
+        : { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFFF' } };
+
+      const vals: (string | number)[] = [
+        idx + 1,
+        r.containerId || '',
+        r.cargoTypeName || '',
+        r.sizeType || '',
+        r.reportStatus === 'STORED' ? 'Trong kho hỏng'
+          : r.reportStatus === 'RETURNED' ? 'Đã về kho'
+          : r.reportStatus === 'PENDING' ? 'Chờ xử lý' : (r.reportStatus || ''),
+        r.repairStatus === 'REPAIRED' ? 'Đã sửa'
+          : r.repairStatus === 'IN_PROGRESS' ? 'Đang sửa'
+          : r.repairStatus === 'PENDING' ? 'Chờ sửa' : (r.repairStatus || ''),
+        r.repairCost ?? 0,
+        r.compensationCost ?? 0,
+        r.reportedAt || '',
+      ];
+      vals.forEach((v, i) => {
+        const cell = dataRow.getCell(i + 1);
+        cell.value = v;
+        cell.border = borderThin;
+        cell.fill = bgFill;
+        cell.font = { name: 'Arial', size: 10 };
+        if (i === 6 || i === 7) {
+          cell.numFmt = vndFmt;
+          cell.alignment = { horizontal: 'right' };
+          if (Number(v) > 0) cell.font = { name: 'Arial', size: 10, bold: true, color: { argb: i === 6 ? 'D97706' : '3B82F6' } };
+        } else if (i === 0) {
+          cell.alignment = { horizontal: 'center' };
+        }
+      });
+      dataRow.height = 22;
+    });
+
+    // ── Footer total row ──
+    if (dmgData.length > 0) {
+      const footerRow = hdrRow + 1 + dmgData.length;
+      const fr = sheet.getRow(footerRow);
+      sheet.mergeCells(footerRow, 1, footerRow, 6);
+      fr.getCell(1).value = 'TỔNG CỘNG';
+      fr.getCell(1).font = { name: 'Arial', size: 11, bold: true };
+      fr.getCell(1).alignment = { horizontal: 'right' };
+      fr.getCell(1).border = borderThin;
+      fr.getCell(7).value = finalRepair;
+      fr.getCell(7).numFmt = vndFmt;
+      fr.getCell(7).font = { name: 'Arial', size: 11, bold: true, color: { argb: 'D97706' } };
+      fr.getCell(7).border = borderThin;
+      fr.getCell(7).alignment = { horizontal: 'right' };
+      fr.getCell(8).value = finalRefund;
+      fr.getCell(8).numFmt = vndFmt;
+      fr.getCell(8).font = { name: 'Arial', size: 11, bold: true, color: { argb: '3B82F6' } };
+      fr.getCell(8).border = borderThin;
+      fr.getCell(8).alignment = { horizontal: 'right' };
+      fr.getCell(9).border = borderThin;
+      fr.height = 28;
+
+      // Fill background for footer
+      const footerFill: ExcelJS.FillPattern = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'EEF2FF' } };
+      for (let c = 1; c <= 9; c++) fr.getCell(c).fill = footerFill;
+    }
+
+    const buffer = await workbook.xlsx.writeBuffer();
+    saveAs(new Blob([buffer]), `Bao_Cao_Thong_Ke_${from}_${to}.xlsx`);
+  }
 
   return (
     <>
@@ -351,6 +629,9 @@ export default function BaoCaoThongKe() {
             <button className="btn btn-secondary btn-sm" onClick={() => fetchTongQuan(from, to)} disabled={tqLoading}>
               {tqLoading ? 'Đang tải...' : 'Cập nhật'}
             </button>
+            <button className="btn btn-primary btn-sm" onClick={handleExportReport} style={{ background: '#6c47ff', color: '#fff', border: 'none' }}>
+              Xuất báo cáo
+            </button>
           </div>
 
           {tqError && (
@@ -359,23 +640,14 @@ export default function BaoCaoThongKe() {
             </div>
           )}
 
-          <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', marginBottom: 16 }}>
+          <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', marginBottom: 16 }}>
             <div className="card">
-              <div style={{ fontSize: 12, color: 'var(--text2)' }}>Tổng thu (hóa đơn lưu kho)</div>
+              <div style={{ fontSize: 12, color: 'var(--text2)' }}>Tổng doanh thu (hóa đơn lưu kho & đặt cọc)</div>
               <div style={{ marginTop: 8, fontSize: 24, fontWeight: 700, color: 'var(--success)' }}>
-                {tqLoading ? '...' : revenue ? `${Number(revenue.totalAmount ?? 0).toLocaleString('vi-VN')}` : '—'}
+                {tqLoading ? '...' : revenue ? `${Number(revenue.totalAmount ?? 0).toLocaleString('vi-VN')} VND` : '—'}
               </div>
               <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 6 }}>
-                {revenue ? `${revenue.totalInvoices} hóa đơn | phạt quá hạn: ${Number(revenue.overdueAmount ?? 0).toLocaleString('vi-VN')}` : ''}
-              </div>
-            </div>
-            <div className="card">
-              <div style={{ fontSize: 12, color: 'var(--text2)' }}>Hóa đơn quá hạn</div>
-              <div style={{ marginTop: 8, fontSize: 24, fontWeight: 700, color: 'var(--danger)' }}>
-                {tqLoading ? '...' : revenue ? revenue.overdueInvoices : '—'}
-              </div>
-              <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 6 }}>
-                {revenue ? `Tiền phạt: ${Number(revenue.overdueAmount ?? 0).toLocaleString('vi-VN')}` : ''}
+                {revenue ? `Từ ${from} đến ${to}` : ''}
               </div>
             </div>
             <div className="card">
@@ -499,6 +771,64 @@ export default function BaoCaoThongKe() {
               <div style={{ padding: '24px', color: 'var(--text2)', fontSize: 13 }}>Chưa có dữ liệu đơn hàng.</div>
             )}
           </div>
+
+          <div className="card" style={{ marginTop: 16 }}>
+            <div className="card-header" style={{ justifyContent: 'space-between' }}>
+              <div>
+                <div className="card-title">Danh sách số tiền thanh toán của từng đơn hàng</div>
+                <div className="card-subtitle">Chi tiết số tiền khách đã thanh toán theo từng đơn</div>
+              </div>
+              <button className="btn btn-secondary btn-sm" onClick={() => fetchOrdersList(0)} disabled={ordersLoading}>Làm mới</button>
+            </div>
+            {ordersLoading ? (
+              <div style={{ padding: '24px', color: 'var(--text2)', fontSize: 13 }}>Đang tải...</div>
+            ) : ordersList.length > 0 ? (
+              <>
+                <div className="table-wrap">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>ID Đơn</th>
+                        <th>Khách hàng</th>
+                        <th>Trạng thái</th>
+                        <th>Ngày tạo</th>
+                        <th style={{ color: '#10b981' }}>Đã thanh toán (VND)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {ordersList.map((o) => (
+                        <tr key={o.orderId}>
+                          <td><code>#{o.orderId}</code></td>
+                          <td>
+                            <div style={{ fontWeight: 600 }}>{o.customerName}</div>
+                            <div style={{ fontSize: 11, color: 'var(--text3)' }}>{o.email}</div>
+                          </td>
+                          <td>
+                            <span className="badge" style={{ backgroundColor: 'var(--bg2)', color: 'var(--text1)' }}>
+                              {translateStatus(o.statusName)}
+                            </span>
+                          </td>
+                          <td>{o.createdAt ? new Date(o.createdAt).toLocaleString('vi-VN') : '—'}</td>
+                          <td style={{ fontWeight: 600, color: '#10b981' }}>
+                            {o.paidAmount ? Number(o.paidAmount).toLocaleString('vi-VN') : '0'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+                {ordersTotalPages > 1 && (
+                  <div style={{ display: 'flex', gap: 8, padding: '12px 0', justifyContent: 'center', alignItems: 'center' }}>
+                    <button className="btn btn-secondary btn-sm" disabled={ordersPage === 0} onClick={() => fetchOrdersList(ordersPage - 1)}>←</button>
+                    <span style={{ fontSize: 13 }}>Trang {ordersPage + 1} / {ordersTotalPages}</span>
+                    <button className="btn btn-secondary btn-sm" disabled={ordersPage >= ordersTotalPages - 1} onClick={() => fetchOrdersList(ordersPage + 1)}>→</button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div style={{ padding: '24px', color: 'var(--text2)', fontSize: 13 }}>Chưa có đơn hàng nào.</div>
+            )}
+          </div>
         </>
       )}
 
@@ -510,7 +840,14 @@ export default function BaoCaoThongKe() {
               <div className="card-title">Tổng hợp hàng hỏng / Cảnh báo</div>
               <div className="card-subtitle">Danh sách cảnh báo và sự cố đang theo dõi</div>
             </div>
-            <button className="btn btn-secondary btn-sm" onClick={() => { fetchAlerts(0); fetchDamageHistory(); fetchFinancialSummary(); }} disabled={alertLoading || damageLoading}>Làm mới</button>
+            <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <label className="form-label" style={{ margin: 0 }}>Từ:</label>
+              <input className="form-input" type="date" style={{ width: 140 }} value={from} onChange={(e) => setFrom(e.target.value)} />
+              <label className="form-label" style={{ margin: 0 }}>Đến:</label>
+              <input className="form-input" type="date" style={{ width: 140 }} value={to} onChange={(e) => setTo(e.target.value)} />
+              <button className="btn btn-secondary btn-sm" onClick={() => { setDamagePage(0); fetchAlerts(0); fetchDamageHistory(); fetchTongQuan(from, to); }} disabled={alertLoading || damageLoading}>Cập nhật</button>
+              <button className="btn btn-primary btn-sm" onClick={handleExportReport} style={{ background: '#6c47ff', color: '#fff', border: 'none' }}>Xuất báo cáo</button>
+            </div>
           </div>
 
           <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', marginBottom: 16 }}>
@@ -523,25 +860,32 @@ export default function BaoCaoThongKe() {
           {/* ── Damaged Container Financial Summary ── */}
           {(() => {
             const loading = financialLoading || damageLoading;
-            const totalCompensation = financialSummary
-              ? Number(financialSummary.totalCompensationCost ?? 0)
-              : damageHistory.reduce((sum, r) => sum + (r.compensationCost ?? 0), 0);
-            const totalRepair = financialSummary
-              ? Number(financialSummary.totalRepairCost ?? 0)
-              : damageHistory.reduce((sum, r) => sum + (r.repairCost ?? 0), 0);
-            const totalDamageReports = financialSummary ? financialSummary.totalDamageReports : damageHistory.length;
-            const totalRefunded = financialSummary ? financialSummary.totalRefunded : 0;
+            const totalCompensation = filteredDamageHistory.reduce((sum, r) => sum + (r.compensationCost ?? 0), 0);
+            const totalRepair = filteredDamageHistory.reduce((sum, r) => sum + (r.repairCost ?? 0), 0);
+            const totalDamageReports = filteredDamageHistory.length;
+            const totalRefunded = filteredDamageHistory.filter(r => r.compensationRefunded).length;
 
             // paginated damage history
-            const totalDmgPages = Math.ceil(damageHistory.length / DAMAGE_PAGE_SIZE);
-            const pageSlice = damageHistory.slice(damagePage * DAMAGE_PAGE_SIZE, (damagePage + 1) * DAMAGE_PAGE_SIZE);
+            const totalDmgPages = Math.ceil(filteredDamageHistory.length / DAMAGE_PAGE_SIZE);
+            const pageSlice = filteredDamageHistory.slice(damagePage * DAMAGE_PAGE_SIZE, (damagePage + 1) * DAMAGE_PAGE_SIZE);
 
             return (
               <div style={{ marginBottom: 20 }}>
                 <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10, color: 'var(--text1)' }}>
-                  Thống kê thiệt hại tài chính — Toàn bộ lịch sử hàng hỏng
+                  Thống kê thiệt hại tài chính — Từ {from} đến {to}
                 </div>
-                <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', marginBottom: 12 }}>
+                <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(5, minmax(0, 1fr))', marginBottom: 12 }}>
+                  <div className="stat-card">
+                    <div>
+                      <div className="stat-label">Doanh thu kỳ (VND)</div>
+                      <div className="stat-value" style={{ color: '#10b981', fontSize: 18 }}>
+                        {tqLoading ? '...' : revenue ? Number(revenue.totalAmount ?? 0).toLocaleString('vi-VN') : '0'}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
+                        Từ {from} đến {to}
+                      </div>
+                    </div>
+                  </div>
                   <div className="stat-card">
                     <div>
                       <div className="stat-label">Tổng lần báo hỏng</div>
@@ -587,7 +931,7 @@ export default function BaoCaoThongKe() {
                 {/* Damage history table with pagination */}
                 {damageLoading ? (
                   <div style={{ padding: '16px', color: 'var(--text2)', fontSize: 13 }}>Đang tải lịch sử hàng hỏng...</div>
-                ) : damageHistory.length > 0 ? (
+                ) : filteredDamageHistory.length > 0 ? (
                   <>
                     <div className="table-wrap">
                       <table>
@@ -635,7 +979,7 @@ export default function BaoCaoThongKe() {
                                 {(r.compensationCost ?? 0) > 0 ? Number(r.compensationCost).toLocaleString('vi-VN') : '—'}
                                 {r.compensationRefunded && <span style={{ fontSize: 10, marginLeft: 4, color: '#10b981' }}>✓ đã hoàn</span>}
                               </td>
-                              <td>{r.reportedAt ? new Date(r.reportedAt).toLocaleDateString('vi-VN') : '—'}</td>
+                              <td>{r.reportedAt || '—'}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -643,10 +987,10 @@ export default function BaoCaoThongKe() {
                           <tr style={{ fontWeight: 700, background: 'var(--bg2)' }}>
                             <td colSpan={5} style={{ textAlign: 'right', paddingRight: 12 }}>Tổng cộng:</td>
                             <td style={{ color: '#f59e0b' }}>
-                              {damageHistory.reduce((s, r) => s + (r.repairCost ?? 0), 0).toLocaleString('vi-VN')}
+                              {filteredDamageHistory.reduce((s, r) => s + (r.repairCost ?? 0), 0).toLocaleString('vi-VN')}
                             </td>
                             <td style={{ color: '#3b82f6' }}>
-                              {damageHistory.reduce((s, r) => s + (r.compensationCost ?? 0), 0).toLocaleString('vi-VN')}
+                              {filteredDamageHistory.reduce((s, r) => s + (r.compensationCost ?? 0), 0).toLocaleString('vi-VN')}
                             </td>
                             <td />
                           </tr>
@@ -654,9 +998,9 @@ export default function BaoCaoThongKe() {
                       </table>
                     </div>
                     {totalDmgPages > 1 && (
-                      <div style={{ display: 'flex', gap: 8, padding: '10px 0', justifyContent: 'flex-end', alignItems: 'center' }}>
+                      <div style={{ display: 'flex', gap: 8, padding: '10px 0', justifyContent: 'center', alignItems: 'center' }}>
                         <button className="btn btn-secondary btn-sm" disabled={damagePage === 0} onClick={() => setDamagePage(p => p - 1)}>←</button>
-                        <span style={{ fontSize: 13 }}>Trang {damagePage + 1} / {totalDmgPages} ({damageHistory.length} bản ghi)</span>
+                        <span style={{ fontSize: 13 }}>Trang {damagePage + 1} / {totalDmgPages} ({filteredDamageHistory.length} bản ghi)</span>
                         <button className="btn btn-secondary btn-sm" disabled={damagePage >= totalDmgPages - 1} onClick={() => setDamagePage(p => p + 1)}>→</button>
                       </div>
                     )}
@@ -709,7 +1053,7 @@ export default function BaoCaoThongKe() {
           )}
 
           {alertTotalPages > 1 && (
-            <div style={{ display: 'flex', gap: 8, padding: '12px 0', justifyContent: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: 8, padding: '12px 0', justifyContent: 'center', alignItems: 'center' }}>
               <button className="btn btn-secondary btn-sm" disabled={alertPage === 0} onClick={() => fetchAlerts(alertPage - 1)}>←</button>
               <span style={{ lineHeight: '28px', fontSize: 13 }}>{alertPage + 1} / {alertTotalPages}</span>
               <button className="btn btn-secondary btn-sm" disabled={alertPage >= alertTotalPages - 1} onClick={() => fetchAlerts(alertPage + 1)}>→</button>

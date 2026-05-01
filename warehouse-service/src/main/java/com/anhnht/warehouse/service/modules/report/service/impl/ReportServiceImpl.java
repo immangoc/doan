@@ -153,6 +153,9 @@ public class ReportServiceImpl implements ReportService {
         BigDecimal overdueAmount   = overdue[1] instanceof BigDecimal bd ? bd
                                          : BigDecimal.valueOf(((Number) overdue[1]).doubleValue());
 
+        BigDecimal orderPaidAmount = orderRepository.sumPaidAmountByDateRange(fromDt, toDt);
+        totalAmount = totalAmount.add(orderPaidAmount);
+
         return RevenueReportResponse.builder()
                 .fromDate(from)
                 .toDate(to)
