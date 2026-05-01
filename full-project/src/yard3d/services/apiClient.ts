@@ -1,6 +1,7 @@
 // Use the same token key as do-an-full's WarehouseAuthContext
 const TOKEN_KEY = 'ht_token';
-const BASE_URL = 'http://localhost:8080/api/v1';
+const runtimeEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
+const BASE_URL = runtimeEnv?.VITE_API_BASE_URL || 'http://localhost:8080/api/v1';
 
 function readJwtPayload(token: string): Record<string, unknown> | null {
   try {

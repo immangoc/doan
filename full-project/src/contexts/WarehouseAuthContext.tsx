@@ -1,7 +1,8 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 
 // ─── Backend base URL ─────────────────────────────────────────────────────────
-export const API_BASE = 'http://localhost:8080/api/v1';
+const runtimeEnv = (import.meta as ImportMeta & { env?: Record<string, string | undefined> }).env;
+export const API_BASE = runtimeEnv?.VITE_API_BASE_URL || 'http://localhost:8080/api/v1';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 export interface AuthUser {
