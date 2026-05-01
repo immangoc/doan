@@ -131,6 +131,7 @@ _SLOT_QUERY = """
     JOIN yard_types  yt ON y.yard_type_id = yt.yard_type_id
     WHERE yt.yard_type_name = %s
       AND COALESCE(s.is_locked, FALSE) = FALSE
+      AND COALESCE(z.is_locked, FALSE) = FALSE
     ORDER BY y.yard_id, z.zone_id, b.block_id, s.row_no, s.bay_no
 """
 

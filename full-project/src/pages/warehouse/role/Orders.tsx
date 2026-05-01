@@ -89,6 +89,7 @@ export default function Orders() {
   const [orders, setOrders] = useState<OrderItem[]>([]);
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [totalElements, setTotalElements] = useState(0);
   const [keyword, setKeyword] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
 
@@ -149,6 +150,7 @@ export default function Orders() {
       if (!res.ok) throw new Error(data.message || 'Lỗi lấy danh sách đơn hàng');
       setOrders(data.data?.content || []);
       setTotalPages(data.data?.totalPages || 1);
+      setTotalElements(data.data?.totalElements || 0);
     } catch (e: any) {
       setError(e.message || 'Lỗi không xác định');
     } finally {
@@ -189,11 +191,11 @@ export default function Orders() {
   }, [orders, keyword, statusFilter]);
 
   const counts = useMemo(() => ({
-    total:    orders.length,
-    pending:  orders.filter((o) => o.statusName === 'PENDING').length,
-    approved: orders.filter((o) => o.statusName === 'APPROVED').length,
-    cancelled: orders.filter((o) => o.statusName === 'CANCELLED' || o.statusName === 'CANCEL_REQUESTED').length,
-  }), [orders]);
+    total:    totalElements,
+    pending:  orders.filter((o) => ['PENDING', 'WAITING_CHECKIN', 'LATE_CHECKIN', 'READY_FOR_IMPORT'].includes(o.statusName)).length,
+    stored:   orders.filter((o) => ['IMPORTED', 'STORED', 'APPROVED'].includes(o.statusName)).length,
+    cancelled: orders.filter((o) => ['CANCELLED', 'CANCEL_REQUESTED', 'EDIT_REQUESTED'].includes(o.statusName)).length,
+  }), [orders, totalElements]);
 
   const resetCreateForm = () => {
     setCreateFeePreview(null);
@@ -466,12 +468,12 @@ export default function Orders() {
             <p className="mt-1 text-3xl font-semibold text-blue-600">{counts.total}</p>
           </CardContent></Card>
           <Card><CardContent className="pt-5">
-            <p className="text-sm text-gray-500">Chờ duyệt</p>
+            <p className="text-sm text-gray-500">Chờ checkin</p>
             <p className="mt-1 text-3xl font-semibold text-amber-600">{counts.pending}</p>
           </CardContent></Card>
           <Card><CardContent className="pt-5">
-            <p className="text-sm text-gray-500">Đã duyệt</p>
-            <p className="mt-1 text-3xl font-semibold text-green-600">{counts.approved}</p>
+            <p className="text-sm text-gray-500">Đang lưu kho</p>
+            <p className="mt-1 text-3xl font-semibold text-green-600">{counts.stored}</p>
           </CardContent></Card>
           <Card><CardContent className="pt-5">
             <p className="text-sm text-gray-500">Đã hủy / Chờ duyệt sửa</p>

@@ -40,7 +40,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 @RequiredArgsConstructor
 public class ContainerController {
 
-    private static final List<String> TERMINAL_STATUSES = List.of("CANCELLED", "REJECTED", "EXPORTED");
+    private static final List<String> TERMINAL_STATUSES = List.of("CANCELLED", "REJECTED", "EXPORTED", "GATE_OUT");
 
     private final ContainerService containerService;
     private final ContainerMapper containerMapper;

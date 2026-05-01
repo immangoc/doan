@@ -114,7 +114,11 @@ function ZoneBlock({ position, zoneName, whType, onClick, highlightId, previewPo
       weight?: string;
       gateInDate?: string;
       storageDuration?: string;
+      whName?: string;
+      blockName?: string;
+      statusText?: string;
       isOverdue?: boolean;
+      isPendingPlacement?: boolean;
     }[] = [];
 
     const { rows: gridRows, cols: gridCols, maxTier } = getZoneDims(allYards, whType, zoneName);
@@ -161,6 +165,7 @@ function ZoneBlock({ position, zoneName, whType, onClick, highlightId, previewPo
                 blockName: occ.blockName ?? zoneName,
                 statusText: occ.statusText ?? 'Trong kho',
                 isOverdue: occ.isOverdue,
+                isPendingPlacement: occ.isPendingPlacement,
               });
             } else {
               items.push({
@@ -180,6 +185,7 @@ function ZoneBlock({ position, zoneName, whType, onClick, highlightId, previewPo
                 blockName: zoneName,
                 statusText: 'Trong kho',
                 isOverdue: occ.isOverdue,
+                isPendingPlacement: occ.isPendingPlacement,
               });
             }
           }
@@ -226,6 +232,7 @@ function ZoneBlock({ position, zoneName, whType, onClick, highlightId, previewPo
           whName={wh.name}
           blockName={zoneName}
           isOverdue={ctn.isOverdue}
+          isPendingPlacement={ctn.isPendingPlacement}
           isDamageReported={damagePending.has(ctn.id)}
           onDamageClick={onDamageContainer}
         />

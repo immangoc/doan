@@ -16,4 +16,7 @@ public class AlertResponse {
     private String        description;
     private LocalDateTime createdAt;
     private Short         status;      // 0 = OPEN, 1 = ACKNOWLEDGED
+    private String        containerId;
+    private String        reportedByName;
+    private String        yardName;
 }

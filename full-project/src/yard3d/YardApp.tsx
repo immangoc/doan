@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Routes, Route, Navigate } from 'react-router';
+import { Routes, Route, Navigate, useLocation } from 'react-router';
 import { AuthProvider } from './contexts/AuthContext';
 import { WarehouseOverview } from './pages/WarehouseOverview';
 import { Warehouse3D } from './pages/Warehouse3D';
@@ -8,6 +8,7 @@ import { HaBai } from './pages/HaBai';
 import { XuatBai } from './pages/XuatBai';
 import { Kho } from './pages/Kho';
 import { KiemSoat } from './pages/KiemSoat';
+import { BaoCaoSuCo } from './pages/BaoCaoSuCo';
 import { fetchAllYards } from './services/yardService';
 import { processApiYards, setYardData } from './store/yardStore';
 import { fetchAndSetOccupancy } from './services/containerPositionService';
@@ -51,15 +52,23 @@ function currentRole(): string {
 }
 
 export default function YardApp() {
+  const location = useLocation();
+
   // Override global body styles while YardApp is mounted — but skip for operators
   // since they view yard3d pages embedded inside WarehouseLayout which manages body.
+  // ALSO skip for dashboard pages like ha-bai, xuat-bai, kho, kiem-soat so they can scroll.
   useEffect(() => {
     if (currentRole() === 'OPERATOR') return;
-    document.body.classList.add('yard3d-active-body');
+    const is3DPage = ['/yard3d/tong-quan', '/yard3d/3d', '/yard3d/2d'].includes(location.pathname);
+    if (is3DPage) {
+      document.body.classList.add('yard3d-active-body');
+    } else {
+      document.body.classList.remove('yard3d-active-body');
+    }
     return () => {
       document.body.classList.remove('yard3d-active-body');
     };
-  }, []);
+  }, [location.pathname]);
 
   // Fetch yard structure then container occupancy on boot.
   // Scenes fall back to mock seeded data until each store is populated.
@@ -85,6 +94,7 @@ export default function YardApp() {
         <Route path="xuat-bai" element={<XuatBai />} />
         <Route path="kho" element={<Kho />} />
         <Route path="kiem-soat" element={<KiemSoat />} />
+        <Route path="bao-cao-su-co" element={<BaoCaoSuCo />} />
         {/* Management pages (shared with admin) */}
         <Route path="dashboard" element={<DashboardLayout><WmPage><AdminDashboardPage /></WmPage></DashboardLayout>} />
         <Route path="bao-cao" element={<DashboardLayout><WmPage><BaoCaoThongKePage /></WmPage></DashboardLayout>} />

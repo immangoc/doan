@@ -1,0 +1,1 @@
+ALTER TABLE alert ADD COLUMN IF NOT EXISTS reported_by INTEGER REFERENCES users(user_id);

@@ -60,7 +60,7 @@ public class OrderServiceImpl implements OrderService {
     private static final String STATUS_EXPORTED          = "EXPORTED";
 
     private static final List<String> TERMINAL_STATUSES =
-            List.of(STATUS_CANCELLED, STATUS_REJECTED, STATUS_EXPORTED);
+            List.of(STATUS_CANCELLED, STATUS_REJECTED, STATUS_EXPORTED, "GATE_OUT");
 
     private final OrderRepository            orderRepository;
     private final OrderStatusRepository      orderStatusRepository;
@@ -405,8 +405,6 @@ public class OrderServiceImpl implements OrderService {
         cancellation.setReason(request.getReason());
         cancellationRepository.save(cancellation);
 
-        orderRepository.save(order);
-
         if (STATUS_CANCEL_REQUESTED.equals(targetStatus)) {
             // Notify admin/operator that customer wants to cancel
             List<Integer> staffIds = userRepository.findUserIdsByRoleNames(List.of("ADMIN", "OPERATOR"));
@@ -416,9 +414,25 @@ public class OrderServiceImpl implements OrderService {
                         "Khách hàng " + order.getCustomerName() + " yêu cầu hủy đơn hàng. Vui lòng xem xét và xử lý.",
                         staffIds.toArray(new Integer[0]));
             }
+        } else if (STATUS_CANCELLED.equals(targetStatus)) {
+            processRefundIfApplicable(order);
         }
 
+        orderRepository.save(order);
+
         return order;
+    }
+
+    private void processRefundIfApplicable(Order order) {
+        if (order.getPaidAmount() != null && order.getPaidAmount().compareTo(BigDecimal.ZERO) > 0 && order.getCustomer() != null) {
+            walletService.creditWalletForRefund(
+                    order.getCustomer().getUserId(),
+                    order.getPaidAmount(),
+                    "Hoàn tiền do hủy đơn hàng #" + order.getOrderId()
+            );
+            log.info("Refunded {} to customer {} for cancelled order #{}", order.getPaidAmount(), order.getCustomer().getUserId(), order.getOrderId());
+            order.setPaidAmount(BigDecimal.ZERO); // Prevent double refund
+        }
     }
 
     @Override
@@ -539,8 +553,7 @@ public class OrderServiceImpl implements OrderService {
                     "Only PENDING orders can be rejected. Current status: " + current);
         }
         order.setStatus(resolveStatus(STATUS_REJECTED));
-        orderRepository.save(order);
-
+        
         // Record reason in cancellation table (reuses the same pattern as cancel)
         if (reason != null && !reason.isBlank()) {
             OrderCancellation record = new OrderCancellation();
@@ -549,13 +562,16 @@ public class OrderServiceImpl implements OrderService {
             cancellationRepository.save(record);
         }
 
+        processRefundIfApplicable(order);
+        orderRepository.save(order);
+
         if (order.getCustomer() != null) {
             log.info("[Notification] Sending rejection notification for order #{} to userId={}",
                     orderId, order.getCustomer().getUserId());
             String reasonText = (reason != null && !reason.isBlank()) ? " Lý do: " + reason : "";
             notificationService.notify(
                     "Đơn hàng #" + orderId + " bị từ chối",
-                    "Đơn hàng của bạn đã bị từ chối." + reasonText,
+                    "Đơn hàng của bạn đã bị từ chối." + reasonText + " Tiền phí đã được hoàn lại vào ví.",
                     order.getCustomer().getUserId());
         } else {
             log.warn("[Notification] Order #{} has no customer — notification skipped", orderId);
@@ -574,11 +590,12 @@ public class OrderServiceImpl implements OrderService {
                     "Only CANCEL_REQUESTED orders can have cancellation approved. Current: " + current);
         }
         order.setStatus(resolveStatus(STATUS_CANCELLED));
+        processRefundIfApplicable(order);
         orderRepository.save(order);
         if (order.getCustomer() != null) {
             notificationService.notify(
                     "Yêu cầu hủy đơn #" + orderId + " được chấp thuận",
-                    "Yêu cầu hủy đơn hàng của bạn đã được xử lý và xác nhận.",
+                    "Yêu cầu hủy đơn hàng của bạn đã được xử lý và xác nhận. Tiền phí đã được hoàn lại vào ví.",
                     order.getCustomer().getUserId());
         }
         return order;
@@ -717,11 +734,12 @@ public class OrderServiceImpl implements OrderService {
             record.setReason(reason);
             cancellationRepository.save(record);
         }
+        processRefundIfApplicable(order);
         orderRepository.save(order);
         if (order.getCustomer() != null) {
             notificationService.notify(
                     "Đơn hàng #" + orderId + " đã bị hủy",
-                    "Đơn hàng của bạn đã bị hủy bởi nhân viên." + (reason != null ? " Lý do: " + reason : ""),
+                    "Đơn hàng của bạn đã bị hủy bởi nhân viên." + (reason != null ? " Lý do: " + reason : "") + " Tiền phí đã được hoàn lại vào ví.",
                     order.getCustomer().getUserId());
         }
         return order;

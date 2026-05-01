@@ -22,6 +22,7 @@ export interface SlotOccupancy {
   blockName?:      string;
   statusText?:     string;
   isOverdue?:      boolean;      // true when storageEndDate has passed and container still in yard
+  isPendingPlacement?: boolean;  // true when container is in GATE_IN status and waiting for physical placement
 }
 
 export type OccupancyMap = Map<string, SlotOccupancy>;

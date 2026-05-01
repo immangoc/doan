@@ -14,6 +14,9 @@ public interface AlertMapper {
     @Mapping(source = "zone.zoneId",   target = "zoneId")
     @Mapping(source = "zone.zoneName", target = "zoneName")
     @Mapping(source = "level.levelName", target = "levelName")
+    @Mapping(source = "container.containerId", target = "containerId")
+    @Mapping(source = "reportedBy.username", target = "reportedByName")
+    @Mapping(source = "zone.yard.yardName", target = "yardName")
     AlertResponse toAlertResponse(Alert alert);
 
     @Mapping(source = "notification.notificationId", target = "notificationId")

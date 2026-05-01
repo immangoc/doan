@@ -2,10 +2,12 @@ package com.anhnht.warehouse.service.modules.alert.controller;
 
 import com.anhnht.warehouse.service.common.dto.response.ApiResponse;
 import com.anhnht.warehouse.service.common.dto.response.PageResponse;
+import com.anhnht.warehouse.service.modules.alert.dto.request.IncidentReportRequest;
 import com.anhnht.warehouse.service.modules.alert.dto.response.AlertResponse;
 import com.anhnht.warehouse.service.modules.alert.entity.Alert;
 import com.anhnht.warehouse.service.modules.alert.mapper.AlertMapper;
 import com.anhnht.warehouse.service.modules.alert.service.AlertService;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -19,7 +21,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 @RestController
 @RequestMapping("/admin/alerts")
 @RequiredArgsConstructor
-@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR')")
+@PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR', 'YARD_STAFF')")
 public class AlertController {
 
     private final AlertService alertService;
@@ -74,4 +76,28 @@ public class AlertController {
                 .map(alertMapper::toAlertResponse);
         return ResponseEntity.ok(ApiResponse.success(PageResponse.from(page)));
     }
+
+    /**
+     * POST /admin/alerts/incident
+     * Yard staff creates an incident report.
+     */
+    @PostMapping("/incident")
+    @PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR', 'YARD_STAFF')")
+    public ResponseEntity<ApiResponse<AlertResponse>> createIncident(
+            @Valid @RequestBody IncidentReportRequest request) {
+        Alert alert = alertService.createIncidentReport(request);
+        return ResponseEntity.status(201).body(ApiResponse.success(alertMapper.toAlertResponse(alert)));
+    }
+
+    /**
+     * DELETE /admin/alerts/{id}
+     * Delete an alert by ID.
+     */
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN', 'OPERATOR', 'YARD_STAFF')")
+    public ResponseEntity<ApiResponse<Void>> deleteAlert(@PathVariable Integer id) {
+        alertService.deleteAlert(id);
+        return ResponseEntity.ok(ApiResponse.success(null));
+    }
 }
+

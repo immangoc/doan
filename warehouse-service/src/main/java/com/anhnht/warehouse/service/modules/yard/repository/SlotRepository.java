@@ -25,17 +25,20 @@ public interface SlotRepository extends JpaRepository<Slot, Integer> {
 
     Optional<Slot> findByBlockBlockIdAndRowNoAndBayNo(Integer blockId, Integer rowNo, Integer bayNo);
 
-    /** Used by algorithm: all NON-LOCKED slots in a zone, eagerly loaded */
-    @Query("SELECT s FROM Slot s JOIN FETCH s.block b JOIN FETCH b.zone z WHERE z.zoneId = :zoneId AND (s.isLocked IS NULL OR s.isLocked = FALSE)")
+    /** Used by algorithm: all NON-LOCKED slots in a NON-LOCKED zone, eagerly loaded */
+    @Query("SELECT s FROM Slot s JOIN FETCH s.block b JOIN FETCH b.zone z WHERE z.zoneId = :zoneId AND (s.isLocked IS NULL OR s.isLocked = FALSE) AND (z.isLocked IS NULL OR z.isLocked = FALSE)")
     List<Slot> findAllByZoneId(@Param("zoneId") Integer zoneId);
 
     /** Used by algorithm: count occupied tiers at a slot */
     @Query("SELECT COUNT(cp) FROM ContainerPosition cp WHERE cp.slot.slotId = :slotId")
     int countOccupiedTiers(@Param("slotId") Integer slotId);
 
-    /** Algorithm Pre-filter: all NON-LOCKED slots whose yard type matches the required yard type name. */
+    /** Algorithm Pre-filter: all NON-LOCKED slots whose yard type matches the required yard type name.
+     *  Also excludes slots in locked zones. */
     @Query("SELECT s FROM Slot s " +
            "JOIN FETCH s.block b JOIN FETCH b.zone z JOIN FETCH z.yard y JOIN FETCH y.yardType yt " +
-           "WHERE LOWER(yt.yardTypeName) = LOWER(:yardTypeName) AND (s.isLocked IS NULL OR s.isLocked = FALSE)")
+           "WHERE LOWER(yt.yardTypeName) = LOWER(:yardTypeName) " +
+           "AND (s.isLocked IS NULL OR s.isLocked = FALSE) " +
+           "AND (z.isLocked IS NULL OR z.isLocked = FALSE)")
     List<Slot> findByYardTypeName(@Param("yardTypeName") String yardTypeName);
 }

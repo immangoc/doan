@@ -140,6 +140,13 @@ public class GateInServiceImpl implements GateInService {
                     (slot.getLockReason() != null ? ": " + slot.getLockReason() : ""));
         }
 
+        // Reject slots in locked zones
+        if (slot.getBlock() != null && slot.getBlock().getZone() != null
+                && Boolean.TRUE.equals(slot.getBlock().getZone().getIsLocked())) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST,
+                    "Khu vực " + slot.getBlock().getZone().getZoneName() + " đã bị khóa");
+        }
+
         // Validate tier not already occupied
         if (positionRepository.countBySlotAndTier(request.getSlotId(), request.getTier()) > 0) {
             throw new BusinessException(ErrorCode.SLOT_OCCUPIED,

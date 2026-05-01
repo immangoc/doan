@@ -16,7 +16,7 @@ public interface AlertRepository extends JpaRepository<Alert, Integer> {
 
     long countByStatusAndLevelLevelName(Short status, String levelName);
 
-    @EntityGraph(attributePaths = {"zone", "level"})
+    @EntityGraph(attributePaths = {"zone", "zone.yard", "level", "container", "reportedBy"})
     @Query("SELECT a FROM Alert a WHERE " +
            "(:status IS NULL OR a.status = :status) AND " +
            "(:levelName IS NULL OR a.level.levelName = :levelName)")
@@ -24,11 +24,11 @@ public interface AlertRepository extends JpaRepository<Alert, Integer> {
                                 @Param("levelName") String levelName,
                                 Pageable pageable);
 
-    @EntityGraph(attributePaths = {"zone", "level"})
+    @EntityGraph(attributePaths = {"zone", "zone.yard", "level", "container", "reportedBy"})
     @Query("SELECT a FROM Alert a WHERE a.zone.zoneId = :zoneId ORDER BY a.createdAt DESC")
     Page<Alert> findByZoneId(@Param("zoneId") Integer zoneId, Pageable pageable);
 
-    @EntityGraph(attributePaths = {"zone", "level"})
+    @EntityGraph(attributePaths = {"zone", "zone.yard", "level", "container", "reportedBy"})
     @Query("SELECT a FROM Alert a WHERE a.alertId = :id")
     Optional<Alert> findByIdWithDetails(@Param("id") Integer id);
 }

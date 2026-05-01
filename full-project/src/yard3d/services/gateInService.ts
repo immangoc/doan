@@ -288,8 +288,8 @@ export async function confirmGateIn(params: GateInParams): Promise<void> {
     }
   }
 
-  // ── Step 3: Assign position ───────────────────────────────────────────────────
-  const posRes = await apiFetch(`/admin/containers/${encodeURIComponent(confirmedContainerId)}/position`, {
+  // ── Step 3: Create Placement Task ───────────────────────────────────────────────────
+  const posRes = await apiFetch(`/admin/placement-tasks/containers/${encodeURIComponent(confirmedContainerId)}`, {
     method: 'POST',
     body: JSON.stringify({
       slotId: params.slotId,
@@ -298,7 +298,7 @@ export async function confirmGateIn(params: GateInParams): Promise<void> {
   });
   if (!posRes.ok) {
     const body = await posRes.text().catch(() => '');
-    throw new Error(`Gán vị trí thất bại (HTTP ${posRes.status})${body ? ': ' + body : ''}`);
+    throw new Error(`Tạo lệnh xếp chỗ thất bại (HTTP ${posRes.status})${body ? ': ' + body : ''}`);
   }
 
   // ── Step 4: Refresh 3D grid ───────────────────────────────────────────────────

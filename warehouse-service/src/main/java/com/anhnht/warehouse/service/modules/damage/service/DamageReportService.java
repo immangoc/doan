@@ -18,6 +18,9 @@ public interface DamageReportService {
     /** Tất cả damage report (mọi trạng thái trừ CANCELLED) - hiển thị trong "Quản lý kho hỏng". */
     List<DamageReportResponse> listAll();
 
+    /** Lịch sử toàn bộ damage report (trừ CANCELLED), bao gồm cả RETURNED - dùng cho "Báo cáo thống kê". */
+    List<DamageReportResponse> listHistory();
+
     /** Dry-run: tính plan đảo container chặn + slot đích trong kho hỏng, không thực thi. */
     RelocationPlanResponse previewMove(String containerId);
 

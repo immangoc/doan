@@ -1,21 +1,46 @@
 import { useState, useEffect } from 'react';
-import { Search, ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Search, ChevronLeft, ChevronRight, X, CheckCircle } from 'lucide-react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
-import { fetchGateInRecords } from '../services/gateInManagementService';
-import type { GateInRecord } from '../services/gateInManagementService';
-import { fetchStatusHistory } from '../services/containerService';
-import type { StatusHistoryEntry } from '../services/containerService';
+import { fetchContainers, fetchStatusHistory } from '../services/containerService';
+import type { Container, StatusHistoryEntry, ContainerFilter } from '../services/containerService';
+import { apiFetch } from '../services/apiClient';
 import './management.css';
 
 const TYPE_OPTIONS = ['', '20ft', '40ft'];
 
 function statusBadgeClass(status: string): string {
   const s = status.toUpperCase();
-  if (s === 'IN_YARD')  return 'mgmt-badge mgmt-badge-neutral';
-  if (s === 'GATE_IN')  return 'mgmt-badge mgmt-badge-neutral';
+  if (s === 'IN_YARD' || s === 'STORED') return 'mgmt-badge mgmt-badge-neutral';
+  if (s === 'GATE_IN') return 'mgmt-badge mgmt-badge-neutral';
   if (s === 'GATE_OUT') return 'mgmt-badge mgmt-badge-warning';
-  if (s === 'DAMAGED')  return 'mgmt-badge mgmt-badge-critical';
+  if (s === 'DAMAGED') return 'mgmt-badge mgmt-badge-critical';
   return 'mgmt-badge mgmt-badge-neutral';
+}
+
+function formatDate(raw: string): string {
+  if (!raw) return '—';
+  const d = new Date(raw);
+  if (isNaN(d.getTime())) return raw;
+  const dd = String(d.getDate()).padStart(2, '0');
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  return `${dd}/${mm}/${d.getFullYear()} ${hh}:${mi}`;
+}
+
+interface PlacementTask {
+  taskId: number;
+  containerId: string;
+  slotName: string;
+  tier: number;
+  status: string;
+  yardName: string;
+  zoneName: string;
+  blockName: string;
+  cargoType: string;
+  containerType: string;
+  grossWeight: number;
+  createdAt: string;
 }
 
 // ─── Status history side panel ────────────────────────────────────────────────
@@ -67,65 +92,85 @@ function HistoryPanel({ containerCode, onClose }: {
 
 // ─── Main page ────────────────────────────────────────────────────────────────
 export function HaBai() {
-  const [records, setRecords] = useState<GateInRecord[]>([]);
+  const [containers, setContainers] = useState<Container[]>([]);
+  const [tasks, setTasks] = useState<PlacementTask[]>([]);
+
   const [page, setPage] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [keyword, setKeyword] = useState('');
-  const [pendingKeyword, setPendingKeyword] = useState('');
-  const [typeFilter, setTypeFilter] = useState('');
-  const [pendingType, setPendingType] = useState('');
+  const [showTasksModal, setShowTasksModal] = useState(false);
+  const [taskLoading, setTaskLoading] = useState(false);
+  const [taskError, setTaskError] = useState<string | null>(null);
+  const [confirmingTaskId, setConfirmingTaskId] = useState<number | null>(null);
 
-  const [selectedCode, setSelectedCode] = useState<string | null>(null);
+  // Default filter to IN_YARD containers
+  const [filter, setFilter] = useState<ContainerFilter>({ statusName: 'IN_YARD' });
+  const [pendingFilter, setPendingFilter] = useState<ContainerFilter>({ statusName: 'IN_YARD' });
+
+  const [selectedContainer, setSelectedContainer] = useState<Container | null>(null);
 
   function applyFilter() {
-    setKeyword(pendingKeyword);
-    setTypeFilter(pendingType);
+    setFilter((prev) => ({ ...prev, ...pendingFilter, statusName: 'IN_YARD' }));
     setPage(0);
   }
 
-  useEffect(() => {
-    let cancelled = false;
+  function loadTasks() {
+    setTaskLoading(true);
+    setTaskError(null);
+    apiFetch('/admin/placement-tasks/pending')
+      .then(r => r.json())
+      .then(json => {
+        setTasks(json.data || []);
+      })
+      .catch(e => setTaskError(e instanceof Error ? e.message : 'Lỗi tải lệnh xếp chỗ'))
+      .finally(() => setTaskLoading(false));
+  }
+
+  function loadContainers() {
     setLoading(true);
     setError(null);
-    fetchGateInRecords(page)
+    fetchContainers(filter, page)
       .then((result) => {
-        if (cancelled) return;
-        setRecords(result.content);
+        // Sort by newest first
+        const sorted = [...result.content].sort((a, b) => {
+          const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return tb - ta;
+        });
+        setContainers(sorted);
         setTotalPages(result.totalPages);
+        setTotalItems(result.totalElements);
       })
-      .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : 'Lỗi tải dữ liệu'); })
-      .finally(() => { if (!cancelled) setLoading(false); });
-    return () => { cancelled = true; };
-  }, [page]);
+      .catch((e) => setError(e instanceof Error ? e.message : 'Lỗi tải dữ liệu'))
+      .finally(() => setLoading(false));
+  }
 
-  const filteredRecords = records
-    .filter((r) => {
-      // Only show containers that have been placed into a yard slot.
-      if (r.status.toUpperCase() !== 'IN_YARD') return false;
-      if (keyword.trim() && !r.containerCode.toLowerCase().includes(keyword.trim().toLowerCase())) {
-        return false;
-      }
-      if (typeFilter && !r.containerType.toLowerCase().includes(typeFilter.toLowerCase())) {
-        return false;
-      }
-      return true;
-    })
-    // Sort by gate-in time descending (newest first). gateInTime is "dd/MM/yyyy HH:mm"
-    // so we parse it back to compare.
-    .sort((a, b) => {
-      const parse = (s: string): number => {
-        const m = s.match(/^(\d{2})\/(\d{2})\/(\d{4}) (\d{2}):(\d{2})$/);
-        if (!m) return 0;
-        return new Date(
-          Number(m[3]), Number(m[2]) - 1, Number(m[1]),
-          Number(m[4]), Number(m[5]),
-        ).getTime();
-      };
-      return parse(b.gateInTime) - parse(a.gateInTime);
-    });
+  useEffect(() => {
+    loadTasks();
+  }, []);
+
+  useEffect(() => {
+    loadContainers();
+  }, [filter, page]);
+
+  async function confirmTask(taskId: number) {
+    setConfirmingTaskId(taskId);
+    try {
+      const res = await apiFetch(`/admin/placement-tasks/${taskId}/confirm`, { method: 'POST' });
+      if (!res.ok) throw new Error('Xác nhận thất bại');
+      loadTasks();
+      loadContainers();
+      if (tasks.length === 1) setShowTasksModal(false); // close if it was the last task
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Lỗi xác nhận');
+    } finally {
+      setConfirmingTaskId(null);
+    }
+  }
 
   const pageNums = Array.from({ length: totalPages }, (_, i) => i);
 
@@ -136,14 +181,88 @@ export function HaBai() {
         <div className="mgmt-header">
           <div className="mgmt-header-text">
             <h1>Quản lý Nhập Bãi</h1>
-            <p>Danh sách lịch sử nhập container vào bãi</p>
+            <p>Xác nhận lệnh xếp chỗ & danh sách container đang lưu kho</p>
           </div>
-          {!loading && !error && (
-            <span style={{ fontSize: '0.8rem', color: '#6b7280' }}>
-              {filteredRecords.length} container đã nhập thành công
-            </span>
-          )}
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+            <button
+              onClick={() => {
+                loadTasks();
+                setShowTasksModal(true);
+              }}
+              style={{
+                padding: '8px 16px', borderRadius: 6, fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer',
+                background: tasks.length > 0 ? '#3b82f6' : '#6b7280',
+                color: '#fff', border: 'none', display: 'flex', alignItems: 'center', gap: 6
+              }}
+            >
+              Lệnh chờ xếp chỗ ({tasks.length})
+            </button>
+          </div>
         </div>
+
+        {/* Tasks Modal */}
+        {showTasksModal && (
+          <div className="ks-modal-overlay" onClick={() => setShowTasksModal(false)} style={{ zIndex: 1000, position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div className="ks-modal" onClick={e => e.stopPropagation()} style={{ width: '90%', maxWidth: '1000px', background: '#fff', borderRadius: 8, padding: 24, maxHeight: '80vh', overflowY: 'auto' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <h3 style={{ margin: 0, fontSize: '1.2rem', color: '#111827' }}>Lệnh chờ xếp chỗ ({tasks.length})</h3>
+                <button onClick={() => setShowTasksModal(false)} style={{ background: 'none', border: 'none', cursor: 'pointer' }}><X size={20} /></button>
+              </div>
+              <div className="mgmt-table-wrap">
+                <table className="mgmt-table">
+                  <thead>
+                    <tr>
+                      <th>Mã container</th>
+                      <th>Loại hàng</th>
+                      <th>Kích thước</th>
+                      <th>Kho đích</th>
+                      <th>Zone</th>
+                      <th>Vị trí đích</th>
+                      <th>Thời gian đẩy lệnh</th>
+                      <th>Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {taskLoading && (
+                      <tr className="mgmt-state-row"><td colSpan={8}>Đang tải lệnh...</td></tr>
+                    )}
+                    {!taskLoading && taskError && (
+                      <tr className="mgmt-state-row mgmt-state-error"><td colSpan={8}>{taskError}</td></tr>
+                    )}
+                    {!taskLoading && !taskError && tasks.length === 0 && (
+                      <tr className="mgmt-state-row"><td colSpan={8}>Hiện không có lệnh chờ xếp chỗ.</td></tr>
+                    )}
+                    {!taskLoading && !taskError && tasks.map(t => (
+                      <tr key={t.taskId}>
+                        <td><strong>{t.containerId}</strong></td>
+                        <td>{t.cargoType || '—'}</td>
+                        <td><span className="mgmt-badge mgmt-badge-neutral">{t.containerType || '—'}</span></td>
+                        <td>{t.yardName}</td>
+                        <td>{t.zoneName} - {t.blockName}</td>
+                        <td><strong style={{ color: '#047857' }}>{t.slotName} · Tầng {t.tier}</strong></td>
+                        <td>{new Date(t.createdAt).toLocaleString('vi-VN')}</td>
+                        <td>
+                          <button
+                            onClick={() => confirmTask(t.taskId)}
+                            disabled={confirmingTaskId === t.taskId}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 4, background: '#10b981', color: '#fff',
+                              border: 'none', padding: '4px 10px', borderRadius: 4, fontSize: '0.8rem', cursor: 'pointer',
+                              opacity: confirmingTaskId === t.taskId ? 0.7 : 1
+                            }}
+                          >
+                            <CheckCircle size={14} />
+                            {confirmingTaskId === t.taskId ? 'Đang xác nhận...' : 'Xác nhận hạ bãi'}
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="mgmt-filter-bar">
           <div className="mgmt-search-wrap">
@@ -151,15 +270,15 @@ export function HaBai() {
             <input
               type="text"
               placeholder="Tìm mã container..."
-              value={pendingKeyword}
-              onChange={(e) => setPendingKeyword(e.target.value)}
+              value={pendingFilter.keyword ?? ''}
+              onChange={(e) => setPendingFilter((f) => ({ ...f, keyword: e.target.value }))}
               onKeyDown={(e) => e.key === 'Enter' && applyFilter()}
             />
           </div>
           <select
             className="mgmt-select"
-            value={pendingType}
-            onChange={(e) => setPendingType(e.target.value)}
+            value={pendingFilter.containerType ?? ''}
+            onChange={(e) => setPendingFilter((f) => ({ ...f, containerType: e.target.value }))}
           >
             {TYPE_OPTIONS.map((t) => (
               <option key={t} value={t}>{t || 'Tất cả loại'}</option>
@@ -183,50 +302,48 @@ export function HaBai() {
                   <th>Block</th>
                   <th>Vị trí</th>
                   <th>Ngày nhập hệ thống</th>
-                  <th>Người thực hiện</th>
                 </tr>
               </thead>
               <tbody>
                 {loading && (
                   <tr className="mgmt-state-row">
-                    <td colSpan={11}>Đang tải dữ liệu...</td>
+                    <td colSpan={10}>Đang tải dữ liệu...</td>
                   </tr>
                 )}
                 {!loading && error && (
                   <tr className="mgmt-state-row mgmt-state-error">
-                    <td colSpan={11}>{error}</td>
+                    <td colSpan={10}>{error}</td>
                   </tr>
                 )}
-                {!loading && !error && filteredRecords.length === 0 && (
+                {!loading && !error && containers.length === 0 && (
                   <tr className="mgmt-state-row">
-                    <td colSpan={11}>Chưa có bản ghi hạ bãi</td>
+                    <td colSpan={10}>Không có container nào đang lưu kho</td>
                   </tr>
                 )}
-                {!loading && !error && filteredRecords.map((r) => (
+                {!loading && !error && containers.map((c) => (
                   <tr
-                    key={r.id}
-                    onClick={() => setSelectedCode(selectedCode === r.containerCode ? null : r.containerCode)}
+                    key={c.containerId}
+                    onClick={() => setSelectedContainer(selectedContainer?.containerCode === c.containerCode ? null : c)}
                     style={{ cursor: 'pointer' }}
                   >
-                    <td><strong>{r.containerCode || '—'}</strong></td>
-                    <td>{r.cargoType || '—'}</td>
+                    <td><strong>{c.containerCode || '—'}</strong></td>
+                    <td>{c.cargoType || '—'}</td>
                     <td>
-                      {r.containerType
-                        ? <span className="mgmt-badge mgmt-badge-neutral">{r.containerType}</span>
+                      {c.containerType
+                        ? <span className="mgmt-badge mgmt-badge-neutral">{c.containerType}</span>
                         : '—'}
                     </td>
-                    <td>{r.grossWeight}</td>
+                    <td>{c.grossWeight}</td>
                     <td>
-                      {r.status
-                        ? <span className={statusBadgeClass(r.status)}>{r.status}</span>
+                      {c.status
+                        ? <span className={statusBadgeClass(c.status)}>{c.status}</span>
                         : '—'}
                     </td>
-                    <td>{r.yardName || '—'}</td>
-                    <td>{r.zoneName || '—'}</td>
-                    <td>{r.blockName || '—'}</td>
-                    <td>{r.slot}</td>
-                    <td>{r.gateInTime}</td>
-                    <td>{r.operator || '—'}</td>
+                    <td>{c.yardName || '—'}</td>
+                    <td>{c.zoneName || '—'}</td>
+                    <td>{c.blockName || '—'}</td>
+                    <td>{c.slot}</td>
+                    <td>{formatDate(c.createdAt)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -267,10 +384,10 @@ export function HaBai() {
             )}
           </div>
 
-          {selectedCode && (
+          {selectedContainer && (
             <HistoryPanel
-              containerCode={selectedCode}
-              onClose={() => setSelectedCode(null)}
+              containerCode={selectedContainer.containerCode}
+              onClose={() => setSelectedContainer(null)}
             />
           )}
         </div>

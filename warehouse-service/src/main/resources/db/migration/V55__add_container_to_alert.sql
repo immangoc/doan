@@ -1,0 +1,3 @@
+ALTER TABLE alert ADD COLUMN IF NOT EXISTS container_id VARCHAR(50) REFERENCES container(container_id);
+ALTER TABLE alert ALTER COLUMN zone_id DROP NOT NULL;
+ALTER TABLE alert ALTER COLUMN description TYPE TEXT;

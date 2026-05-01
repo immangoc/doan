@@ -225,16 +225,12 @@ export async function fetchAndSetOccupancy(yards: ApiYard[]): Promise<void> {
   const { bySlotId, byBlockId } = buildReverseMap(yards);
 
   const containers = await fetchContainersInYard();
-  if (containers.length === 0) {
-    // No IN_YARD containers — mark occupancy as loaded so scenes show empty grid, not mock
-    setOccupancyData(new Map());
-    return;
-  }
 
   const ids       = containers.map((c) => c.containerCode);
-  const [positions, overdueIds] = await Promise.all([
+  const [positions, overdueIds, pendingTasksRes] = await Promise.all([
     fetchPositionsInBatches(ids),
     fetchOverdueContainerIds(),
+    apiFetch('/admin/placement-tasks/pending').catch(() => null),
   ]);
 
   const map: OccupancyMap = new Map();
@@ -289,6 +285,48 @@ export async function fetchAndSetOccupancy(yards: ApiYard[]): Promise<void> {
       isOverdue:       overdueIds.has(ctn.containerCode),
     };
 
+    map.set(key, occ);
+  }
+
+  // Overlay pending placement tasks so they show up immediately after gate-in
+  let pendingTasks: Rec[] = [];
+  if (pendingTasksRes && pendingTasksRes.ok) {
+    const json = await pendingTasksRes.json().catch(() => ({}));
+    pendingTasks = (json.data ?? json) as Rec[];
+  }
+
+  for (const task of pendingTasks) {
+    const slotId = Number(task.slotId);
+    if (!slotId) continue;
+    
+    const coords = bySlotId.get(slotId);
+    if (!coords) continue;
+    
+    const tier = Number(task.tier ?? 1);
+    const key = makeSlotKey(coords.whType, coords.zoneName, coords.row, coords.col, tier);
+    
+    const gateInDate = formatDate(task.createdAt);
+    const weightStr = task.grossWeight ? `${task.grossWeight} kg` : '—';
+    const cType = String(task.containerType ?? '');
+    const code = String(task.containerId ?? '');
+    
+    const occ: SlotOccupancy = {
+      containerId:     code.split('').reduce((h, ch) => (h * 31 + ch.charCodeAt(0)) & 0xffffff, 0),
+      containerCode:   code,
+      cargoType:       String(task.cargoType ?? ''),
+      weight:          weightStr,
+      gateInDate,
+      storageDuration: 'Chờ xếp chỗ',
+      sizeType:        cType.toUpperCase().includes('40') ? '40ft' : '20ft',
+      tier:            tier,
+      whName:          String(task.yardName ?? ''),
+      zoneName:        String(task.zoneName ?? ''),
+      blockName:       String(task.blockName ?? ''),
+      statusText:      'Đang chờ xếp chỗ',
+      isOverdue:       false,
+      isPendingPlacement: true,
+    };
+    
     map.set(key, occ);
   }
 

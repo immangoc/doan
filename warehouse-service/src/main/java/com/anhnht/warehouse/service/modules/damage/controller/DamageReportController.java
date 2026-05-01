@@ -6,6 +6,7 @@ import com.anhnht.warehouse.service.modules.damage.dto.DamageReportResponse;
 import com.anhnht.warehouse.service.modules.damage.dto.MoveToDamagedYardRequest;
 import com.anhnht.warehouse.service.modules.damage.dto.RelocationPlanResponse;
 import com.anhnht.warehouse.service.modules.optimization.dto.response.SlotRecommendation;
+import com.anhnht.warehouse.service.modules.damage.repository.DamageReportRepository;
 import com.anhnht.warehouse.service.modules.damage.service.DamageReportService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -16,6 +17,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
+import java.util.Map;
 
 @Tag(
     name = "Damage Workflow",
@@ -28,6 +30,20 @@ import java.util.List;
 public class DamageReportController {
 
     private final DamageReportService damageService;
+    private final DamageReportRepository damageReportRepository;
+
+    @Operation(summary = "Thống kê tài chính tổng hợp hàng hỏng",
+               description = "Trả về tổng tiền hoàn, tiền sửa, số container hỏng, số đã hoàn tiền.")
+    @GetMapping("/financial-summary")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    public ResponseEntity<ApiResponse<Map<String, Object>>> financialSummary() {
+        Map<String, Object> summary = new java.util.LinkedHashMap<>();
+        summary.put("totalDamageReports",   damageReportRepository.countAllActive());
+        summary.put("totalCompensationCost", damageReportRepository.sumCompensationCostAll());
+        summary.put("totalRepairCost",       damageReportRepository.sumRepairCostAll());
+        summary.put("totalRefunded",         damageReportRepository.countRefunded());
+        return ResponseEntity.ok(ApiResponse.success(summary));
+    }
 
     @Operation(summary = "Pha 1 — báo hỏng (chỉ đánh dấu)",
                description = "Tạo damage_report (status=PENDING). Container đổi sang DAMAGED_PENDING, chưa di chuyển vật lý.")
@@ -53,6 +69,14 @@ public class DamageReportController {
     @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<List<DamageReportResponse>>> listAll() {
         return ResponseEntity.ok(ApiResponse.success(damageService.listAll()));
+    }
+
+    @Operation(summary = "Lịch sử báo hỏng",
+               description = "Trả về mọi damage_report trừ CANCELLED, bao gồm cả RETURNED. Dùng cho Báo cáo thống kê.")
+    @GetMapping("/history")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    public ResponseEntity<ApiResponse<List<DamageReportResponse>>> listHistory() {
+        return ResponseEntity.ok(ApiResponse.success(damageService.listHistory()));
     }
 
     @Operation(summary = "Preview move (dry-run BFS)",

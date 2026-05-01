@@ -149,6 +149,14 @@ public class DamageReportServiceImpl implements DamageReportService {
                 .toList();
     }
 
+    @Override
+    public List<DamageReportResponse> listHistory() {
+        return reportRepository.findByReportStatusNotOrderByReportedAtDesc(STATUS_CANCELLED)
+                .stream()
+                .map(this::toResponse)
+                .toList();
+    }
+
     // ─── Preview move (dry-run) ─────────────────────────────────────────────
 
     @Override

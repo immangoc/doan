@@ -34,6 +34,22 @@ type ContainerItem = {
   compensationCost?: number;
   repairCost?: number;
 };
+type DamageHistoryItem = {
+  reportId: number;
+  containerId: string;
+  containerCode?: string;
+  cargoTypeName?: string;
+  sizeType?: string;
+  reportStatus?: string;
+  repairStatus?: string;
+  repairDate?: string;
+  repairCost?: number;
+  compensationCost?: number;
+  compensationRefunded?: boolean;
+  reportedAt?: string;
+  severity?: string;
+  reason?: string;
+};
 
 /* ─── Constants ─────────────────────────────────────────────── */
 const PIE_COLORS = ['#10b981', '#06b6d4', '#a855f7', '#3b82f6', '#f59e0b', '#ef4444', '#84cc16'];
@@ -111,9 +127,24 @@ export default function BaoCaoThongKe() {
   const [alertLoading, setAlertLoading] = useState(false);
   const [alertError, setAlertError] = useState('');
 
-  // damaged containers (financial stats)
-  const [damagedContainers, setDamagedContainers] = useState<ContainerItem[]>([]);
-  const [damagedLoading, setDamagedLoading] = useState(false);
+  // damage history (all reports, including repaired/returned)
+  const [damageHistory, setDamageHistory] = useState<DamageHistoryItem[]>([]);
+  const [damageLoading, setDamageLoading] = useState(false);
+  const [damagePage, setDamagePage] = useState(0);
+  const DAMAGE_PAGE_SIZE = 6;
+
+  // damaged containers count (only current DAMAGED status)
+  const [damagedCount, setDamagedCount] = useState(0);
+
+  // financial summary from all damage reports (including repaired/returned)
+  type FinancialSummary = {
+    totalDamageReports: number;
+    totalCompensationCost: number;
+    totalRepairCost: number;
+    totalRefunded: number;
+  };
+  const [financialSummary, setFinancialSummary] = useState<FinancialSummary | null>(null);
+  const [financialLoading, setFinancialLoading] = useState(false);
 
   // kho tabs
   const [containers, setContainers]   = useState<ContainerItem[]>([]);
@@ -159,15 +190,48 @@ export default function BaoCaoThongKe() {
     }
   };
 
-  /* ── fetch damaged containers (financial stats) ── */
-  const fetchDamagedContainers = async () => {
-    setDamagedLoading(true);
+  /* ── fetch all damage history (from /admin/damage/history) ── */
+  const fetchDamageHistory = async () => {
+    setDamageLoading(true);
     try {
-      const res = await fetch(`${API_BASE}/admin/containers?statusName=DAMAGED&page=0&size=200`, { headers });
+      const res = await fetch(`${API_BASE}/admin/damage/history`, { headers });
       const d = await res.json();
-      if (res.ok) setDamagedContainers(d.data?.content || []);
+      if (res.ok) {
+        const list: DamageHistoryItem[] = (d.data || []).map((r: any) => ({
+          reportId:           r.reportId,
+          containerId:        r.containerId,
+          containerCode:      r.containerCode,
+          cargoTypeName:      r.cargoTypeName,
+          sizeType:           r.sizeType,
+          reportStatus:       r.reportStatus,
+          repairStatus:       r.repairStatus,
+          repairDate:         r.repairDate,
+          repairCost:         r.repairCost ? Number(r.repairCost) : 0,
+          compensationCost:   r.compensationCost ? Number(r.compensationCost) : 0,
+          compensationRefunded: r.compensationRefunded,
+          reportedAt:         r.reportedAt,
+          severity:           r.severity,
+          reason:             r.reason,
+        }));
+        setDamageHistory(list);
+        // Count current DAMAGED from list
+        setDamagedCount(list.filter(r => r.reportStatus === 'STORED').length);
+        setDamagePage(0);
+      }
     } catch { /* ignore */ } finally {
-      setDamagedLoading(false);
+      setDamageLoading(false);
+    }
+  };
+
+  /* ── fetch financial summary (all historical damage reports) ── */
+  const fetchFinancialSummary = async () => {
+    setFinancialLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}/admin/damage/financial-summary`, { headers });
+      const d = await res.json();
+      if (res.ok) setFinancialSummary(d.data);
+    } catch { /* ignore */ } finally {
+      setFinancialLoading(false);
     }
   };
 
@@ -211,7 +275,8 @@ export default function BaoCaoThongKe() {
     if (tab === 'tongquan') fetchTongQuan();
     else if (tab === 'hanghong') {
       if (alerts.length === 0) fetchAlerts(0);
-      if (damagedContainers.length === 0) fetchDamagedContainers();
+      if (damageHistory.length === 0) fetchDamageHistory();
+      if (!financialSummary) fetchFinancialSummary();
     }
     else if (tab.startsWith('kho-')) { if (containers.length === 0) fetchContainers(); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -445,7 +510,7 @@ export default function BaoCaoThongKe() {
               <div className="card-title">Tổng hợp hàng hỏng / Cảnh báo</div>
               <div className="card-subtitle">Danh sách cảnh báo và sự cố đang theo dõi</div>
             </div>
-            <button className="btn btn-secondary btn-sm" onClick={() => fetchAlerts(0)} disabled={alertLoading}>Làm mới</button>
+            <button className="btn btn-secondary btn-sm" onClick={() => { fetchAlerts(0); fetchDamageHistory(); fetchFinancialSummary(); }} disabled={alertLoading || damageLoading}>Làm mới</button>
           </div>
 
           <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', marginBottom: 16 }}>
@@ -457,20 +522,34 @@ export default function BaoCaoThongKe() {
 
           {/* ── Damaged Container Financial Summary ── */}
           {(() => {
-            const totalCompensation = damagedContainers.reduce((sum, c) => sum + (c.compensationCost ?? 0), 0);
-            const totalRepair       = damagedContainers.reduce((sum, c) => sum + (c.repairCost ?? 0), 0);
-            const totalDeclared     = damagedContainers.reduce((sum, c) => sum + (c.declaredValue ?? 0), 0);
+            const loading = financialLoading || damageLoading;
+            const totalCompensation = financialSummary
+              ? Number(financialSummary.totalCompensationCost ?? 0)
+              : damageHistory.reduce((sum, r) => sum + (r.compensationCost ?? 0), 0);
+            const totalRepair = financialSummary
+              ? Number(financialSummary.totalRepairCost ?? 0)
+              : damageHistory.reduce((sum, r) => sum + (r.repairCost ?? 0), 0);
+            const totalDamageReports = financialSummary ? financialSummary.totalDamageReports : damageHistory.length;
+            const totalRefunded = financialSummary ? financialSummary.totalRefunded : 0;
+
+            // paginated damage history
+            const totalDmgPages = Math.ceil(damageHistory.length / DAMAGE_PAGE_SIZE);
+            const pageSlice = damageHistory.slice(damagePage * DAMAGE_PAGE_SIZE, (damagePage + 1) * DAMAGE_PAGE_SIZE);
+
             return (
               <div style={{ marginBottom: 20 }}>
                 <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10, color: 'var(--text1)' }}>
-                  Thống kê thiệt hại tài chính — Container hỏng
+                  Thống kê thiệt hại tài chính — Toàn bộ lịch sử hàng hỏng
                 </div>
                 <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', marginBottom: 12 }}>
                   <div className="stat-card">
                     <div>
-                      <div className="stat-label">Container DAMAGED</div>
+                      <div className="stat-label">Tổng lần báo hỏng</div>
                       <div className="stat-value" style={{ color: '#ef4444' }}>
-                        {damagedLoading ? '...' : damagedContainers.length}
+                        {loading ? '...' : totalDamageReports}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
+                        Đang trong kho hỏng: {damageLoading ? '...' : damagedCount}
                       </div>
                     </div>
                   </div>
@@ -478,7 +557,10 @@ export default function BaoCaoThongKe() {
                     <div>
                       <div className="stat-label">Tổng tiền hoàn (VND)</div>
                       <div className="stat-value" style={{ color: '#3b82f6', fontSize: 18 }}>
-                        {damagedLoading ? '...' : totalCompensation > 0 ? totalCompensation.toLocaleString('vi-VN') : '0'}
+                        {loading ? '...' : totalCompensation > 0 ? totalCompensation.toLocaleString('vi-VN') : '0'}
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 4 }}>
+                        Đã hoàn tiền: {loading ? '...' : totalRefunded} lần
                       </div>
                     </div>
                   </div>
@@ -486,50 +568,101 @@ export default function BaoCaoThongKe() {
                     <div>
                       <div className="stat-label">Tổng tiền sửa (VND)</div>
                       <div className="stat-value" style={{ color: '#f59e0b', fontSize: 18 }}>
-                        {damagedLoading ? '...' : totalRepair > 0 ? totalRepair.toLocaleString('vi-VN') : '0'}
+                        {loading ? '...' : totalRepair > 0 ? totalRepair.toLocaleString('vi-VN') : '0'}
                       </div>
                     </div>
                   </div>
                   <div className="stat-card">
                     <div>
-                      <div className="stat-label">Tổng khai báo (VND)</div>
-                      <div className="stat-value">
-                        {damagedLoading ? '...' : totalDeclared > 0 ? totalDeclared.toLocaleString('vi-VN') : '0'}
+                      <div className="stat-label">Tổng chi phí thiệt hại (VND)</div>
+                      <div className="stat-value" style={{ color: '#7c3aed', fontSize: 18 }}>
+                        {loading ? '...' : (totalCompensation + totalRepair) > 0
+                          ? (totalCompensation + totalRepair).toLocaleString('vi-VN')
+                          : '0'}
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {!damagedLoading && damagedContainers.length > 0 && (
-                  <div className="table-wrap">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Container ID</th><th>Loại container</th><th>Loại hàng</th>
-                          <th>Giá trị khai báo</th><th>Tiền hoàn</th><th>Tiền sửa</th><th>Ngày tạo</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {damagedContainers.map((c) => (
-                          <tr key={c.containerId}>
-                            <td><code>{c.containerId}</code></td>
-                            <td>{c.containerTypeName || '—'}</td>
-                            <td>{c.cargoTypeName || '—'}</td>
-                            <td style={{ fontWeight: (c.declaredValue ?? 0) > 0 ? 600 : undefined, color: (c.declaredValue ?? 0) > 0 ? '#ef4444' : undefined }}>
-                              {(c.declaredValue ?? 0) > 0 ? Number(c.declaredValue).toLocaleString('vi-VN') : '—'}
-                            </td>
-                            <td style={{ fontWeight: (c.compensationCost ?? 0) > 0 ? 600 : undefined, color: (c.compensationCost ?? 0) > 0 ? '#3b82f6' : undefined }}>
-                              {(c.compensationCost ?? 0) > 0 ? Number(c.compensationCost).toLocaleString('vi-VN') : '—'}
-                            </td>
-                            <td style={{ fontWeight: (c.repairCost ?? 0) > 0 ? 600 : undefined, color: (c.repairCost ?? 0) > 0 ? '#f59e0b' : undefined }}>
-                              {(c.repairCost ?? 0) > 0 ? Number(c.repairCost).toLocaleString('vi-VN') : '—'}
-                            </td>
-                            <td>{c.createdAt ? new Date(c.createdAt).toLocaleDateString('vi-VN') : '—'}</td>
+                {/* Damage history table with pagination */}
+                {damageLoading ? (
+                  <div style={{ padding: '16px', color: 'var(--text2)', fontSize: 13 }}>Đang tải lịch sử hàng hỏng...</div>
+                ) : damageHistory.length > 0 ? (
+                  <>
+                    <div className="table-wrap">
+                      <table>
+                        <thead>
+                          <tr>
+                            <th>Container</th>
+                            <th>Loại hàng</th>
+                            <th>Kích thước</th>
+                            <th>Trạng thái</th>
+                            <th>TT sửa chữa</th>
+                            <th style={{ color: '#f59e0b' }}>Tiền sửa (VND)</th>
+                            <th style={{ color: '#3b82f6' }}>Tiền hoàn (VND)</th>
+                            <th>Ngày báo</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody>
+                          {pageSlice.map((r) => (
+                            <tr key={r.reportId}>
+                              <td><code>{r.containerId}</code></td>
+                              <td>{r.cargoTypeName || '—'}</td>
+                              <td>{r.sizeType || '—'}</td>
+                              <td>
+                                <span className={`badge ${
+                                  r.reportStatus === 'STORED'   ? 'badge-danger' :
+                                  r.reportStatus === 'RETURNED' ? 'badge-success' :
+                                  r.reportStatus === 'PENDING'  ? 'badge-warning' : 'badge-gray'
+                                }`}>
+                                  {r.reportStatus === 'STORED' ? 'Trong kho hỏng' :
+                                   r.reportStatus === 'RETURNED' ? 'Đã về kho' :
+                                   r.reportStatus === 'PENDING' ? 'Chờ xử lý' : r.reportStatus || '—'}
+                                </span>
+                              </td>
+                              <td>
+                                {r.repairStatus ? (
+                                  <span className={`badge ${
+                                    r.repairStatus === 'REPAIRED'    ? 'badge-success' :
+                                    r.repairStatus === 'IN_PROGRESS' ? 'badge-warning' : 'badge-gray'
+                                  }`}>{r.repairStatus}</span>
+                                ) : '—'}
+                              </td>
+                              <td style={{ fontWeight: (r.repairCost ?? 0) > 0 ? 600 : undefined, color: (r.repairCost ?? 0) > 0 ? '#f59e0b' : undefined }}>
+                                {(r.repairCost ?? 0) > 0 ? Number(r.repairCost).toLocaleString('vi-VN') : '—'}
+                              </td>
+                              <td style={{ fontWeight: (r.compensationCost ?? 0) > 0 ? 600 : undefined, color: (r.compensationCost ?? 0) > 0 ? '#3b82f6' : undefined }}>
+                                {(r.compensationCost ?? 0) > 0 ? Number(r.compensationCost).toLocaleString('vi-VN') : '—'}
+                                {r.compensationRefunded && <span style={{ fontSize: 10, marginLeft: 4, color: '#10b981' }}>✓ đã hoàn</span>}
+                              </td>
+                              <td>{r.reportedAt ? new Date(r.reportedAt).toLocaleDateString('vi-VN') : '—'}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot>
+                          <tr style={{ fontWeight: 700, background: 'var(--bg2)' }}>
+                            <td colSpan={5} style={{ textAlign: 'right', paddingRight: 12 }}>Tổng cộng:</td>
+                            <td style={{ color: '#f59e0b' }}>
+                              {damageHistory.reduce((s, r) => s + (r.repairCost ?? 0), 0).toLocaleString('vi-VN')}
+                            </td>
+                            <td style={{ color: '#3b82f6' }}>
+                              {damageHistory.reduce((s, r) => s + (r.compensationCost ?? 0), 0).toLocaleString('vi-VN')}
+                            </td>
+                            <td />
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                    {totalDmgPages > 1 && (
+                      <div style={{ display: 'flex', gap: 8, padding: '10px 0', justifyContent: 'flex-end', alignItems: 'center' }}>
+                        <button className="btn btn-secondary btn-sm" disabled={damagePage === 0} onClick={() => setDamagePage(p => p - 1)}>←</button>
+                        <span style={{ fontSize: 13 }}>Trang {damagePage + 1} / {totalDmgPages} ({damageHistory.length} bản ghi)</span>
+                        <button className="btn btn-secondary btn-sm" disabled={damagePage >= totalDmgPages - 1} onClick={() => setDamagePage(p => p + 1)}>→</button>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div style={{ padding: '16px', color: 'var(--text2)', fontSize: 13 }}>Chưa có lịch sử hàng hỏng.</div>
                 )}
               </div>
             );

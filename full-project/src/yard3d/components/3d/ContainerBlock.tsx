@@ -126,8 +126,9 @@ interface ContainerBlockProps {
   whName?:          string;
   blockName?:       string;
   statusText?:      string;
-  isOverdue?:       boolean;
-  isDamageReported?: boolean;
+  isOverdue?:          boolean;
+  isDamageReported?:   boolean;
+  isPendingPlacement?: boolean;
 }
 
 export function ContainerBlock({
@@ -151,6 +152,7 @@ export function ContainerBlock({
   statusText,
   isOverdue = false,
   isDamageReported = false,
+  isPendingPlacement = false,
 }: ContainerBlockProps) {
   const LENGTH = sizeType === '40ft' ? 12.0 : 6.0; // 40ft = exactly 2× 20ft
   const color = getContainerColor(status, cargoType);
@@ -160,6 +162,7 @@ export function ContainerBlock({
   const bodyRef = useRef<THREE.MeshStandardMaterial>(null);
   const overdueMatRef = useRef<THREE.MeshBasicMaterial>(null);
   const damageMatRef  = useRef<THREE.MeshBasicMaterial>(null);
+  const pendingMatRef = useRef<THREE.MeshBasicMaterial>(null);
   const [hovered, setHovered] = useState(false);
   const [tooltipHovered, setTooltipHovered] = useState(false);
   const [pinned, setPinned] = useState(false);
@@ -191,6 +194,10 @@ export function ContainerBlock({
     if (damageMatRef.current && isDamageReported) {
       // Faster, more urgent blink for damage-reported containers (3 Hz)
       damageMatRef.current.opacity = 0.4 + 0.6 * (0.5 + 0.5 * Math.sin(state.clock.elapsedTime * 6));
+    }
+    if (pendingMatRef.current && isPendingPlacement) {
+      // Slow pulsing cyan for pending-placement containers
+      pendingMatRef.current.opacity = 0.4 + 0.4 * (0.5 + 0.5 * Math.sin(state.clock.elapsedTime * 2.5));
     }
   });
 
@@ -258,6 +265,21 @@ export function ContainerBlock({
               wireframe
               transparent
               opacity={0.9}
+              depthTest={false}
+            />
+          </mesh>
+        )}
+
+        {/* Pending placement indicator: pulsing cyan wireframe outline */}
+        {isPendingPlacement && (
+          <mesh>
+            <boxGeometry args={[WIDTH + 0.28, HEIGHT + 0.28, LENGTH + 0.28]} />
+            <meshBasicMaterial
+              ref={pendingMatRef}
+              color="#06B6D4"
+              wireframe
+              transparent
+              opacity={0.7}
               depthTest={false}
             />
           </mesh>

@@ -1,5 +1,7 @@
 package com.anhnht.warehouse.service.modules.alert.entity;
 
+import com.anhnht.warehouse.service.modules.container.entity.Container;
+import com.anhnht.warehouse.service.modules.user.entity.User;
 import com.anhnht.warehouse.service.modules.yard.entity.YardZone;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -28,7 +30,7 @@ public class Alert {
     @JoinColumn(name = "level_id")
     private AlertLevel level;
 
-    @Column(name = "description", nullable = false, length = 255)
+    @Column(name = "description", nullable = false, columnDefinition = "TEXT")
     private String description;
 
     @Column(name = "created_at", updatable = false)
@@ -37,6 +39,14 @@ public class Alert {
     /** 0 = OPEN, 1 = ACKNOWLEDGED */
     @Column(name = "status")
     private Short status = 0;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "container_id")
+    private Container container;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "reported_by")
+    private User reportedBy;
 
     @PrePersist
     protected void onCreate() {

@@ -78,7 +78,7 @@ export default function WarehouseLayout({ children }: WarehouseLayoutProps) {
       { name: 'Loại Hàng', path: '/yard3d/loai-hang', icon: Package, roles: ['operator'] },
       { name: 'Sơ đồ bãi 3D', path: '/yard3d/3d', icon: Box, roles: ['operator'] },
       { name: 'Sơ đồ mặt phẳng', path: '/yard3d/2d', icon: Box, roles: ['operator'] },
-      { name: 'Quản lý nhập bãi', path: '/yard3d/ha-bai', icon: Truck, roles: ['operator'] },
+      { name: 'Nhập bãi', path: '/yard3d/ha-bai', icon: Truck, roles: ['operator'] },
       { name: 'Quản lý xuất bãi', path: '/yard3d/xuat-bai', icon: Truck, roles: ['operator'] },
       { name: 'Quản lý kho hỏng', path: '/yard3d/kho', icon: Package, roles: ['operator'] },
       { name: 'Kiểm soát & Sự cố', path: '/yard3d/kiem-soat', icon: AlertTriangle, roles: ['operator'] },
@@ -87,10 +87,10 @@ export default function WarehouseLayout({ children }: WarehouseLayoutProps) {
       // Yard staff items (Nhân viên kho bãi)
       { name: 'Sơ đồ bãi 3D',       path: '/yard3d/3d',          icon: Box,           roles: ['yard_staff'] },
       { name: 'Sơ đồ mặt phẳng',    path: '/yard3d/2d',          icon: Box,           roles: ['yard_staff'] },
-      { name: 'Hạ bãi',             path: '/yard3d/ha-bai',      icon: Truck,         roles: ['yard_staff'] },
+      { name: 'Nhập bãi',           path: '/yard3d/ha-bai',      icon: Truck,         roles: ['yard_staff'] },
       { name: 'Xuất bãi',           path: '/yard3d/xuat-bai',    icon: Truck,         roles: ['yard_staff'] },
       { name: 'Kho hỏng',           path: '/yard3d/kho',         icon: Package,       roles: ['yard_staff'] },
-      { name: 'Kiểm soát & Sự cố',  path: '/yard3d/kiem-soat',   icon: AlertTriangle, roles: ['yard_staff'] },
+      { name: 'Báo cáo sự cố',     path: '/yard3d/bao-cao-su-co', icon: AlertTriangle, roles: ['yard_staff'] },
 
       // Planner items
       { name: 'Lập lịch trình', path: '/warehouse/schedule', icon: Calendar, roles: ['planner'] },

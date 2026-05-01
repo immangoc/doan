@@ -35,7 +35,7 @@ import java.util.List;
 @Transactional(readOnly = true)
 public class ContainerServiceImpl implements ContainerService {
 
-    private static final List<String> TERMINAL_STATUSES = List.of("CANCELLED", "REJECTED", "EXPORTED");
+    private static final List<String> TERMINAL_STATUSES = List.of("CANCELLED", "REJECTED", "EXPORTED", "GATE_OUT");
 
     private final ContainerRepository containerRepository;
     private final ContainerStatusRepository statusRepository;

@@ -267,9 +267,15 @@ export function KiemSoat() {
               <div className="ks-alert-left">
                 <LevelBadge level={a.level} />
                 <div className="ks-alert-content">
-                  <span className="ks-alert-zone">{a.zoneName}</span>
+                  <span className="ks-alert-zone">
+                    {a.yardName && <span>{a.yardName} — </span>}
+                    {a.zoneName}
+                  </span>
                   <span className="ks-alert-msg">{a.message}</span>
                   <div className="ks-alert-time">
+                    {a.reportedByName && (
+                      <span className="ks-reporter">👤 {a.reportedByName}</span>
+                    )}
                     <span>{formatTimestamp(a.timestamp)}</span>
                     <span className="ks-alert-ago">{timeAgo(a.timestamp)}</span>
                   </div>
