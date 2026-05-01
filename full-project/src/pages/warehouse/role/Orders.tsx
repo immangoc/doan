@@ -398,7 +398,8 @@ export default function Orders() {
   const canCancel = (o: OrderItem) =>
     ['PENDING', 'APPROVED', 'WAITING_CHECKIN', 'LATE_CHECKIN', 'READY_FOR_IMPORT'].includes(o.statusName);
   const canEdit   = (o: OrderItem) => o.statusName === 'PENDING';
-  const canChangeExport = (o: OrderItem) => o.statusName === 'STORED' || o.statusName === 'IMPORTED';
+  const canChangeExport = (o: OrderItem) => 
+    ['STORED', 'IMPORTED', 'EDIT_APPROVED', 'EDIT_REJECTED', 'REPAIRED'].includes(o.statusName);
 
   const now = new Date();
   const todayISO = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
