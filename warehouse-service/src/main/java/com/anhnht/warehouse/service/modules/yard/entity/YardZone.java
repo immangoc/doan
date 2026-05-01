@@ -26,4 +26,7 @@ public class YardZone {
 
     @Column(name = "capacity_slots", nullable = false)
     private Integer capacitySlots;
+
+    @Column(name = "is_locked")
+    private Boolean isLocked = false;
 }

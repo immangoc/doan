@@ -7,6 +7,8 @@ export interface ApiSlot {
   rowNo: number;
   bayNo: number;
   maxTier: number;
+  isLocked?: boolean;
+  lockReason?: string;
 }
 
 export interface ApiBlock {
@@ -20,6 +22,7 @@ export interface ApiZone {
   zoneId: number;
   zoneName: string;
   blocks: ApiBlock[];
+  isLocked?: boolean;
 }
 
 export interface ApiYard {
@@ -137,12 +140,14 @@ export async function fetchAllYards(): Promise<ApiYard[]> {
             rowNo:   num(s, ['rowNo', 'row'], 1),
             bayNo:   num(s, ['bayNo', 'bay', 'col'], 1),
             maxTier: isDamaged ? 1 : num(s, ['maxTier', 'tier', 'max_tier'], 4),
+            isLocked: s.isLocked === true || s.locked === true,
+            lockReason: s.lockReason || s.lock_reason || undefined,
           }));
 
           blocks.push({ blockId, blockName, blockType: blockTypeStr, slots });
         }
 
-        zones.push({ zoneId, zoneName, blocks });
+        zones.push({ zoneId, zoneName, blocks, isLocked: zone.isLocked === true });
       } else {
         zones.push({ zoneId: -(i + 1), zoneName, blocks: [] });
       }

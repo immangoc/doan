@@ -10,4 +10,5 @@ public class YardZoneResponse {
     private String  yardName;
     private String  zoneName;
     private Integer capacitySlots;
+    private Boolean isLocked;
 }

@@ -3,7 +3,7 @@ import { motion } from 'motion/react';
 import WarehouseLayout from '../../components/warehouse/WarehouseLayout';
 import {
   Package, Plus, Edit, Trash2, Search, Filter,
-  Download, MapPin, Calendar, RefreshCw, AlertCircle,
+  Download, MapPin, Calendar, RefreshCw, AlertCircle, FileText, Check,
 } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/card';
 import { Button } from '../../components/ui/button';
@@ -21,6 +21,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '../../components/ui/select';
 import { useWarehouseAuth, API_BASE } from '../../contexts/WarehouseAuthContext';
+import { exportEIR, exportContainerListExcel, type EIRData } from '../../utils/exportEIR';
 
 interface ContainerRow {
   containerId: string;
@@ -198,27 +199,84 @@ export default function ContainerManagement() {
     }
   };
 
-  const handleExport = () => {
-    const csv = [
-      ['Mã Container', 'Loại', 'Hàng hóa', 'Trọng lượng (kg)', 'Kho', 'Zone', 'Block', 'Vị trí', 'Trạng thái', 'Seal'],
-      ...filteredContainers.map((c) => [
-        c.containerId,
-        c.containerTypeName || '',
-        c.cargoTypeName || '',
-        c.grossWeight ?? '',
-        c.yardName || '',
-        c.zoneName || '',
-        c.blockName || '',
-        c.rowNo && c.bayNo ? `R${c.rowNo}B${c.bayNo}${c.tier ? `/T${c.tier}` : ''}` : '',
-        STATUS_MAP[c.statusName || '']?.label || c.statusName || '',
-        c.sealNumber || '',
-      ]),
-    ].map((row) => row.join(',')).join('\n');
-    const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `containers_${new Date().toISOString().split('T')[0]}.csv`;
-    link.click();
+  const handleExport = async () => {
+    const exportRows = filteredContainers.map((c) => ({
+      containerId: c.containerId,
+      containerTypeName: c.containerTypeName,
+      cargoTypeName: c.cargoTypeName,
+      grossWeight: c.grossWeight,
+      yardName: c.yardName,
+      zoneName: c.zoneName,
+      blockName: c.blockName,
+      rowNo: c.rowNo,
+      bayNo: c.bayNo,
+      tier: c.tier,
+      statusLabel: STATUS_MAP[c.statusName || '']?.label || c.statusName || '',
+      sealNumber: c.sealNumber,
+      createdAt: c.createdAt,
+      declaredValue: c.declaredValue,
+    }));
+    await exportContainerListExcel(exportRows);
+  };
+
+  const [exportingId, setExportingId] = useState<string | null>(null);
+  const [exportTarget, setExportTarget] = useState<ContainerRow | null>(null);
+
+  const handleExportEIR = async (c: ContainerRow) => {
+    setExportTarget(null);
+    setExportingId(c.containerId);
+    try {
+      // Fetch order details for this container
+      let orderData: any = null;
+      if (c.containerId) {
+        try {
+          const orderRes = await fetch(
+            `${API_BASE}/admin/orders?keyword=${encodeURIComponent(c.containerId)}&page=0&size=5`,
+            { headers }
+          );
+          const orderJson = await orderRes.json();
+          const orders = orderJson?.data?.content ?? [];
+          // Find the order that contains this container
+          orderData = orders.find((o: any) =>
+            o.containers?.some((ct: any) => ct.containerId === c.containerId)
+          ) || orders[0] || null;
+        } catch { /* order fetch non-critical */ }
+      }
+
+      const eirData: EIRData = {
+        containerId: c.containerId,
+        sealNumber: c.sealNumber,
+        containerTypeName: c.containerTypeName,
+        cargoTypeName: c.cargoTypeName,
+        grossWeight: c.grossWeight,
+        statusName: STATUS_MAP[c.statusName || '']?.label || c.statusName || '',
+        declaredValue: c.declaredValue,
+        yardName: c.yardName,
+        zoneName: c.zoneName,
+        blockName: c.blockName,
+        rowNo: c.rowNo,
+        bayNo: c.bayNo,
+        tier: c.tier,
+        note: c.note,
+        gateOutTime: c.gateOutTime,
+        // Order data
+        orderId: orderData?.orderId,
+        customerName: orderData?.customerName,
+        phone: orderData?.phone,
+        email: orderData?.email,
+        address: orderData?.address,
+        importDate: orderData?.importDate,
+        exportDate: orderData?.exportDate || orderData?.requestedExportDate,
+        paidAmount: orderData?.paidAmount,
+        bookingNo: orderData?.orderId ? `#${orderData.orderId}` : undefined,
+      };
+
+      await exportEIR(eirData);
+    } catch (err: any) {
+      alert('L\u1ed7i xu\u1ea5t b\u00e1o c\u00e1o: ' + (err.message || 'L\u1ed7i'));
+    } finally {
+      setExportingId(null);
+    }
   };
 
   const canEdit = user?.role === 'admin' || user?.role === 'planner' || user?.role === 'operator';
@@ -395,7 +453,7 @@ export default function ContainerManagement() {
                 </SelectContent>
               </Select>
               <Button variant="outline" onClick={handleExport}>
-                <Download className="w-4 h-4 mr-2" />Xuất CSV
+                <Download className="w-4 h-4 mr-2" />Xuất Excel
               </Button>
             </div>
           </CardContent>
@@ -477,6 +535,20 @@ export default function ContainerManagement() {
                           {(canEdit || canDelete) && (
                             <TableCell className="text-right">
                               <div className="flex items-center justify-end gap-1">
+                                {c.statusName === 'IN_YARD' && (
+                                  <Button
+                                    variant="ghost" size="sm"
+                                    onClick={() => setExportTarget(c)}
+                                    disabled={exportingId === c.containerId}
+                                    className="text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50"
+                                    title="Xuất phiếu giao nhận (EIR)"
+                                  >
+                                    {exportingId === c.containerId
+                                      ? <RefreshCw className="w-4 h-4 animate-spin" />
+                                      : <FileText className="w-4 h-4" />
+                                    }
+                                  </Button>
+                                )}
                                 {canEdit && (
                                   <Button
                                     variant="ghost" size="sm" onClick={() => handleEdit(c)}
@@ -536,6 +608,65 @@ export default function ContainerManagement() {
             )}
           </CardContent>
         </Card>
+
+        {/* EIR Export Confirmation Dialog */}
+        <Dialog open={!!exportTarget} onOpenChange={(open) => { if (!open) setExportTarget(null); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <FileText className="w-5 h-5 text-emerald-600" />
+                Xuất phiếu giao nhận (EIR)
+              </DialogTitle>
+              <DialogDescription>
+                Bạn có muốn xuất phiếu giao nhận container cho:
+              </DialogDescription>
+            </DialogHeader>
+            {exportTarget && (
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4 space-y-2">
+                <div className="flex justify-between">
+                  <span className="text-gray-500 text-sm">Mã Container:</span>
+                  <span className="font-mono font-bold text-blue-700 dark:text-blue-400">{exportTarget.containerId}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 text-sm">Loại:</span>
+                  <span className="text-sm">{exportTarget.containerTypeName || '—'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 text-sm">Hàng hóa:</span>
+                  <span className="text-sm">{exportTarget.cargoTypeName || '—'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 text-sm">Vị trí:</span>
+                  <span className="text-sm font-mono">
+                    {[exportTarget.yardName, exportTarget.zoneName, exportTarget.blockName].filter(Boolean).join(' · ')}
+                    {exportTarget.rowNo != null && exportTarget.bayNo != null ? ` · R${exportTarget.rowNo}B${exportTarget.bayNo}${exportTarget.tier ? `/T${exportTarget.tier}` : ''}` : ''}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 text-sm">Trọng lượng:</span>
+                  <span className="text-sm">{exportTarget.grossWeight != null ? `${Number(exportTarget.grossWeight).toLocaleString('vi-VN')} kg` : '—'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-500 text-sm">Số seal:</span>
+                  <span className="text-sm">{exportTarget.sealNumber || '—'}</span>
+                </div>
+              </div>
+            )}
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button variant="outline" onClick={() => setExportTarget(null)}>Hủy</Button>
+              <Button
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                disabled={exportingId != null}
+                onClick={() => exportTarget && handleExportEIR(exportTarget)}
+              >
+                {exportingId
+                  ? <><RefreshCw className="w-4 h-4 animate-spin mr-2" /> Đang xuất...</>
+                  : <><Check className="w-4 h-4 mr-2" /> Xác nhận xuất</>
+                }
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </WarehouseLayout>
   );

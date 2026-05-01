@@ -38,6 +38,7 @@ public enum ErrorCode {
 
     // Yard / Slot
     SLOT_NOT_FOUND("SLOT_NOT_FOUND", "Slot not found"),
+    ZONE_NOT_FOUND("ZONE_NOT_FOUND", "Zone not found"),
     SLOT_OCCUPIED("SLOT_OCCUPIED", "Slot and tier are already occupied"),
     SLOT_INFEASIBLE("SLOT_INFEASIBLE", "No feasible slot available for this container"),
     YARD_FULL("YARD_FULL", "Yard is at full capacity"),
