@@ -192,3 +192,8 @@ body.yard3d-active-body {
   animation: refresh-spin 1s linear infinite;
   display: inline-block;
 }
+
+/* Used by lucide-react icons for loading states */
+.app-container .animate-spin {
+  animation: refresh-spin 1s linear infinite;
+}

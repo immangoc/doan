@@ -282,31 +282,10 @@ export default function WarehouseLayout({ children }: WarehouseLayoutProps) {
             </div>
 
             <div className="flex items-center gap-4">
-              {/* Search */}
-              <div className="relative hidden md:block">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
-                <input
-                  type="text"
-                  placeholder="Tìm kiếm container..."
-                  className="pl-10 pr-4 py-2 bg-gray-100 dark:bg-gray-700 rounded-lg border-0 focus:ring-2 focus:ring-blue-500 w-64 text-sm"
-                />
-              </div>
-
               {/* Notifications */}
               <div className="flex items-center gap-2">
                 <NotificationsBell />
               </div>
-
-              {/* Chat Toggle (Internal) */}
-              {(userRole === 'admin' || userRole === 'operator') && (
-                <button
-                  onClick={() => window.dispatchEvent(new Event('toggle-chatbox'))}
-                  className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg transition-colors relative"
-                  title="Nhắn tin nội bộ"
-                >
-                  <MessageSquare size={20} className="text-gray-600 dark:text-gray-300" />
-                </button>
-              )}
 
               {/* Quick Action Button */}
               {userRole === 'admin' && (

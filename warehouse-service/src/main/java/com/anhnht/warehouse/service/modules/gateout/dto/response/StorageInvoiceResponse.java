@@ -26,6 +26,10 @@ public class StorageInvoiceResponse {
     private BigDecimal    overduePenalty;
     private BigDecimal    totalFee;
 
+    /** Amount paid at order creation (from the linked order). */
+    private BigDecimal    orderPaidAmount;
+    private Integer       orderId;
+
     private Boolean       isOverdue;
     private Integer       overdueDays;
 

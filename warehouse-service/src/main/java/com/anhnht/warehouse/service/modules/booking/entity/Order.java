@@ -8,6 +8,7 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.Set;
@@ -52,6 +53,12 @@ public class Order extends BaseEntity {
 
     @Column(name = "export_date")
     private LocalDate exportDate;
+
+    @Column(name = "requested_export_date")
+    private LocalDate requestedExportDate;
+
+    @Column(name = "paid_amount", precision = 15, scale = 2)
+    private BigDecimal paidAmount;
 
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(

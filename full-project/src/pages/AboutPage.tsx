@@ -226,7 +226,7 @@ export default function AboutPage() {
             <p className="text-gray-600">Đội ngũ lãnh đạo giàu kinh nghiệm, định hướng chiến lược phát triển bền vững.</p>
           </motion.div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-4xl mx-auto">
             {team.map((member, i) => (
               <motion.div
                 key={member.name}

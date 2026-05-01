@@ -39,10 +39,12 @@ import ManagementSystemPage from './pages/ManagementSystemPage';
 
 // Yard3D module
 import YardApp from './yard3d/YardApp';
+import { Toaster } from './components/ui/sonner';
 
 export default function App() {
   return (
     <WarehouseAuthProvider>
+      <Toaster position="top-right" richColors />
       <Router>
         <Routes>
           {/* Public Website Pages */}

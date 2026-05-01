@@ -10,6 +10,7 @@ import com.anhnht.warehouse.service.modules.booking.entity.BillOfLadingHistory;
 import com.anhnht.warehouse.service.modules.booking.entity.Order;
 import com.anhnht.warehouse.service.modules.booking.entity.OrderCancellation;
 import com.anhnht.warehouse.service.modules.container.entity.Container;
+import org.hibernate.Hibernate;
 import org.mapstruct.AfterMapping;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
@@ -58,5 +59,20 @@ public interface BookingMapper {
                 .map(Container::getGrossWeight)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
         response.setTotalGrossWeight(total.compareTo(BigDecimal.ZERO) == 0 ? null : total);
+
+        // Populate cargoTypeName and containerTypeName from the first container
+        // Use Hibernate.isInitialized() to avoid LazyInitializationException
+        order.getContainers().stream().findFirst().ifPresent(c -> {
+            try {
+                if (c.getCargoType() != null && Hibernate.isInitialized(c.getCargoType())) {
+                    response.setCargoTypeName(c.getCargoType().getCargoTypeName());
+                }
+            } catch (Exception ignored) {}
+            try {
+                if (c.getContainerType() != null && Hibernate.isInitialized(c.getContainerType())) {
+                    response.setContainerTypeName(c.getContainerType().getContainerTypeName());
+                }
+            } catch (Exception ignored) {}
+        });
     }
 }

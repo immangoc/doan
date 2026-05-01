@@ -21,6 +21,10 @@ export default function QuanLyLoaiHang() {
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
 
+  const [openDelete, setOpenDelete] = useState(false);
+  const [deleteItem, setDeleteItem] = useState<CargoType | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
   const fetchData = async () => {
     setLoading(true);
     setError('');
@@ -63,17 +67,32 @@ export default function QuanLyLoaiHang() {
     }
   };
 
-  const handleDelete = async (item: CargoType) => {
-    if (!window.confirm(`Xác nhận xóa "${item.cargoTypeName}"?`)) return;
+  const openDeleteModal = (item: CargoType) => {
+    setDeleteItem(item);
+    setOpenDelete(true);
+  };
+
+  const closeDeleteModal = () => {
+    setOpenDelete(false);
+    setDeleteItem(null);
+  };
+
+  const handleDelete = async () => {
+    if (!deleteItem) return;
+    setDeleting(true);
     try {
-      const res = await fetch(`${API_BASE}/admin/cargo-types/${item.cargoTypeId}`, { method: 'DELETE', headers });
+      const res = await fetch(`${API_BASE}/admin/cargo-types/${deleteItem.cargoTypeId}`, { method: 'DELETE', headers });
       if (!res.ok) {
         const d = await res.json();
         throw new Error(d.message || 'Lỗi xóa');
       }
+      closeDeleteModal();
       fetchData();
     } catch (e: any) {
       setError(e.message || 'Lỗi xóa');
+      closeDeleteModal();
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -110,7 +129,7 @@ export default function QuanLyLoaiHang() {
                       <td>{row.cargoTypeName}</td>
                       <td style={{ display: 'flex', gap: 6 }}>
                         <button type="button" className="btn btn-secondary btn-sm" onClick={() => openEdit(row)}>✏ Sửa</button>
-                        <button type="button" className="btn btn-danger btn-sm" onClick={() => handleDelete(row)}>✕ Xóa</button>
+                        <button type="button" className="btn btn-danger btn-sm" onClick={() => openDeleteModal(row)}>✕ Xóa</button>
                       </td>
                     </tr>
                   ))
@@ -141,6 +160,24 @@ export default function QuanLyLoaiHang() {
             <button type="button" className="btn btn-secondary" onClick={closeModal}>Hủy</button>
             <button type="button" className="btn btn-primary" onClick={handleSave} disabled={saving}>
               {saving ? 'Đang lưu...' : editItem ? 'Cập nhật' : 'Thêm'}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div className={`modal-overlay${openDelete ? ' open' : ''}`} onClick={(e) => e.target === e.currentTarget && closeDeleteModal()}>
+        <div className="modal" style={{ maxWidth: 400 }}>
+          <div className="modal-header">
+            <div className="modal-title">Xác nhận xóa</div>
+            <button type="button" className="modal-close" onClick={closeDeleteModal}>✕</button>
+          </div>
+          <div style={{ padding: '0 24px 24px', color: 'var(--text2)', lineHeight: 1.5 }}>
+            Bạn có chắc chắn muốn xóa loại hàng <b>{deleteItem?.cargoTypeName}</b> không? Thao tác này không thể hoàn tác.
+          </div>
+          <div className="form-actions">
+            <button type="button" className="btn btn-secondary" onClick={closeDeleteModal}>Hủy</button>
+            <button type="button" className="btn btn-danger" onClick={handleDelete} disabled={deleting}>
+              {deleting ? 'Đang xóa...' : 'Xóa'}
             </button>
           </div>
         </div>

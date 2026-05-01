@@ -54,7 +54,7 @@ export async function fetchContainers(
     size = 20,
 ): Promise<PageResult<Container>> {
     const params = new URLSearchParams({ page: String(page), size: String(size) });
-    if (filter.keyword?.trim()) params.set('keyword', filter.keyword.trim());
+    if (filter.keyword?.trim()) params.set('keyword', filter.keyword.trim().replace('#', ''));
     if (filter.statusName?.trim()) params.set('statusName', filter.statusName.trim());
     if (filter.yardName?.trim()) params.set('yardName', filter.yardName.trim());
     if (filter.containerType?.trim()) params.set('containerType', filter.containerType.trim());

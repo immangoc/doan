@@ -257,7 +257,7 @@ function ExportPanel({ onClose }: { onClose: () => void }) {
 
   useEffect(() => { doSearch(''); }, [doSearch]);
   useEffect(() => {
-    const t = setTimeout(() => doSearch(searchCode), 300);
+    const t = setTimeout(() => doSearch(searchCode.replace('#', '')), 300);
     return () => clearTimeout(t);
   }, [searchCode, doSearch]);
 

@@ -26,6 +26,10 @@ public class AdminDashboardResponse {
     private long openAlerts;
     private long criticalAlerts;
 
+    // Financials
+    private java.math.BigDecimal totalRepairCost;
+    private java.math.BigDecimal totalCompensationCost;
+
     // Breakdown lists
     private List<ContainerStatusCountDto> containersByStatus;
     private List<ZoneOccupancyDto>        zoneOccupancy;

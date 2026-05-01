@@ -24,9 +24,19 @@ public class OrderResponse {
 
     private LocalDate importDate;
     private LocalDate exportDate;
+    private LocalDate requestedExportDate;
 
     /** Total gross weight aggregated from linked containers. */
     private BigDecimal totalGrossWeight;
+
+    /** Cargo type name from linked containers. */
+    private String cargoTypeName;
+
+    /** Container type name from linked containers. */
+    private String containerTypeName;
+
+    /** Amount paid at order creation. */
+    private BigDecimal paidAmount;
 
     /** Container IDs linked to this order. */
     private Set<String>   containerIds;

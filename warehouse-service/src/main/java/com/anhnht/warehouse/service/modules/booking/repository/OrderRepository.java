@@ -34,20 +34,24 @@ public interface OrderRepository extends JpaRepository<Order, Integer> {
            "WHERE o.customer.userId = :customerId AND c.status.statusName = 'IN_YARD'")
     List<String> findContainerIdsInYardByCustomerId(@Param("customerId") Integer customerId);
 
-    @EntityGraph(attributePaths = {"customer", "status", "containers"})
-    @Query(value = "SELECT DISTINCT o FROM Order o WHERE " +
+    @EntityGraph(attributePaths = {"customer", "status", "containers", "containers.cargoType", "containers.containerType"})
+    @Query(value = "SELECT DISTINCT o FROM Order o LEFT JOIN o.containers c WHERE " +
                    "(:statusName IS NULL OR o.status.statusName = :statusName) AND " +
                    "(:keyword = '' OR LOWER(o.customerName) LIKE LOWER(CONCAT('%',:keyword,'%')) " +
-                   "OR LOWER(o.email) LIKE LOWER(CONCAT('%',:keyword,'%')))",
-           countQuery = "SELECT COUNT(o) FROM Order o WHERE " +
+                   "OR LOWER(o.email) LIKE LOWER(CONCAT('%',:keyword,'%')) " +
+                   "OR LOWER(c.containerId) LIKE LOWER(CONCAT('%',:keyword,'%')) " +
+                   "OR CAST(o.orderId AS string) LIKE CONCAT('%', REPLACE(:keyword, '#', ''), '%'))",
+           countQuery = "SELECT COUNT(DISTINCT o) FROM Order o LEFT JOIN o.containers c WHERE " +
                         "(:statusName IS NULL OR o.status.statusName = :statusName) AND " +
                         "(:keyword = '' OR LOWER(o.customerName) LIKE LOWER(CONCAT('%',:keyword,'%')) " +
-                        "OR LOWER(o.email) LIKE LOWER(CONCAT('%',:keyword,'%')))")
+                        "OR LOWER(o.email) LIKE LOWER(CONCAT('%',:keyword,'%')) " +
+                        "OR LOWER(c.containerId) LIKE LOWER(CONCAT('%',:keyword,'%')) " +
+                        "OR CAST(o.orderId AS string) LIKE CONCAT('%', REPLACE(:keyword, '#', ''), '%'))")
     Page<Order> findAllFiltered(@Param("statusName") String statusName,
                                 @Param("keyword") String keyword,
                                 Pageable pageable);
 
-    @EntityGraph(attributePaths = {"customer", "status", "containers", "cancellation"})
+    @EntityGraph(attributePaths = {"customer", "status", "containers", "containers.cargoType", "containers.containerType", "cancellation"})
     @Query("SELECT o FROM Order o WHERE o.orderId = :id")
     Optional<Order> findByIdWithDetails(@Param("id") Integer id);
 
@@ -66,6 +70,10 @@ public interface OrderRepository extends JpaRepository<Order, Integer> {
     Optional<Order> findActiveOrderByContainerId(@Param("containerId") String containerId,
                                                   @Param("activeStatuses") List<String> activeStatuses);
 
+    /** Invoice: find all orders for a container, most recent first. */
+    @Query("SELECT o FROM Order o JOIN o.containers c WHERE c.containerId = :containerId ORDER BY o.orderId DESC")
+    List<Order> findOrdersByContainerId(@Param("containerId") String containerId);
+
     /** Validation: count active orders containing this container (excludes terminal statuses). */
     @Query("SELECT COUNT(o) FROM Order o JOIN o.containers c WHERE c.containerId = :containerId " +
            "AND o.status.statusName NOT IN :terminalStatuses")
@@ -77,6 +85,12 @@ public interface OrderRepository extends JpaRepository<Order, Integer> {
            "WHERE c.containerId IN :containerIds AND o.status.statusName NOT IN :terminalStatuses")
     List<String> findContainerIdsInActiveOrders(@Param("containerIds") List<String> containerIds,
                                                 @Param("terminalStatuses") List<String> terminalStatuses);
+
+    @Query("SELECT c.containerId, MAX(o.orderId) FROM Order o JOIN o.containers c " +
+           "WHERE c.containerId IN :containerIds AND o.status.statusName NOT IN :terminalStatuses " +
+           "GROUP BY c.containerId")
+    List<Object[]> findActiveOrderIdsForContainers(@Param("containerIds") List<String> containerIds,
+                                                   @Param("terminalStatuses") List<String> terminalStatuses);
 
     /** Hard-delete support: remove a container from ALL orders in order_container join table. */
     @Modifying

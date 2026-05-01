@@ -20,6 +20,9 @@ type OrderItem = {
   statusName: string;
   note?: string;
   createdAt?: string;
+  importDate?: string;
+  exportDate?: string;
+  requestedExportDate?: string;
   containerIds?: string[];
   cancellation?: { cancellationId: number; reason?: string; createdAt?: string } | null;
 };
@@ -42,24 +45,40 @@ type BillHistoryItem = {
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING:          'Chờ duyệt',
-  APPROVED:         'Chờ checkin',
-  WAITING_CHECKIN:  'Chờ nhập kho',
-  LATE_CHECKIN:     'Trễ checkin',
+  APPROVED:         'Chờ check-in',
+  WAITING_CHECKIN:  'Chờ check-in',
+  LATE_CHECKIN:     'Trễ check-in',
   READY_FOR_IMPORT: 'Chờ nhập kho',
-  IMPORTED:         'Đã nhập kho',
-  STORED:           'Đã nhập kho',
+  IMPORTED:         'Đang lưu kho',
+  STORED:           'Đang lưu kho',
   EXPORTED:         'Đã xuất',
   REJECTED:         'Từ chối',
-  CANCEL_REQUESTED: 'Duyệt sửa',
+  CANCEL_REQUESTED: 'Yêu cầu hủy',
   CANCELLED:        'Đã hủy',
+  EDIT_REQUESTED:   'Chờ duyệt sửa',
+  EDIT_APPROVED:    'Đã duyệt sửa',
+  EDIT_REJECTED:    'Không duyệt sửa',
+  DAMAGED:          'Đang hỏng',
+  REPAIRED:         'Đã sửa',
 };
 
 const STATUS_CLASS: Record<string, string> = {
   PENDING:          'bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200',
   APPROVED:         'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200',
+  WAITING_CHECKIN:  'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-200',
+  LATE_CHECKIN:     'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200',
+  READY_FOR_IMPORT: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-200',
+  IMPORTED:         'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-200',
+  STORED:           'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-200',
+  EXPORTED:         'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-200',
   REJECTED:         'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200',
   CANCEL_REQUESTED: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-200',
   CANCELLED:        'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+  EDIT_REQUESTED:   'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-200',
+  EDIT_APPROVED:    'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200',
+  EDIT_REJECTED:    'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200',
+  DAMAGED:          'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200',
+  REPAIRED:         'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200',
 };
 
 const ALL_STATUSES = Object.keys(STATUS_LABELS);
@@ -103,6 +122,10 @@ export default function AdminOrdersSection() {
   const [billNote, setBillNote] = useState('');
   const [billStatusName, setBillStatusName] = useState('ISSUED');
   const [billStatusDesc, setBillStatusDesc] = useState('');
+
+  // Edit Approval dialog
+  const [openEditApproval, setOpenEditApproval] = useState(false);
+  const [editApprovalTarget, setEditApprovalTarget] = useState<OrderItem | null>(null);
 
   const fetchOrders = async (p = 0, status = statusFilter, kw = keyword) => {
     setLoading(true);
@@ -169,6 +192,26 @@ export default function AdminOrdersSection() {
       if (!res.ok) throw new Error(data.message || 'Lỗi từ chối đơn');
       setOpenReject(false);
       setRejectTarget(null);
+      await fetchOrders(page);
+    } catch (e: any) { alert(e.message); }
+  };
+
+  const openEditApprovalDialog = (o: OrderItem) => {
+    setEditApprovalTarget(o);
+    setOpenEditApproval(true);
+  };
+
+  const submitEditApproval = async (approve: boolean) => {
+    if (!editApprovalTarget) return;
+    try {
+      const action = approve ? 'approve-edit' : 'reject-edit';
+      const res = await fetch(`${apiUrl}/admin/orders/${editApprovalTarget.orderId}/${action}`, {
+        method: 'PUT', headers,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || 'Lỗi xử lý yêu cầu sửa');
+      setOpenEditApproval(false);
+      setEditApprovalTarget(null);
       await fetchOrders(page);
     } catch (e: any) { alert(e.message); }
   };
@@ -281,7 +324,7 @@ export default function AdminOrdersSection() {
             <p className="mt-1 text-3xl font-semibold text-amber-600">{counts.pending}</p>
           </CardContent></Card>
           <Card><CardContent className="pt-5">
-            <p className="text-sm text-gray-500">Chờ checkin</p>
+            <p className="text-sm text-gray-500">Chờ check-in</p>
             <p className="mt-1 text-3xl font-semibold text-green-600">{counts.approved}</p>
           </CardContent></Card>
           <Card><CardContent className="pt-5">
@@ -332,14 +375,14 @@ export default function AdminOrdersSection() {
                       <TableHead>Liên hệ</TableHead>
                       <TableHead>Trạng thái</TableHead>
                       <TableHead>Ngày tạo</TableHead>
-                      <TableHead>Containers</TableHead>
+                      <TableHead>Mã container</TableHead>
                       <TableHead className="text-right">Thao tác</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {orders.map((o, idx) => (
                       <TableRow key={o.orderId}>
-                        <TableCell className="font-mono text-xs font-semibold">#{idx + 1}</TableCell>
+                        <TableCell className="font-mono text-xs font-semibold">#{o.orderId}</TableCell>
                         <TableCell>
                           <div className="font-semibold">{o.customerName}</div>
                           {o.address && <div className="text-xs text-gray-500">{o.address}</div>}
@@ -359,8 +402,8 @@ export default function AdminOrdersSection() {
                         <TableCell className="text-sm text-gray-500 whitespace-nowrap">
                           {o.createdAt ? new Date(o.createdAt).toLocaleDateString('vi-VN') : '—'}
                         </TableCell>
-                        <TableCell className="text-xs text-gray-500">
-                          {o.containerIds?.length ? o.containerIds.slice(0, 3).join(', ') + (o.containerIds.length > 3 ? '…' : '') : '—'}
+                        <TableCell className="text-xs text-gray-500" style={{ maxWidth: 150, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={o.containerIds?.join(', ')}>
+                          {o.containerIds?.join(', ') || '—'}
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="inline-flex gap-1">
@@ -392,6 +435,15 @@ export default function AdminOrdersSection() {
                             >
                               <RefreshCw className="w-4 h-4" />
                             </Button>
+                            {o.statusName === 'EDIT_REQUESTED' && (
+                              <Button
+                                variant="destructive" size="sm"
+                                className="ml-2"
+                                onClick={() => openEditApprovalDialog(o)}
+                              >
+                                Duyệt sửa
+                              </Button>
+                            )}
                             <Button
                               variant="ghost" size="sm"
                               className="text-blue-700 hover:bg-blue-50"
@@ -560,6 +612,41 @@ export default function AdminOrdersSection() {
             )}
             <DialogFooter>
               <Button variant="outline" onClick={() => setOpenBill(false)}>Đóng</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Edit Approval dialog */}
+        <Dialog open={openEditApproval} onOpenChange={(o) => { setOpenEditApproval(o); if (!o) setEditApprovalTarget(null); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Duyệt yêu cầu sửa ngày xuất kho</DialogTitle>
+              <DialogDescription>
+                Khách hàng yêu cầu đổi ngày xuất kho cho đơn #{editApprovalTarget?.orderId}.
+              </DialogDescription>
+            </DialogHeader>
+            {editApprovalTarget && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4 text-sm">
+                  <div className="bg-gray-50 p-3 rounded-md">
+                    <div className="text-gray-500 mb-1">Ngày xuất hiện tại:</div>
+                    <div className="font-semibold text-gray-900">{editApprovalTarget.exportDate || '—'}</div>
+                  </div>
+                  <div className="bg-indigo-50 p-3 rounded-md border border-indigo-100">
+                    <div className="text-indigo-600 mb-1">Ngày xuất yêu cầu:</div>
+                    <div className="font-bold text-indigo-900">{editApprovalTarget.requestedExportDate || '—'}</div>
+                  </div>
+                </div>
+                <div className="text-sm text-gray-600 bg-amber-50 p-3 rounded border border-amber-200">
+                  <AlertCircle className="w-4 h-4 inline-block mr-1 text-amber-600" />
+                  Bạn có chắc chắn muốn duyệt yêu cầu đổi ngày xuất kho này không?
+                </div>
+              </div>
+            )}
+            <DialogFooter className="flex gap-2">
+              <Button variant="outline" onClick={() => setOpenEditApproval(false)}>Hủy</Button>
+              <Button className="bg-red-600 hover:bg-red-700 text-white" onClick={() => submitEditApproval(false)}>Không duyệt</Button>
+              <Button className="bg-green-600 hover:bg-green-700 text-white" onClick={() => submitEditApproval(true)}>Duyệt sửa</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

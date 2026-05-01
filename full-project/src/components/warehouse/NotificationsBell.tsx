@@ -3,6 +3,7 @@ import { Bell, CheckCircle2, Clock, X } from 'lucide-react';
 import { useWarehouseAuth, API_BASE } from '../../contexts/WarehouseAuthContext';
 import { Button } from '../ui/button';
 import { Badge } from '../ui/badge';
+import { toast } from 'sonner';
 
 type Notification = {
   id: number;
@@ -78,18 +79,46 @@ export default function NotificationsBell() {
 
   const buttonRef = useRef<HTMLButtonElement | null>(null);
   const panelRef = useRef<HTMLDivElement | null>(null);
+  const toastedIds = useRef<Set<number>>(new Set());
 
   const headers = useMemo(() => ({
     'Content-Type': 'application/json',
     ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
   }), [accessToken]);
 
-  const fetchUnreadCount = useCallback(async () => {
+  const markRead = async (n: Notification | number) => {
+    const id = typeof n === 'number' ? n : n.id;
+    if (typeof n !== 'number' && n.read) return;
+    try {
+      await fetch(`${API_BASE}/notifications/${id}/read`, { method: 'PUT', headers });
+      setNotifications((prev) => prev.map((x) => (x.id === id ? { ...x, read: true } : x)));
+      setUnreadCount((c) => Math.max(0, c - 1));
+    } catch {
+      // ignore
+    }
+  };
+
+  const fetchUnreadAndToast = useCallback(async () => {
     if (!accessToken) return;
     try {
-      const res = await fetch(`${API_BASE}/notifications/unread-count`, { headers });
+      const res = await fetch(`${API_BASE}/notifications/my?page=0&size=10&sort=createdAt,desc`, { headers });
       const d = await res.json();
-      if (res.ok) setUnreadCount(d.data ?? 0);
+      if (!res.ok) return;
+      
+      const raw = (d.data?.content || d.data || []) as BackendNotification[];
+      const unread = raw.filter(n => n.isRead === false && n.notificationId);
+      
+      // Update unread count based on actual response or another endpoint
+      // To be safe, we also fetch the precise count
+      const countRes = await fetch(`${API_BASE}/notifications/unread-count`, { headers });
+      const countData = await countRes.json();
+      if (countRes.ok) setUnreadCount(countData.data ?? 0);
+      
+      // Do not popup floating toasts for background notifications
+      // User requested them to only appear in the dropdown menu
+      const latestIds = new Set(unread.map(n => n.notificationId!));
+      toastedIds.current = latestIds;
+      
     } catch {
       // ignore
     }
@@ -119,23 +148,23 @@ export default function NotificationsBell() {
     }
   }, [headers, accessToken]);
 
-  // Poll unread count every 10 seconds
+  // Poll for new notifications every 10 seconds
   useEffect(() => {
     if (!accessToken) return;
-    fetchUnreadCount();
-    const id = setInterval(fetchUnreadCount, 10000);
+    fetchUnreadAndToast();
+    const id = setInterval(fetchUnreadAndToast, 10000);
     return () => clearInterval(id);
-  }, [fetchUnreadCount, accessToken]);
+  }, [fetchUnreadAndToast, accessToken]);
 
-  // Listen for approve/reject events to refresh immediately
+  // Listen for manual trigger (if needed elsewhere)
   useEffect(() => {
     const handler = () => {
-      fetchUnreadCount();
+      fetchUnreadAndToast();
       if (open) fetchNotifications();
     };
     window.addEventListener('wms:notification-refresh', handler);
     return () => window.removeEventListener('wms:notification-refresh', handler);
-  }, [open, fetchUnreadCount, fetchNotifications]);
+  }, [open, fetchUnreadAndToast, fetchNotifications]);
 
   useEffect(() => {
     if (!open) return;
@@ -146,17 +175,6 @@ export default function NotificationsBell() {
     if (onlyUnread) return notifications.filter((n) => !n.read);
     return notifications;
   }, [notifications, onlyUnread]);
-
-  const markRead = async (n: Notification) => {
-    if (n.read) return;
-    try {
-      await fetch(`${API_BASE}/notifications/${n.id}/read`, { method: 'PUT', headers });
-      setNotifications((prev) => prev.map((x) => (x.id === n.id ? { ...x, read: true } : x)));
-      setUnreadCount((c) => Math.max(0, c - 1));
-    } catch {
-      // ignore
-    }
-  };
 
   const markAllRead = async () => {
     try {

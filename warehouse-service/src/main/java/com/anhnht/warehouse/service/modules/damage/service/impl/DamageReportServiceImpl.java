@@ -69,6 +69,10 @@ public class DamageReportServiceImpl implements DamageReportService {
     private final OptimizationService                optimizationService;
     private final ObjectMapper                       objectMapper;
     private final StackingRelocationHelper           stackingHelper;
+    private final com.anhnht.warehouse.service.modules.wallet.service.WalletService walletService;
+    private final com.anhnht.warehouse.service.modules.alert.service.NotificationService notificationService;
+    private final com.anhnht.warehouse.service.modules.booking.repository.OrderRepository orderRepository;
+    private final com.anhnht.warehouse.service.modules.booking.repository.OrderStatusRepository orderStatusRepository;
 
     // ─── Pha 1 ──────────────────────────────────────────────────────────────
 
@@ -98,9 +102,27 @@ public class DamageReportServiceImpl implements DamageReportService {
         container.setStatus(statusRepository.findByStatusName(CTN_DAMAGED_PENDING)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
                         "Status DAMAGED_PENDING chưa được seed")));
+        // Clear container repair info to avoid leaking from past damage reports
+        container.setRepairStatus(null);
+        container.setRepairDate(null);
+        container.setRepairCost(null);
+        container.setCompensationCost(null);
+        container.setCompensationRefunded(false);
+        container.setCompensationRefundedAt(null);
+        
         containerRepository.save(container);
 
+        // ★ Cập nhật trạng thái đơn hàng sang DAMAGED ngay khi báo hỏng
+        List<com.anhnht.warehouse.service.modules.booking.entity.Order> allOrders = orderRepository.findOrdersByContainerId(req.getContainerId());
+        for (com.anhnht.warehouse.service.modules.booking.entity.Order o : allOrders) {
+            if (!List.of("CANCELLED", "REJECTED", "EXPORTED").contains(o.getStatus().getStatusName())) {
+                orderStatusRepository.findByStatusNameIgnoreCase("DAMAGED").ifPresent(o::setStatus);
+                orderRepository.save(o);
+            }
+        }
+
         log.info("[Damage] reported container={} reportId={}", container.getContainerId(), report.getReportId());
+
         return toResponse(report);
     }
 
@@ -188,21 +210,23 @@ public class DamageReportServiceImpl implements DamageReportService {
             executeMove(move, report);
         }
 
-        // Cập nhật trạng thái + thông tin sửa chữa & hoàn tiền
+        // Cập nhật trạng thái
         Container container = report.getContainer();
         container.setStatus(statusRepository.findByStatusName(CTN_DAMAGED)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND,
                         "Status DAMAGED chưa được seed")));
         if (container.getRepairStatus() == null) container.setRepairStatus("PENDING");
 
-        if (req != null) {
-            if (req.getExpectedRepairDate() != null) {
-                container.setRepairDate(req.getExpectedRepairDate().atStartOfDay());
-            }
-            if (req.getCompensationCost() != null) {
-                container.setCompensationCost(req.getCompensationCost());
+        // Update order status to DAMAGED
+        List<com.anhnht.warehouse.service.modules.booking.entity.Order> allOrders = orderRepository.findOrdersByContainerId(containerId);
+        for (com.anhnht.warehouse.service.modules.booking.entity.Order o : allOrders) {
+            if (!List.of("CANCELLED", "REJECTED", "EXPORTED").contains(o.getStatus().getStatusName())) {
+                orderStatusRepository.findByStatusNameIgnoreCase("DAMAGED").ifPresent(o::setStatus);
+                orderRepository.save(o);
             }
         }
+        
+        // Save container
         containerRepository.save(container);
 
         // Cập nhật yard_storage record để trỏ về Kho hỏng (không thì trang Kho.tsx vẫn thấy yard cũ)
@@ -254,6 +278,15 @@ public class DamageReportServiceImpl implements DamageReportService {
         container.setStatus(statusRepository.findByStatusName(CTN_IN_YARD)
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "Status IN_YARD missing")));
         containerRepository.save(container);
+
+        // ★ Khôi phục trạng thái đơn hàng về STORED khi huỷ báo hỏng
+        List<com.anhnht.warehouse.service.modules.booking.entity.Order> allOrders = orderRepository.findOrdersByContainerId(containerId);
+        for (com.anhnht.warehouse.service.modules.booking.entity.Order o : allOrders) {
+            if ("DAMAGED".equalsIgnoreCase(o.getStatus().getStatusName())) {
+                orderStatusRepository.findByStatusNameIgnoreCase("STORED").ifPresent(o::setStatus);
+                orderRepository.save(o);
+            }
+        }
 
         return toResponse(report);
     }
@@ -345,6 +378,15 @@ public class DamageReportServiceImpl implements DamageReportService {
                 .orElseThrow(() -> new BusinessException(ErrorCode.NOT_FOUND, "Status IN_YARD missing")));
         containerRepository.save(container);
 
+        // Update order status to REPAIRED
+        List<com.anhnht.warehouse.service.modules.booking.entity.Order> allOrders = orderRepository.findOrdersByContainerId(containerId);
+        for (com.anhnht.warehouse.service.modules.booking.entity.Order o : allOrders) {
+            if (!List.of("CANCELLED", "REJECTED", "EXPORTED").contains(o.getStatus().getStatusName())) {
+                orderStatusRepository.findByStatusNameIgnoreCase("REPAIRED").ifPresent(o::setStatus);
+                orderRepository.save(o);
+            }
+        }
+
         // Cập nhật yard_storage trỏ về yard mới
         positionRepository.findByContainerContainerId(containerId).ifPresent(pos -> {
             var yard = pos.getSlot().getBlock().getZone().getYard();
@@ -359,8 +401,44 @@ public class DamageReportServiceImpl implements DamageReportService {
         if (report != null) {
             report.setReportStatus(STATUS_RETURNED);
             report.setCompletedAt(LocalDateTime.now());
+            
+            // Hoàn tiền vào ví
+            if (report.getCompensationCost() != null 
+                && report.getCompensationCost().compareTo(java.math.BigDecimal.ZERO) > 0
+                && !Boolean.TRUE.equals(report.getCompensationRefunded())
+                && container.getOwner() != null 
+                && container.getOwner().getUserId() != null) {
+                
+                Integer ownerId = container.getOwner().getUserId();
+                java.math.BigDecimal amount = report.getCompensationCost();
+                String note = String.format("Hoàn tiền đền bù chậm lịch trình cho container %s", container.getContainerId());
+                walletService.creditWalletForRefund(ownerId, amount, note);
+                
+                report.setCompensationRefunded(true);
+                report.setCompensationRefundedAt(LocalDateTime.now());
+                try {
+                    notificationService.notify(
+                            "Đã hoàn tiền đền bù container chậm lịch",
+                            String.format("Container %s gặp sự cố và bị chậm lịch trình. Số tiền %s VND đã được hoàn vào ví của bạn.",
+                                    container.getContainerId(),
+                                    amount.stripTrailingZeros().toPlainString()),
+                            ownerId);
+                } catch (Exception e) {
+                    log.warn("[Damage] container={} notify owner failed: {}", container.getContainerId(), e.getMessage());
+                }
+            }
+            
             reportRepository.save(report);
         }
+
+        // Clear repair info from container to prevent leak to future damage reports
+        container.setRepairStatus(null);
+        container.setRepairDate(null);
+        container.setRepairCost(null);
+        container.setCompensationCost(null);
+        container.setCompensationRefunded(false);
+        container.setCompensationRefundedAt(null);
+        containerRepository.save(container);
 
         // History
         ContainerPositionHistory hist = new ContainerPositionHistory();
@@ -444,6 +522,17 @@ public class DamageReportServiceImpl implements DamageReportService {
                 ? c.getGrossWeight().stripTrailingZeros().toPlainString() + " kg"
                 : null;
 
+        java.time.LocalDate exitDate = storageRepository.findExpectedExitDate(c.getContainerId()).orElse(null);
+        if (exitDate == null) {
+            List<com.anhnht.warehouse.service.modules.booking.entity.Order> orders = orderRepository.findOrdersByContainerId(c.getContainerId());
+            if (!orders.isEmpty()) {
+                exitDate = orders.get(0).getExportDate();
+                if (exitDate == null) {
+                    exitDate = orders.get(0).getRequestedExportDate();
+                }
+            }
+        }
+
         return DamageReportResponse.builder()
                 .reportId(r.getReportId())
                 .containerId(c.getContainerId())
@@ -462,11 +551,13 @@ public class DamageReportServiceImpl implements DamageReportService {
                 .reportedAt(r.getReportedAt())
                 .reportStatus(r.getReportStatus())
                 .completedAt(r.getCompletedAt())
-                .repairStatus(c.getRepairStatus())
-                .repairDate(c.getRepairDate())
-                .compensationCost(c.getCompensationCost())
-                .compensationRefunded(c.getCompensationRefunded())
-                .compensationRefundedAt(c.getCompensationRefundedAt())
+                .expectedExitDate(exitDate)
+                .repairStatus(r.getRepairStatus() != null ? r.getRepairStatus() : c.getRepairStatus())
+                .repairDate(r.getRepairDate() != null ? r.getRepairDate() : c.getRepairDate())
+                .repairCost(r.getRepairCost() != null ? r.getRepairCost() : c.getRepairCost())
+                .compensationCost(r.getCompensationCost() != null ? r.getCompensationCost() : c.getCompensationCost())
+                .compensationRefunded(r.getCompensationRefunded() != null ? r.getCompensationRefunded() : c.getCompensationRefunded())
+                .compensationRefundedAt(r.getCompensationRefundedAt() != null ? r.getCompensationRefundedAt() : c.getCompensationRefundedAt())
                 .build();
     }
 

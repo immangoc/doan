@@ -959,7 +959,7 @@ function ExportPanel2D({ onClose, onDone }: { onClose: () => void; onDone: () =>
 
   const today = new Date().toISOString().split('T')[0];
   const containers = allContainers.filter((c) => {
-    if (keyword.trim() && !c.containerCode.toLowerCase().includes(keyword.toLowerCase())) return false;
+    if (keyword.trim() && !(`${c.containerCode} ${c.orderId ?? ''}`.toLowerCase().includes(keyword.trim().toLowerCase().replace('#', '')))) return false;
     if (showAll) return true;
     if (!c.expectedExitDate) return false;
     return c.expectedExitDate <= today;
@@ -1008,6 +1008,7 @@ function ExportPanel2D({ onClose, onDone }: { onClose: () => void; onDone: () =>
             <FileText size={18} /> Xuất kho thành công!
           </div>
           {([
+            ...(invoice.orderId ? [['Đơn hàng #', String(invoice.orderId), false]] : []),
             ['Hóa đơn #', String(invoice.invoiceId), false],
             ['Mã container', invoice.containerCode, false],
             ['Loại hàng', invoice.cargoType, false],
@@ -1020,7 +1021,7 @@ function ExportPanel2D({ onClose, onDone }: { onClose: () => void; onDone: () =>
             ...(invoice.isOverdue
               ? [[`Phí trễ hạn (${invoice.overdueDays} ngày)`, invoice.overduePenalty, false] as [string, string, boolean]]
               : []),
-            ['Tổng cộng', invoice.totalAmount, true],
+            ['Tổng tiền đơn hàng', invoice.totalAmount, true],
           ] as [string, string, boolean][]).map(([label, value, total]) => (
             <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #f1f5f9', fontSize: total ? '0.92rem' : '0.82rem' }}>
               <span style={{ color: total ? '#0f172a' : '#64748b', fontWeight: total ? 700 : 400 }}>{label}</span>

@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { AlertCircle, RefreshCw, RotateCcw, Shield, KeyRound, FileText, Bell } from 'lucide-react';
+import { toast } from 'sonner';
 import WarehouseLayout from '../../../../components/warehouse/WarehouseLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/card';
 import { Button } from '../../../../components/ui/button';
@@ -190,7 +191,7 @@ export default function AdminAccountMergedSection() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Lỗi cập nhật thông tin');
       await fetchAll();
-      alert('Cập nhật thông tin thành công');
+      toast.success('Cập nhật thông tin thành công');
     } catch (e: any) {
       setError(e.message || 'Lỗi không xác định');
     } finally {
@@ -213,9 +214,9 @@ export default function AdminAccountMergedSection() {
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
-      alert('Đổi mật khẩu thành công');
+      toast.success('Đổi mật khẩu thành công');
     } catch (e: any) {
-      alert(e.message || 'Lỗi không xác định');
+      toast.error(e.message || 'Lỗi không xác định');
     } finally {
       setChangingPwd(false);
     }
@@ -227,7 +228,7 @@ export default function AdminAccountMergedSection() {
       localStorage.setItem('ht_ui_theme', prefs.theme || 'light');
       localStorage.setItem('ht_ui_lang', prefs.language || 'vi');
       localStorage.setItem('ht_ui_notif', JSON.stringify(prefs.notifications || {}));
-      alert('Cập nhật tuỳ chọn hiển thị & thông báo thành công');
+      toast.success('Cập nhật tuỳ chọn hiển thị & thông báo thành công');
     } catch {
       // ignore storage errors
     } finally {

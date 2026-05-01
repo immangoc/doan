@@ -33,6 +33,13 @@ public class OrderController {
     // Customer endpoints
     // ============================================================
 
+    @PostMapping("/orders/preview-fee")
+    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','OPERATOR')")
+    public ResponseEntity<ApiResponse<com.anhnht.warehouse.service.modules.booking.dto.response.FeePreviewResponse>> previewFee(
+            @Valid @RequestBody OrderRequest request) {
+        return ResponseEntity.ok(ApiResponse.success(orderService.previewFee(request)));
+    }
+
     @PostMapping("/orders")
     @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','OPERATOR')")
     public ResponseEntity<ApiResponse<OrderResponse>> createOrder(
@@ -96,6 +103,16 @@ public class OrderController {
         Integer customerId = SecurityUtils.getCurrentUserId();
         return ResponseEntity.ok(ApiResponse.success(
                 orderService.changeExportDate(id, customerId, request)));
+    }
+
+    @PutMapping("/orders/{id}/edit-request")
+    @PreAuthorize("hasAnyRole('CUSTOMER','ADMIN','OPERATOR')")
+    public ResponseEntity<ApiResponse<OrderResponse>> requestEditExportDate(
+            @PathVariable Integer id,
+            @Valid @RequestBody OrderExportDateUpdateRequest request) {
+        Integer customerId = SecurityUtils.getCurrentUserId();
+        return ResponseEntity.ok(ApiResponse.success(
+                bookingMapper.toOrderResponse(orderService.requestEditExportDate(id, customerId, request.getNewExportDate()))));
     }
 
     // ============================================================
@@ -176,6 +193,20 @@ public class OrderController {
     public ResponseEntity<ApiResponse<OrderResponse>> approveCancellation(@PathVariable Integer id) {
         return ResponseEntity.ok(ApiResponse.success(
                 bookingMapper.toOrderResponse(orderService.approveCancellation(id))));
+    }
+
+    @PutMapping("/admin/orders/{id}/approve-edit")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    public ResponseEntity<ApiResponse<OrderResponse>> approveEditRequest(@PathVariable Integer id) {
+        return ResponseEntity.ok(ApiResponse.success(
+                bookingMapper.toOrderResponse(orderService.approveEditRequest(id))));
+    }
+
+    @PutMapping("/admin/orders/{id}/reject-edit")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    public ResponseEntity<ApiResponse<OrderResponse>> rejectEditRequest(@PathVariable Integer id) {
+        return ResponseEntity.ok(ApiResponse.success(
+                bookingMapper.toOrderResponse(orderService.rejectEditRequest(id))));
     }
 
     /**

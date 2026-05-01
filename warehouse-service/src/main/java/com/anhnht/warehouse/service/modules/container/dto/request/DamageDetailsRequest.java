@@ -17,4 +17,6 @@ public class DamageDetailsRequest {
     private LocalDateTime repairDate;
 
     private BigDecimal compensationCost;
+
+    private BigDecimal repairCost;
 }

@@ -91,6 +91,12 @@ public class ContainerController {
                             row -> (String) row[0],
                             row -> (LocalDate) row[1]));
 
+            Map<String, Integer> activeOrderMap = orderRepository
+                    .findActiveOrderIdsForContainers(ids, TERMINAL_STATUSES).stream()
+                    .collect(Collectors.toMap(
+                            row -> (String) row[0],
+                            row -> (Integer) row[1]));
+
             responsePage.getContent().forEach(r -> {
                 ContainerPosition cp = posMap.get(r.getContainerId());
                 if (cp != null && cp.getSlot() != null) {
@@ -111,6 +117,8 @@ public class ContainerController {
                     }
                 }
                 r.setExpectedExitDate(expectedExitMap.get(r.getContainerId()));
+                r.setActiveOrderId(activeOrderMap.get(r.getContainerId()));
+                r.setInActiveOrder(r.getActiveOrderId() != null);
                 // For gated-out containers, fill position from snapshot on GateOutReceipt
                 GateOutReceipt g = gateOutMap.get(r.getContainerId());
                 if (g != null) {

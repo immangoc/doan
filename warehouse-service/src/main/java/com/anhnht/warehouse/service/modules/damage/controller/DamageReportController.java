@@ -77,7 +77,7 @@ public class DamageReportController {
     @Operation(summary = "Huỷ báo hỏng",
                description = "Chỉ áp dụng khi report còn PENDING. Container trở về IN_YARD.")
     @DeleteMapping("/{containerId}")
-    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR')")
+    @PreAuthorize("hasAnyRole('ADMIN','OPERATOR','YARD_STAFF')")
     public ResponseEntity<ApiResponse<DamageReportResponse>> cancel(@PathVariable String containerId) {
         return ResponseEntity.ok(ApiResponse.success(damageService.cancel(containerId)));
     }

@@ -30,13 +30,15 @@ public interface ContainerRepository extends JpaRepository<Container, String> {
 
     @EntityGraph(attributePaths = {"containerType", "status", "cargoType", "attribute", "manifest"})
     @Query(value = "SELECT c FROM Container c WHERE " +
-                   "(:keyword = '' OR LOWER(c.containerId) LIKE LOWER(CONCAT('%',:keyword,'%'))) AND " +
+                   "(:keyword = '' OR LOWER(c.containerId) LIKE LOWER(CONCAT('%',:keyword,'%')) OR " +
+                   "EXISTS (SELECT 1 FROM Order o JOIN o.containers oc WHERE oc.containerId = c.containerId AND CAST(o.orderId AS string) LIKE CONCAT('%',:keyword,'%'))) AND " +
                    "(:statusName = '' OR c.status.statusName = :statusName) AND " +
                    "(:yardName = '' OR EXISTS (" +
                    "  SELECT 1 FROM ContainerPosition cp WHERE cp.container.containerId = c.containerId " +
                    "  AND cp.slot.block.zone.yard.yardName = :yardName))",
            countQuery = "SELECT COUNT(c) FROM Container c WHERE " +
-                        "(:keyword = '' OR LOWER(c.containerId) LIKE LOWER(CONCAT('%',:keyword,'%'))) AND " +
+                        "(:keyword = '' OR LOWER(c.containerId) LIKE LOWER(CONCAT('%',:keyword,'%')) OR " +
+                        "EXISTS (SELECT 1 FROM Order o JOIN o.containers oc WHERE oc.containerId = c.containerId AND CAST(o.orderId AS string) LIKE CONCAT('%',:keyword,'%'))) AND " +
                         "(:statusName = '' OR c.status.statusName = :statusName) AND " +
                         "(:yardName = '' OR EXISTS (" +
                         "  SELECT 1 FROM ContainerPosition cp WHERE cp.container.containerId = c.containerId " +
@@ -91,4 +93,10 @@ public interface ContainerRepository extends JpaRepository<Container, String> {
     long countEligibleByOwner(@Param("customerId") Integer customerId,
                               @Param("terminalStatuses") List<String> terminalStatuses,
                               @Param("exceptOrderId") int exceptOrderId);
+
+    @Query("SELECT SUM(c.repairCost) FROM Container c")
+    java.math.BigDecimal sumRepairCost();
+
+    @Query("SELECT SUM(c.compensationCost) FROM Container c")
+    java.math.BigDecimal sumCompensationCost();
 }

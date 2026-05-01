@@ -5,10 +5,12 @@ import com.anhnht.warehouse.service.modules.booking.dto.request.OrderRequest;
 import com.anhnht.warehouse.service.modules.booking.dto.request.OrderStatusUpdateRequest;
 import com.anhnht.warehouse.service.modules.booking.dto.request.OrderExportDateUpdateRequest;
 import com.anhnht.warehouse.service.modules.booking.dto.request.OrderUpdateRequest;
+import com.anhnht.warehouse.service.modules.booking.dto.response.FeePreviewResponse;
 import com.anhnht.warehouse.service.modules.booking.dto.response.OrderExportDateFeeResponse;
 import com.anhnht.warehouse.service.modules.booking.entity.Order;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import java.time.LocalDate;
 
 public interface OrderService {
 
@@ -19,6 +21,9 @@ public interface OrderService {
     Page<Order> findMyOrders(Integer customerId, Pageable pageable);
 
     Order findById(Integer orderId);
+
+    /** Preview fee for an order based on tariffs. */
+    FeePreviewResponse previewFee(OrderRequest request);
 
     /** Customer creates a new booking (status = PENDING). */
     Order create(Integer customerId, OrderRequest request);
@@ -54,6 +59,15 @@ public interface OrderService {
 
     /** Admin/Operator approves a customer's cancellation request → CANCELLED. */
     Order approveCancellation(Integer orderId);
+
+    /** Customer requests to change export date. */
+    Order requestEditExportDate(Integer orderId, Integer customerId, LocalDate newExportDate);
+
+    /** Admin approves edit request. */
+    Order approveEditRequest(Integer orderId);
+
+    /** Admin rejects edit request. */
+    Order rejectEditRequest(Integer orderId);
 
     /** Admin/Operator force-cancels any non-cancelled order → CANCELLED. */
     Order adminCancel(Integer orderId, String reason);

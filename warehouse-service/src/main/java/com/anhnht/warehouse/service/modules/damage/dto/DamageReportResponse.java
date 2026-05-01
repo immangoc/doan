@@ -31,10 +31,14 @@ public class DamageReportResponse {
     private LocalDateTime reportedAt;
     private String        reportStatus;       // PENDING / RELOCATING / STORED / CANCELLED
     private LocalDateTime completedAt;
+    
+    // Derived from active order
+    private java.time.LocalDate expectedExitDate;
 
     // Repair / compensation info (set in Pha 2 hoặc khi cập nhật sau)
     private String        repairStatus;
     private LocalDateTime repairDate;
+    private java.math.BigDecimal repairCost;
     private java.math.BigDecimal compensationCost;
     private Boolean       compensationRefunded;
     private LocalDateTime compensationRefundedAt;

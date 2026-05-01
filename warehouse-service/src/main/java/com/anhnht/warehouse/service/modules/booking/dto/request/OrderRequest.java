@@ -35,4 +35,5 @@ public class OrderRequest {
 
     private LocalDate importDate;
     private LocalDate exportDate;
+    private Boolean confirmPayment;
 }

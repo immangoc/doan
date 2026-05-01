@@ -4,11 +4,13 @@ import {
   AlertTriangle,
   ArrowDownToLine,
   ArrowUpFromLine,
+  Banknote,
   Bell,
   Box,
   ClipboardList,
   RefreshCw,
   Timer,
+  Wallet,
 } from 'lucide-react';
 import WarehouseLayout from '../../../../components/warehouse/WarehouseLayout';
 import { Card, CardContent, CardHeader, CardTitle } from '../../../../components/ui/card';
@@ -45,6 +47,8 @@ type AdminDashboard = {
   totalOrders: number;
   openAlerts: number;
   criticalAlerts: number;
+  totalRepairCost: number;
+  totalCompensationCost: number;
   containersByStatus: StatusCount[];
   zoneOccupancy: ZoneOccupancy[];
 };
@@ -186,6 +190,12 @@ export default function AdminDashboardSection() {
               <KpiCard icon={Bell}          label="Cảnh báo mở"   value={data.openAlerts}    color="bg-purple-500" />
               <KpiCard icon={AlertTriangle} label="Cảnh báo nghiêm trọng" value={data.criticalAlerts} color="bg-red-600" />
               <KpiCard icon={Box}           label="Tổng container"  value={data.totalContainers}  color="bg-gray-500" />
+            </div>
+
+            {/* ── KPI row 3: Financials ─────────────────────────────── */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <KpiCard icon={Banknote} label="Tổng tiền sửa chữa" value={`${(data.totalRepairCost || 0).toLocaleString('vi-VN')} đ`} color="bg-emerald-600" />
+              <KpiCard icon={Wallet}   label="Tổng tiền hoàn đền bù" value={`${(data.totalCompensationCost || 0).toLocaleString('vi-VN')} đ`} color="bg-rose-600" />
             </div>
 
             {/* ── Charts row ───────────────────────────────────────── */}

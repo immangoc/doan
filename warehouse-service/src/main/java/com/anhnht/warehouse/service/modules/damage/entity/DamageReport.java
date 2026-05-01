@@ -52,6 +52,24 @@ public class DamageReport {
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
 
+    @Column(name = "repair_status", length = 50)
+    private String repairStatus;
+
+    @Column(name = "repair_date")
+    private LocalDateTime repairDate;
+
+    @Column(name = "repair_cost", precision = 15, scale = 2)
+    private java.math.BigDecimal repairCost;
+
+    @Column(name = "compensation_cost", precision = 15, scale = 2)
+    private java.math.BigDecimal compensationCost;
+
+    @Column(name = "compensation_refunded")
+    private Boolean compensationRefunded;
+
+    @Column(name = "compensation_refunded_at")
+    private LocalDateTime compensationRefundedAt;
+
     @PrePersist
     void prePersist() {
         if (reportedAt == null)   reportedAt   = LocalDateTime.now();

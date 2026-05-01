@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useSyncExternalStore, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import {
   Search, Plus, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Compass,
   Package, Calendar, Truck, Snowflake, AlertTriangle, Layers, Info,
-  Shuffle, LogOut, X, FileText,
+  Shuffle, LogOut, X, FileText, Trash2, RefreshCw,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { useNavigate } from 'react-router';
@@ -214,7 +215,7 @@ function WaitingListPanel({ onClose, onSelect, refreshKey }: {
   }, [refreshKey]);
 
   const filtered = items.filter((it) => {
-    const k = search.trim().toLowerCase();
+    const k = search.trim().toLowerCase().replace('#', '');
     if (k) {
       const hay = `${it.orderId} ${it.containerCode} ${it.customerName}`.toLowerCase();
       if (!hay.includes(k)) return false;
@@ -316,8 +317,9 @@ function normalizeCargoType(raw: string): string {
   return 'Hàng Khô';
 }
 
-function ImportPanel({ onClose, initialCode, initialItem, onPreviewChange, onWhTypeChange }: {
+function ImportPanel({ onClose, onDone, initialCode, initialItem, onPreviewChange, onWhTypeChange }: {
   onClose: () => void;
+  onDone?: () => void;
   initialCode?: string;
   initialItem?: WaitingItem;
   onPreviewChange: (pos: PreviewPosition | null) => void;
@@ -524,6 +526,7 @@ function ImportPanel({ onClose, initialCode, initialItem, onPreviewChange, onWhT
     try {
       await confirmGateIn(params);
       onPreviewChange(null);
+      if (onDone) onDone();
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Nhập kho thất bại');
@@ -583,7 +586,7 @@ function ImportPanel({ onClose, initialCode, initialItem, onPreviewChange, onWhT
             {/* Inline waiting orders list */}
             {!selectedOrder && !initialItem && (() => {
               const filteredWaiting = waitingItems.filter((item) => {
-                const k = waitingSearch.trim().toLowerCase();
+                const k = waitingSearch.trim().toLowerCase().replace('#', '');
                 if (k) {
                   const hay = `${item.orderId} ${item.containerCode} ${item.customerName}`.toLowerCase();
                   if (!hay.includes(k)) return false;
@@ -650,16 +653,21 @@ function ImportPanel({ onClose, initialCode, initialItem, onPreviewChange, onWhT
               );
             })()}
 
-            {/* Selected order info minimal banner */}
+            {/* Selected order info banner */}
             {selectedOrder && (
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem', padding: '0.5rem 0.75rem', background: '#f3f4f6', borderRadius: '6px' }}>
-                <span style={{ fontWeight: 600, fontSize: '0.75rem', color: '#374151' }}>Đã chọn Đơn hàng #{selectedOrder.orderId}</span>
-                {!initialItem && (
-                  <button
-                    onClick={() => { setSelectedOrder(null); setForm({ containerCode: '', cargoType: 'Hàng Khô', sizeType: '20ft', weight: '', exportDate: '', priority: 'Cao' }); }}
-                    style={{ fontSize: '0.7rem', color: '#dc2626', cursor: 'pointer', background: 'none', border: 'none', textDecoration: 'underline' }}
-                  >Bỏ chọn</button>
-                )}
+              <div style={{ marginBottom: '0.75rem', padding: '0.6rem 0.75rem', background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <span style={{ fontWeight: 700, fontSize: '0.8rem', color: '#4338ca' }}>📋 Đơn hàng #{selectedOrder.orderId}</span>
+                  {!initialItem && (
+                    <button
+                      onClick={() => { setSelectedOrder(null); setForm({ containerCode: '', cargoType: 'Hàng Khô', sizeType: '20ft', weight: '', exportDate: '', priority: 'Cao' }); }}
+                      style={{ fontSize: '0.7rem', color: '#dc2626', cursor: 'pointer', background: 'none', border: 'none', textDecoration: 'underline' }}
+                    >Bỏ chọn</button>
+                  )}
+                </div>
+                <div style={{ fontSize: '0.7rem', color: '#6366f1', lineHeight: 1.5 }}>
+                  🔒 Thông tin container được lấy tự động từ đơn hàng và không thể chỉnh sửa.
+                </div>
               </div>
             )}
 
@@ -678,6 +686,8 @@ function ImportPanel({ onClose, initialCode, initialItem, onPreviewChange, onWhT
               <label>Loại hàng</label>
               <div className="rp-select-wrap">
                 <select value={form.cargoType}
+                  disabled={!!selectedOrder}
+                  style={selectedOrder ? { background: '#f9fafb', color: '#6b7280', cursor: 'default', pointerEvents: 'none' } : undefined}
                   onChange={(e) => setForm({ ...form, cargoType: e.target.value })}>
                   <option>Hàng Khô</option><option>Hàng Lạnh</option>
                   <option>Hàng dễ vỡ</option><option>Hàng hỏng</option><option>Khác</option>
@@ -689,11 +699,15 @@ function ImportPanel({ onClose, initialCode, initialItem, onPreviewChange, onWhT
               <div className="rp-size-toggle">
                 <button type="button"
                   className={`rp-size-btn ${form.sizeType === '20ft' ? 'rp-size-btn-active' : ''}`}
+                  disabled={!!selectedOrder}
+                  style={selectedOrder ? { opacity: form.sizeType === '20ft' ? 1 : 0.4, cursor: 'default', pointerEvents: 'none' } : undefined}
                   onClick={() => setForm({ ...form, sizeType: '20ft' })}>
                   20ft
                 </button>
                 <button type="button"
                   className={`rp-size-btn ${form.sizeType === '40ft' ? 'rp-size-btn-active' : ''}`}
+                  disabled={!!selectedOrder}
+                  style={selectedOrder ? { opacity: form.sizeType === '40ft' ? 1 : 0.4, cursor: 'default', pointerEvents: 'none' } : undefined}
                   onClick={() => setForm({ ...form, sizeType: '40ft' })}>
                   40ft
                 </button>
@@ -707,8 +721,10 @@ function ImportPanel({ onClose, initialCode, initialItem, onPreviewChange, onWhT
                 max={form.sizeType === '40ft' ? 32500 : 30000}
                 step={100}
                 value={form.weight}
+                readOnly={!!selectedOrder}
+                style={selectedOrder ? { background: '#f9fafb', color: '#6b7280', cursor: 'default' } : undefined}
                 placeholder={form.sizeType === '40ft' ? 'Tối đa 32500' : 'Tối đa 30000'}
-                onChange={(e) => setForm({ ...form, weight: e.target.value })}
+                onChange={(e) => { if (!selectedOrder) setForm({ ...form, weight: e.target.value }); }}
               />
             </div>
             <div className="rp-field">
@@ -716,7 +732,9 @@ function ImportPanel({ onClose, initialCode, initialItem, onPreviewChange, onWhT
               <div className="rp-date-wrap">
                 <Calendar size={15} className="rp-date-icon" />
                 <input type="date" value={form.exportDate}
-                  onChange={(e) => setForm({ ...form, exportDate: e.target.value })} />
+                  readOnly={!!selectedOrder}
+                  style={selectedOrder ? { background: '#f9fafb', color: '#6b7280', cursor: 'default', pointerEvents: 'none' } : undefined}
+                  onChange={(e) => { if (!selectedOrder) setForm({ ...form, exportDate: e.target.value }); }} />
               </div>
             </div>
             <div className="rp-field">
@@ -835,7 +853,7 @@ function ExportPanel({ onClose, onDone, warehouseType }: {
   // User can toggle "showAll" to see every IN_YARD container.
   const today = new Date().toISOString().split('T')[0];
   const containers = allContainers.filter((c) => {
-    if (keyword.trim() && !(`${c.containerCode}`.toLowerCase().includes(keyword.toLowerCase()))) return false;
+    if (keyword.trim() && !(`${c.containerCode} ${c.orderId ?? ''}`.toLowerCase().includes(keyword.trim().toLowerCase().replace('#', '')))) return false;
     if (filterExitDate && c.expectedExitDate !== filterExitDate) return false;
     if (showAll || filterExitDate) return true;
     if (!c.expectedExitDate) return false;
@@ -887,6 +905,7 @@ function ExportPanel({ onClose, onDone, warehouseType }: {
             <FileText size={18} /> Xuất kho thành công!
           </div>
           {([
+            ...(invoice.orderId ? [['Đơn hàng #', String(invoice.orderId), false]] : []),
             ['Hóa đơn #', String(invoice.invoiceId), false],
             ['Mã container', invoice.containerCode, false],
             ['Loại hàng', invoice.cargoType, false],
@@ -899,7 +918,7 @@ function ExportPanel({ onClose, onDone, warehouseType }: {
             ...(invoice.isOverdue
               ? [[`Phí trễ hạn (${invoice.overdueDays} ngày)`, invoice.overduePenalty, false] as [string, string, boolean]]
               : []),
-            ['Tổng cộng', invoice.totalAmount, true],
+            ['Tổng tiền đơn hàng', invoice.totalAmount, true],
           ] as [string, string, boolean][]).map(([label, value, total]) => (
             <div key={label} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid #f1f5f9', fontSize: total ? '0.92rem' : '0.82rem' }}>
               <span style={{ color: total ? '#0f172a' : '#64748b', fontWeight: total ? 700 : 400 }}>{label}</span>
@@ -1052,7 +1071,32 @@ export function Warehouse3D() {
   const overviewSceneRef = useRef<OverviewSceneHandle>(null);
   const navigate = useNavigate();
 
-  async function handleDamageContainer(payload: {
+  const [damageTarget, setDamageTarget] = useState<{
+    containerCode: string;
+    cargoType: string;
+    containerType: string;
+    weight: string;
+    whName: string;
+    blockName: string;
+    zone: string;
+    slot: string;
+    floor: number;
+  } | null>(null);
+
+  async function handleConfirmDamage() {
+    if (!damageTarget) return;
+    try {
+      const report = await reportDamage({ containerId: damageTarget.containerCode, severity: 'MAJOR' });
+      markPendingOptimistic(report);
+      toast.success(`Đã báo hỏng ${damageTarget.containerCode}. Vào "Quản lý kho hỏng" để xác nhận chuyển.`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Báo hỏng thất bại');
+    } finally {
+      setDamageTarget(null);
+    }
+  }
+
+  function handleDamageContainer(payload: {
     containerCode: string;
     cargoType: string;
     containerType: string;
@@ -1063,16 +1107,7 @@ export function Warehouse3D() {
     slot: string;
     floor: number;
   }) {
-    if (!confirm(`Báo hỏng container ${payload.containerCode}?\n\nContainer sẽ nhấp nháy vàng và xuất hiện trong "Quản lý kho hỏng" để admin xác nhận chuyển.`)) {
-      return;
-    }
-    try {
-      const report = await reportDamage({ containerId: payload.containerCode, severity: 'MAJOR' });
-      markPendingOptimistic(report);
-      toast.success(`Đã báo hỏng ${payload.containerCode}. Vào "Quản lý kho hỏng" để xác nhận chuyển.`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Báo hỏng thất bại');
-    }
+    setDamageTarget(payload);
   }
 
   function handleSearchSubmit() {
@@ -1151,6 +1186,55 @@ export function Warehouse3D() {
       if (panelMode === 'waiting-list') {
         setWaitingRefreshKey(k => k + 1);
       }
+      toast.success('Đã làm mới dữ liệu kho');
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Lỗi làm mới');
+    } finally {
+      setIsRefreshing(false);
+    }
+  }
+
+  async function handleClearAllContainers() {
+    if (!confirm('⚠️ Xác nhận XÓA TẤT CẢ dữ liệu container trong kho 3D?\n\nHành động này sẽ:\n- Xuất tất cả container đang lưu trong kho\n- Xóa dữ liệu container chờ nhập\n\nBạn có chắc chắn?')) {
+      return;
+    }
+    setIsRefreshing(true);
+    try {
+      // Step 1: Get all IN_YARD containers
+      const allContainers = await searchInYardContainers('');
+      let cleared = 0;
+      let errors = 0;
+
+      // Step 2: Gate-out each container
+      for (const c of allContainers) {
+        try {
+          await apiFetch('/admin/gate-out', {
+            method: 'POST',
+            body: JSON.stringify({ containerId: c.containerId }),
+          });
+          cleared++;
+        } catch {
+          errors++;
+        }
+      }
+
+      // Step 3: Refresh 3D grid
+      const yards = await fetchAllYards();
+      setYardData(processApiYards(yards));
+      await fetchAndSetOccupancy(yards);
+      refreshDamages();
+      refetchStats();
+      setWaitingRefreshKey(k => k + 1);
+
+      if (errors > 0) {
+        toast.warning(`Đã xóa ${cleared} container. ${errors} container gặp lỗi.`);
+      } else if (cleared > 0) {
+        toast.success(`Đã xóa thành công ${cleared} container khỏi kho.`);
+      } else {
+        toast.info('Không có container nào trong kho để xóa.');
+      }
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Lỗi xóa dữ liệu');
     } finally {
       setIsRefreshing(false);
     }
@@ -1280,6 +1364,10 @@ export function Warehouse3D() {
           {panelMode === 'import' && (
             <ImportPanel
               onClose={closePanel}
+              onDone={() => {
+                handleRefresh();
+                setWaitingRefreshKey((k) => k + 1);
+              }}
               initialCode={selectedCode}
               initialItem={selectedItem}
               onPreviewChange={setPreviewPosition}
@@ -1305,6 +1393,42 @@ export function Warehouse3D() {
         <div className="w3d-legend-row"><Legend /></div>
       </div>
 
+      {/* Confirm Damage Modal */}
+      {damageTarget && createPortal(
+        <div className="fixed inset-0 flex items-center justify-center bg-black/60 backdrop-blur-sm" style={{ zIndex: 2147483647 }} onClick={() => setDamageTarget(null)}>
+          <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.5)] p-7 w-full max-w-md mx-4 transform transition-all" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600">
+                <AlertTriangle size={22} />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white m-0">
+                Báo hỏng container?
+              </h3>
+            </div>
+            
+            <p className="text-gray-600 dark:text-gray-300 mb-6 leading-relaxed">
+              Bạn đang báo hỏng cho container <strong>{damageTarget.containerCode}</strong>.<br/>
+              Container sẽ nhấp nháy vàng trên sa bàn và chờ Admin xác nhận chuyển vào kho hỏng.
+            </p>
+
+            <div className="flex justify-end gap-3 pt-2 border-t border-gray-100 dark:border-gray-700">
+              <button 
+                onClick={() => setDamageTarget(null)}
+                className="px-5 py-2.5 rounded-xl font-medium bg-gray-100 text-gray-700 hover:bg-gray-200 transition-colors"
+              >
+                Hủy bỏ
+              </button>
+              <button 
+                onClick={handleConfirmDamage}
+                className="px-5 py-2.5 rounded-xl font-medium bg-red-600 text-white hover:bg-red-700 shadow-lg shadow-red-600/30 transition-colors"
+              >
+                Xác nhận báo hỏng
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </DashboardLayout>
   );
 }

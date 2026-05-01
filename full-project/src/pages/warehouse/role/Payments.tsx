@@ -6,20 +6,17 @@ import { Button } from '../../../components/ui/button';
 import WarehouseLayout from '../../../components/warehouse/WarehouseLayout';
 import { useWarehouseAuth, API_BASE } from '../../../contexts/WarehouseAuthContext';
 
-type FeeConfig = {
-  currency?: string;
-  costRate?: number;
-  ratePerKgDefault?: number;
-  ratePerKgByCargoType?: Record<string, number>;
-  freeStorageDays?: number;
-  overduePenaltyRate?: number;
-  coldStorageSurcharge?: number;
-  liftingFeePerMove?: number;
-  storageMultiplier?: number;
-  weightMultiplier?: number;
-  containerRate20ft?: number;
-  containerRate40ft?: number;
-  earlyPickupFee?: number;
+type Tariff = {
+  tariffId: number;
+  tariffCode: string;
+  tariffName: string;
+  feeType: string;
+  containerSize?: number;
+  cargoTypeId?: number;
+  cargoTypeName?: string;
+  unitPrice: number;
+  unit: string;
+  note?: string;
 };
 
 type CargoType = { cargoTypeId: number; cargoTypeName: string };
@@ -31,7 +28,7 @@ export default function Payments() {
     ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
   }), [accessToken]);
 
-  const [feeConfig, setFeeConfig]   = useState<FeeConfig | null>(null);
+  const [tariffs, setTariffs]       = useState<Tariff[]>([]);
   const [cargoTypes, setCargoTypes] = useState<CargoType[]>([]);
 
   // Form inputs
@@ -46,13 +43,13 @@ export default function Payments() {
   useEffect(() => {
     const fetchAll = async () => {
       try {
-        const [feeRes, ctRes] = await Promise.all([
-          fetch(`${API_BASE}/admin/fees`, { headers }),
-          fetch(`${API_BASE}/admin/cargo-types`, { headers }),
+        const [tariffsRes, ctRes] = await Promise.all([
+          fetch(`${API_BASE}/admin/tariffs`, { headers, cache: 'no-cache' }),
+          fetch(`${API_BASE}/admin/cargo-types`, { headers, cache: 'no-cache' }),
         ]);
-        const feeData = await feeRes.json();
+        const tariffsData = await tariffsRes.json();
         const ctData  = await ctRes.json();
-        if (feeRes.ok) setFeeConfig(feeData.data);
+        if (tariffsRes.ok) setTariffs(tariffsData.data || []);
         if (ctRes.ok)  setCargoTypes(ctData.data || []);
       } catch { /* ignore */ }
     };
@@ -70,62 +67,56 @@ export default function Payments() {
     ));
 
     const kg = parseFloat(weight) || 0;
-    const cfg = feeConfig;
+    const tons = kg / 1000;
+    const sizeNum = containerSize === '20ft' ? 20 : (containerSize === '40ft' ? 40 : 20); // Default to 20ft if empty
 
-    if (!cfg) {
-      setResult(`Thời gian lưu kho: ${totalDays} ngày. Vui lòng liên hệ để biết chi phí.`);
+    if (!tariffs.length) {
+      setResult(`Thời gian lưu kho: ${totalDays} ngày. Đang tải bảng giá...`);
       return;
     }
 
-    const freeDays        = cfg.freeStorageDays   ?? 3;
-    const billDays        = Math.max(0, totalDays - freeDays);
-    const currency        = cfg.currency           || 'VND';
-    const storageMult     = cfg.storageMultiplier  ?? 1;
-    const weightMult      = cfg.weightMultiplier   ?? 1;
     const fmt = (n: number) => n.toLocaleString('vi-VN');
 
-    // Determine base price
-    let basePrice = 0;
-    let basePriceDesc = '';
+    // 1. Time multiplier
+    let timeMult = 1;
+    const tmult1 = tariffs.find(t => t.tariffCode === 'TIME_MULTIPLIER_LE_5');
+    const tmult2 = tariffs.find(t => t.tariffCode === 'TIME_MULTIPLIER_6_10');
+    const tmult3 = tariffs.find(t => t.tariffCode === 'TIME_MULTIPLIER_GT_10');
+    if (totalDays <= 5 && tmult1) timeMult = tmult1.unitPrice;
+    else if (totalDays >= 6 && totalDays <= 10 && tmult2) timeMult = tmult2.unitPrice;
+    else if (totalDays > 10 && tmult3) timeMult = tmult3.unitPrice;
 
-    if (containerSize === '20ft' && (cfg.containerRate20ft ?? 0) > 0) {
-      basePrice     = cfg.containerRate20ft!;
-      basePriceDesc = `Container 20ft: ${fmt(basePrice)} ${currency}`;
-    } else if (containerSize === '40ft' && (cfg.containerRate40ft ?? 0) > 0) {
-      basePrice     = cfg.containerRate40ft!;
-      basePriceDesc = `Container 40ft: ${fmt(basePrice)} ${currency}`;
+    // 2. Weight multiplier
+    let weightMult = 1;
+    const wmult1 = tariffs.find(t => t.tariffCode === 'WEIGHT_MULTIPLIER_LT_10');
+    const wmult2 = tariffs.find(t => t.tariffCode === 'WEIGHT_MULTIPLIER_10_20');
+    const wmult3 = tariffs.find(t => t.tariffCode === 'WEIGHT_MULTIPLIER_GT_20');
+    if (tons < 10 && wmult1) weightMult = wmult1.unitPrice;
+    else if (tons >= 10 && tons <= 20 && wmult2) weightMult = wmult2.unitPrice;
+    else if (tons > 20 && wmult3) weightMult = wmult3.unitPrice;
+
+    // 3. Storage base rate
+    let dailyRate = 150000; // ultimate fallback
+    const specific = tariffs.find(t => t.feeType === 'STORAGE' && t.containerSize === sizeNum && t.cargoTypeName === cargoTypeName);
+    if (specific) {
+      dailyRate = specific.unitPrice;
+    } else {
+      const fallback = tariffs.find(t => t.feeType === 'STORAGE' && t.containerSize === sizeNum);
+      if (fallback) dailyRate = fallback.unitPrice;
     }
 
-    if (kg > 0) {
-      let ratePerKg = cfg.ratePerKgDefault ?? 0;
-      if (cargoTypeName && cfg.ratePerKgByCargoType) {
-        const specific = cfg.ratePerKgByCargoType[cargoTypeName];
-        if (specific != null) ratePerKg = specific;
-      }
-      const weightCost = ratePerKg * kg;
-      if (basePrice > 0) {
-        basePriceDesc += ` + ${fmt(kg)} kg × ${fmt(ratePerKg)} = ${fmt(weightCost)} ${currency}`;
-        basePrice += weightCost;
-      } else {
-        basePrice     = weightCost;
-        basePriceDesc = `${fmt(kg)} kg × ${fmt(ratePerKg)} ${currency}/kg = ${fmt(basePrice)} ${currency}`;
-      }
-    }
-
-    // Formula: price = base_price × number_of_days × storage_multiplier × weight_multiplier
-    const storageFee = basePrice * billDays * storageMult * weightMult;
+    // Formula: price = dailyRate * totalDays * timeMult * weightMult
+    const storageFee = dailyRate * totalDays * timeMult * weightMult;
 
     const lines: string[] = [];
-    lines.push(`Thời gian: ${totalDays} ngày · Miễn phí: ${freeDays} ngày · Tính phí: ${billDays} ngày`);
-    if (basePriceDesc) lines.push(`Giá cơ sở: ${basePriceDesc}`);
-    if (billDays > 0 && basePrice > 0) {
-      lines.push(`Công thức: ${fmt(basePrice)} × ${billDays} ngày × ${storageMult} × ${weightMult} = ${fmt(storageFee)} ${currency}`);
-    }
-
+    lines.push(`Thời gian: ${totalDays} ngày`);
+    lines.push(`Giá lưu kho cơ sở (${sizeNum}ft${cargoTypeName ? ' - ' + cargoTypeName : ''}): ${fmt(dailyRate)} VND/ngày`);
+    lines.push(`Hệ số thời gian: × ${timeMult} (dựa trên số ngày)`);
+    lines.push(`Hệ số trọng lượng: × ${weightMult} (dựa trên ${tons} tấn)`);
+    lines.push(`Công thức: ${fmt(dailyRate)} × ${totalDays} ngày × ${timeMult} × ${weightMult} = ${fmt(Math.round(storageFee))} VND`);
+    
     lines.push(`─────────────────`);
-    lines.push(`Tổng ước tính: ${fmt(storageFee)} ${currency}`);
-
-    if (basePrice === 0) lines.push('(Chọn loại container hoặc nhập trọng lượng để tính phí)');
+    lines.push(`Tổng ước tính: ${fmt(Math.round(storageFee))} VND`);
 
     setResult(lines.join('\n'));
   };
@@ -219,80 +210,28 @@ export default function Payments() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Calculator className="w-5 h-5" />
-                Thông số phí hiện tại
+                Bảng giá dịch vụ (Tariffs)
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm">
-              {!feeConfig ? (
+            <CardContent className="space-y-0 text-sm max-h-[500px] overflow-y-auto pr-2">
+              {!tariffs.length ? (
                 <div className="text-gray-400 text-center py-6">Đang tải...</div>
               ) : (
-                <>
-                  <div className="flex justify-between py-2 border-b border-gray-100">
-                    <span className="text-gray-500">Đơn vị tiền tệ</span>
-                    <span className="font-semibold">{feeConfig.currency || '—'}</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b border-gray-100">
-                    <span className="text-gray-500">Miễn phí lưu kho</span>
-                    <span className="font-semibold">{feeConfig.freeStorageDays ?? '—'} ngày</span>
-                  </div>
-                  <div className="flex justify-between py-2 border-b border-gray-100">
-                    <span className="text-gray-500">Phí/kg mặc định</span>
-                    <span className="font-semibold">{feeConfig.ratePerKgDefault != null ? feeConfig.ratePerKgDefault.toLocaleString('vi-VN') : '—'} {feeConfig.currency}</span>
-                  </div>
-                  {feeConfig.overduePenaltyRate != null && (
-                    <div className="flex justify-between py-2 border-b border-gray-100">
-                      <span className="text-gray-500">Tỉ lệ phạt quá hạn</span>
-                      <span className="font-semibold">{(feeConfig.overduePenaltyRate * 100).toFixed(2)}%/ngày</span>
+                <div className="space-y-1">
+                  {tariffs.map(t => (
+                    <div key={t.tariffId} className="flex justify-between items-center py-3 border-b border-gray-100 last:border-0">
+                      <div className="flex flex-col flex-1 pr-4">
+                        <span className="text-gray-800 dark:text-gray-200 font-medium">{t.tariffName}</span>
+                        {t.note && <span className="text-xs text-gray-500 mt-0.5">{t.note}</span>}
+                      </div>
+                      <span className="font-semibold whitespace-nowrap text-indigo-700 dark:text-indigo-400">
+                        {t.unitPrice === 1 && t.unit === 'MULTIPLIER' ? 'Mặc định' : (
+                          t.unit === 'MULTIPLIER' ? `× ${t.unitPrice}` : `${t.unitPrice.toLocaleString('vi-VN')} VND`
+                        )}
+                      </span>
                     </div>
-                  )}
-                  {feeConfig.liftingFeePerMove != null && feeConfig.liftingFeePerMove > 0 && (
-                    <div className="flex justify-between py-2 border-b border-gray-100">
-                      <span className="text-gray-500">Phí nâng/hạ</span>
-                      <span className="font-semibold">{feeConfig.liftingFeePerMove.toLocaleString('vi-VN')} {feeConfig.currency}/lần</span>
-                    </div>
-                  )}
-                  {feeConfig.storageMultiplier != null && (
-                    <div className="flex justify-between py-2 border-b border-gray-100">
-                      <span className="text-gray-500">Hệ số lưu kho</span>
-                      <span className="font-semibold">× {feeConfig.storageMultiplier}</span>
-                    </div>
-                  )}
-                  {feeConfig.weightMultiplier != null && (
-                    <div className="flex justify-between py-2 border-b border-gray-100">
-                      <span className="text-gray-500">Hệ số trọng lượng</span>
-                      <span className="font-semibold">× {feeConfig.weightMultiplier}</span>
-                    </div>
-                  )}
-                  {feeConfig.containerRate20ft != null && feeConfig.containerRate20ft > 0 && (
-                    <div className="flex justify-between py-2 border-b border-gray-100">
-                      <span className="text-gray-500">Giá container 20ft</span>
-                      <span className="font-semibold">{feeConfig.containerRate20ft.toLocaleString('vi-VN')} {feeConfig.currency}</span>
-                    </div>
-                  )}
-                  {feeConfig.containerRate40ft != null && feeConfig.containerRate40ft > 0 && (
-                    <div className="flex justify-between py-2 border-b border-gray-100">
-                      <span className="text-gray-500">Giá container 40ft</span>
-                      <span className="font-semibold">{feeConfig.containerRate40ft.toLocaleString('vi-VN')} {feeConfig.currency}</span>
-                    </div>
-                  )}
-                  {feeConfig.earlyPickupFee != null && feeConfig.earlyPickupFee > 0 && (
-                    <div className="flex justify-between py-2 border-b border-gray-100">
-                      <span className="text-gray-500">Phí xuất sớm</span>
-                      <span className="font-semibold">{feeConfig.earlyPickupFee.toLocaleString('vi-VN')} {feeConfig.currency}</span>
-                    </div>
-                  )}
-                  {feeConfig.ratePerKgByCargoType && Object.keys(feeConfig.ratePerKgByCargoType).length > 0 && (
-                    <>
-                      <div className="text-xs text-gray-400 pt-2">Phí theo loại hàng:</div>
-                      {Object.entries(feeConfig.ratePerKgByCargoType).map(([type, rate]) => (
-                        <div key={type} className="flex justify-between py-1 pl-2">
-                          <span className="text-gray-500">{type}</span>
-                          <span className="font-semibold">{rate.toLocaleString('vi-VN')} {feeConfig.currency}/kg</span>
-                        </div>
-                      ))}
-                    </>
-                  )}
-                </>
+                  ))}
+                </div>
               )}
             </CardContent>
           </Card>

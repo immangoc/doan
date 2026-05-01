@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../../components/ui/table';
 import WarehouseLayout from '../../../components/warehouse/WarehouseLayout';
 import { useWarehouseAuth, API_BASE } from '../../../contexts/WarehouseAuthContext';
+import { toast } from 'sonner';
 
 type OrderItem = {
   orderId: number;
@@ -36,16 +37,21 @@ type BillItem = {
 
 const STATUS_LABELS: Record<string, string> = {
   PENDING:          'Chờ duyệt',
-  APPROVED:         'Chờ checkin',
-  WAITING_CHECKIN:  'Chờ nhập kho',
-  LATE_CHECKIN:     'Trễ checkin',
+  APPROVED:         'Chờ check-in',
+  WAITING_CHECKIN:  'Chờ check-in',
+  LATE_CHECKIN:     'Trễ check-in',
   READY_FOR_IMPORT: 'Chờ nhập kho',
-  IMPORTED:         'Đã nhập kho',
-  STORED:           'Đã nhập kho',
+  IMPORTED:         'Đang lưu kho',
+  STORED:           'Đang lưu kho',
   EXPORTED:         'Đã xuất',
   REJECTED:         'Từ chối',
-  CANCEL_REQUESTED: 'Chờ duyệt sửa',
+  CANCEL_REQUESTED: 'Yêu cầu hủy',
   CANCELLED:        'Đã hủy',
+  EDIT_REQUESTED:   'Chờ duyệt sửa',
+  EDIT_APPROVED:    'Đã duyệt sửa',
+  EDIT_REJECTED:    'Không duyệt sửa',
+  DAMAGED:          'Đang hỏng',
+  REPAIRED:         'Đã sửa',
 };
 
 const STATUS_CLASS: Record<string, string> = {
@@ -60,6 +66,11 @@ const STATUS_CLASS: Record<string, string> = {
   REJECTED:         'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200',
   CANCEL_REQUESTED: 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-200',
   CANCELLED:        'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
+  EDIT_REQUESTED:   'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-200',
+  EDIT_APPROVED:    'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-200',
+  EDIT_REJECTED:    'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200',
+  DAMAGED:          'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-200',
+  REPAIRED:         'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-200',
 };
 
 export default function Orders() {
@@ -87,6 +98,11 @@ export default function Orders() {
 
   // Create order
   const [openCreate, setOpenCreate] = useState(false);
+  const [createFeePreview, setCreateFeePreview] = useState<{
+    totalFee: number; storageDays: number; timeMultiplier: number; weightMultiplier: number;
+    containerDetails: { containerId: string; containerTypeName: string; cargoTypeName: string; containerSize: number; grossWeight: number; dailyRate: number; subtotal: number }[];
+  } | null>(null);
+  const [createLoading, setCreateLoading] = useState(false);
   const [createForm, setCreateForm] = useState({
     customerName: '', phone: '', email: '', address: '', note: '',
     importDate: '', exportDate: '', containerIds: [] as string[],
@@ -164,9 +180,13 @@ export default function Orders() {
     let list = orders;
     if (statusFilter) list = list.filter((o) => o.statusName === statusFilter);
     const k = keyword.trim().toLowerCase();
-    if (k) list = list.filter((o) => `${o.orderId} ${o.customerName} ${o.email ?? ''}`.toLowerCase().includes(k));
+    if (k) {
+      list = list.filter((o) => 
+        `${o.orderId} ${o.customerName} ${o.email ?? ''} ${(o.containerIds || []).join(' ')}`.toLowerCase().includes(k)
+      );
+    }
     return list;
-  }, [orders, statusFilter, keyword]);
+  }, [orders, keyword, statusFilter]);
 
   const counts = useMemo(() => ({
     total:    orders.length,
@@ -175,16 +195,21 @@ export default function Orders() {
     cancelled: orders.filter((o) => o.statusName === 'CANCELLED' || o.statusName === 'CANCEL_REQUESTED').length,
   }), [orders]);
 
-  const resetCreateForm = () =>
+  const resetCreateForm = () => {
+    setCreateFeePreview(null);
     setCreateForm({
       customerName: user?.name || '',
       phone: '', email: user?.email || '', address: '', note: '',
       importDate: '', exportDate: '', containerIds: [],
     });
+  };
 
   const submitCreate = async () => {
     try {
-      if (!createForm.customerName.trim()) return alert('Tên khách hàng không được để trống');
+      if (!createForm.customerName.trim()) return toast.error('Tên khách hàng không được để trống');
+      if (!createForm.importDate || !createForm.exportDate) return toast.error('Vui lòng chọn ngày nhập và xuất kho');
+      
+      setCreateLoading(true);
       const body: Record<string, any> = {
         customerName: createForm.customerName,
         phone: createForm.phone || undefined,
@@ -195,17 +220,32 @@ export default function Orders() {
         exportDate: createForm.exportDate || undefined,
         containerIds: createForm.containerIds.length > 0 ? createForm.containerIds : undefined,
       };
-      const res = await fetch(`${apiUrl}/orders`, {
-        method: 'POST', headers,
-        body: JSON.stringify(body),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Lỗi tạo đơn hàng');
-      setOpenCreate(false);
-      resetCreateForm();
-      await fetchOrders(page);
+
+      if (createFeePreview === null) {
+        // Step 1: Preview fee
+        const res = await fetch(`${apiUrl}/orders/preview-fee`, {
+          method: 'POST', headers, body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Lỗi tính phí');
+        setCreateFeePreview(data.data);
+      } else {
+        // Step 2: Confirm and create order
+        body.confirmPayment = true;
+        const res = await fetch(`${apiUrl}/orders`, {
+          method: 'POST', headers, body: JSON.stringify(body),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.message || 'Lỗi tạo đơn hàng');
+        toast.success('Tạo đơn hàng thành công! Số tiền đã được trừ từ ví.');
+        setOpenCreate(false);
+        resetCreateForm();
+        await fetchOrders(page);
+      }
     } catch (e: any) {
-      alert(e.message || 'Lỗi không xác định');
+      toast.error(e.message || 'Lỗi không xác định');
+    } finally {
+      setCreateLoading(false);
     }
   };
 
@@ -235,6 +275,7 @@ export default function Orders() {
   };
 
   const toggleCreateContainer = (id: string) => {
+    setCreateFeePreview(null);
     setCreateForm((f) => ({
       ...f,
       containerIds: f.containerIds.includes(id)
@@ -246,7 +287,7 @@ export default function Orders() {
   const submitEdit = async () => {
     if (!editTarget) return;
     try {
-      if (!editForm.customerName.trim()) return alert('Tên khách hàng không được để trống');
+      if (!editForm.customerName.trim()) return toast.error('Tên khách hàng không được để trống');
       const body: Record<string, any> = {
         customerName: editForm.customerName,
         phone: editForm.phone || undefined,
@@ -266,7 +307,7 @@ export default function Orders() {
       setEditTarget(null);
       await fetchOrders(page);
     } catch (e: any) {
-      alert(e.message || 'Lỗi không xác định');
+      toast.error(e.message || 'Lỗi không xác định');
     }
   };
 
@@ -289,7 +330,7 @@ export default function Orders() {
       setCancelTarget(null);
       await fetchOrders(page);
     } catch (e: any) {
-      alert(e.message || 'Lỗi không xác định');
+      toast.error(e.message || 'Lỗi không xác định');
     }
   };
 
@@ -325,7 +366,36 @@ export default function Orders() {
     setOpenExportEdit(true);
   };
 
-  const previewExportFee = async () => {
+  useEffect(() => {
+    if (!openExportEdit || !exportTarget || !exportNewDate) {
+      setExportPreview(null);
+      return;
+    }
+    if (exportNewDate < todayISO) {
+      setExportPreview(null);
+      return;
+    }
+    const fetchPreview = async () => {
+      try {
+        const res = await fetch(`${apiUrl}/orders/${exportTarget.orderId}/export-date`, {
+          method: 'PUT', headers,
+          body: JSON.stringify({ newExportDate: exportNewDate, confirmPayment: false })
+        });
+        const data = await res.json();
+        if (res.ok && data.data) {
+          setExportPreview(data.data);
+        } else {
+          setExportPreview(null);
+        }
+      } catch {
+        setExportPreview(null);
+      }
+    };
+    const timer = setTimeout(fetchPreview, 400);
+    return () => clearTimeout(timer);
+  }, [openExportEdit, exportTarget, exportNewDate, headers, apiUrl, todayISO]);
+
+  const submitEditRequest = async () => {
     if (!exportTarget || !exportNewDate) {
       setExportError('Vui lòng chọn ngày xuất mới');
       return;
@@ -341,48 +411,16 @@ export default function Orders() {
     setExportError('');
     setExportLoading(true);
     try {
-      const res = await fetch(`${apiUrl}/orders/${exportTarget.orderId}/export-date`, {
+      const res = await fetch(`${apiUrl}/orders/${exportTarget.orderId}/edit-request`, {
         method: 'PUT', headers,
-        body: JSON.stringify({ newExportDate: exportNewDate, confirmPayment: false }),
+        body: JSON.stringify({ newExportDate: exportNewDate }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Lỗi tính phí');
-      setExportPreview({
-        fee: Number(data.data?.fee ?? 0),
-        dayDiff: Number(data.data?.dayDiff ?? 0),
-        changeType: String(data.data?.changeType ?? 'SAME'),
-        currency: String(data.data?.currency ?? 'VND'),
-      });
-    } catch (e: any) {
-      setExportError(e.message || 'Lỗi không xác định');
-    } finally {
-      setExportLoading(false);
-    }
-  };
-
-  const confirmExportChange = async () => {
-    if (!exportTarget || !exportNewDate) return;
-    setExportLoading(true);
-    setExportError('');
-    try {
-      const res = await fetch(`${apiUrl}/orders/${exportTarget.orderId}/export-date`, {
-        method: 'PUT', headers,
-        body: JSON.stringify({ newExportDate: exportNewDate, confirmPayment: true }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Lỗi cập nhật ngày xuất');
-      setExportPreview({
-        fee: Number(data.data?.fee ?? 0),
-        dayDiff: Number(data.data?.dayDiff ?? 0),
-        changeType: String(data.data?.changeType ?? 'SAME'),
-        currency: String(data.data?.currency ?? 'VND'),
-        walletBalanceAfter: data.data?.walletBalanceAfter ?? null,
-      });
-      alert('Đã cập nhật ngày xuất.' +
-        (data.data?.fee ? ` Phí ${Number(data.data.fee).toLocaleString('vi-VN')} ${data.data.currency || 'VND'} đã được trừ từ ví.` : ''));
+      if (!res.ok) throw new Error(data.message || 'Lỗi gửi yêu cầu sửa');
+      
+      toast.success('Đã gửi yêu cầu đổi ngày xuất kho thành công! Trạng thái: Chờ duyệt sửa.');
       setOpenExportEdit(false);
       setExportTarget(null);
-      setExportPreview(null);
       await fetchOrders(page);
     } catch (e: any) {
       setExportError(e.message || 'Lỗi không xác định');
@@ -481,24 +519,28 @@ export default function Orders() {
                     <TableRow>
                       <TableHead className="w-[70px]">Mã đơn</TableHead>
                       <TableHead>Khách hàng</TableHead>
-                      <TableHead>Liên hệ</TableHead>
+                      <TableHead>Mã container</TableHead>
+                      <TableHead>Ngày nhập / xuất</TableHead>
                       <TableHead>Trạng thái</TableHead>
                       <TableHead>Ngày tạo</TableHead>
-                      <TableHead>Ghi chú</TableHead>
                       <TableHead className="text-right">Thao tác</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {filtered.map((o, idx) => (
                       <TableRow key={o.orderId}>
-                        <TableCell className="font-mono text-xs font-semibold">#{idx + 1}</TableCell>
+                        <TableCell className="font-mono text-xs font-semibold">#{o.orderId}</TableCell>
                         <TableCell>
                           <div className="font-semibold">{o.customerName}</div>
-                          {o.address && <div className="text-xs text-gray-500">{o.address}</div>}
+                          {o.phone && <div className="text-xs text-gray-600">{o.phone}</div>}
+                          {o.email && <div className="text-xs text-gray-500">{o.email}</div>}
                         </TableCell>
-                        <TableCell className="text-sm text-gray-600">
-                          <div>{o.phone || '—'}</div>
-                          <div className="text-xs">{o.email || ''}</div>
+                        <TableCell className="text-xs text-gray-500" style={{ maxWidth: 130, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={o.containerIds?.join(', ')}>
+                          {o.containerIds?.join(', ') || '—'}
+                        </TableCell>
+                        <TableCell className="text-sm whitespace-nowrap">
+                          <div className="text-gray-700" title="Ngày nhập kho">↓ {o.importDate || '—'}</div>
+                          <div className="text-gray-700" title="Ngày xuất kho">↑ {o.exportDate || '—'}</div>
                         </TableCell>
                         <TableCell>
                           <Badge className={STATUS_CLASS[o.statusName] || 'bg-gray-100 text-gray-600'}>
@@ -515,8 +557,8 @@ export default function Orders() {
                         </TableCell>
                         <TableCell className="text-sm text-gray-500 whitespace-nowrap">
                           {o.createdAt ? new Date(o.createdAt).toLocaleDateString('vi-VN') : '—'}
+                          {o.note && <div className="text-xs text-gray-400 mt-1 max-w-[120px] truncate" title={o.note}>{o.note}</div>}
                         </TableCell>
-                        <TableCell className="text-sm text-gray-500 max-w-[140px] truncate">{o.note || '—'}</TableCell>
                         <TableCell className="text-right">
                           <div className="inline-flex gap-1">
                             <Button
@@ -571,7 +613,7 @@ export default function Orders() {
                   </TableBody>
                 </Table>
                 {totalPages > 1 && (
-                  <div className="flex items-center justify-start gap-2 mt-4 pl-2 pr-32 sm:pr-40">
+                  <div className="flex items-center justify-center gap-2 mt-4 pb-20">
                     <Button variant="outline" size="sm" disabled={page === 0} onClick={() => setPage((p) => p - 1)}>Trước</Button>
                     <span className="text-sm text-gray-500">Trang {page + 1} / {totalPages}</span>
                     <Button variant="outline" size="sm" disabled={page >= totalPages - 1} onClick={() => setPage((p) => p + 1)}>Sau</Button>
@@ -611,11 +653,11 @@ export default function Orders() {
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1">
                   <div className="text-sm font-medium text-gray-700">Ngày nhập kho</div>
-                  <Input type="date" value={createForm.importDate} onChange={(e) => setCreateForm((f) => ({ ...f, importDate: e.target.value }))} />
+                  <Input type="date" value={createForm.importDate} onChange={(e) => { setCreateForm((f) => ({ ...f, importDate: e.target.value })); setCreateFeePreview(null); }} />
                 </div>
                 <div className="space-y-1">
                   <div className="text-sm font-medium text-gray-700">Ngày xuất kho</div>
-                  <Input type="date" value={createForm.exportDate} onChange={(e) => setCreateForm((f) => ({ ...f, exportDate: e.target.value }))} />
+                  <Input type="date" value={createForm.exportDate} onChange={(e) => { setCreateForm((f) => ({ ...f, exportDate: e.target.value })); setCreateFeePreview(null); }} />
                 </div>
               </div>
               {myContainers.length > 0 && (
@@ -637,12 +679,66 @@ export default function Orders() {
               )}
               <div className="space-y-1">
                 <div className="text-sm font-medium text-gray-700">Ghi chú</div>
-                <Input value={createForm.note} onChange={(e) => setCreateForm((f) => ({ ...f, note: e.target.value }))} placeholder="Yêu cầu đặc biệt..." />
+                <Input value={createForm.note} onChange={(e) => { setCreateForm((f) => ({ ...f, note: e.target.value })); setCreateFeePreview(null); }} placeholder="Yêu cầu đặc biệt..." />
               </div>
+              
+              {createFeePreview !== null && (
+                <div className="rounded-md border border-indigo-200 bg-indigo-50 p-4 space-y-3 mt-4">
+                  <div className="flex justify-between text-lg font-bold text-indigo-800">
+                    <span>Tổng phí dự kiến:</span>
+                    <span>{Number(createFeePreview.totalFee).toLocaleString('vi-VN')} VND</span>
+                  </div>
+                  <div className="border-t border-indigo-200 pt-2 space-y-1">
+                    <div className="flex justify-between text-sm text-gray-700">
+                      <span>📅 Số ngày lưu kho:</span>
+                      <span className="font-medium">{createFeePreview.storageDays} ngày</span>
+                    </div>
+                    <div className="flex justify-between text-sm text-gray-700">
+                      <span>⏱️ Hệ số thời gian:</span>
+                      <span className="font-medium">×{createFeePreview.timeMultiplier}</span>
+                    </div>
+                    <div className="flex justify-between text-sm text-gray-700">
+                      <span>⚖️ Hệ số trọng lượng:</span>
+                      <span className="font-medium">×{createFeePreview.weightMultiplier}</span>
+                    </div>
+                  </div>
+                  {createFeePreview.containerDetails && createFeePreview.containerDetails.length > 0 && (
+                    <div className="border-t border-indigo-200 pt-2">
+                      <div className="text-sm font-semibold text-indigo-700 mb-1">Chi tiết theo container:</div>
+                      <div className="space-y-1">
+                        {createFeePreview.containerDetails.map((cd, i) => (
+                          <div key={i} className="flex justify-between items-center text-xs bg-white rounded px-2 py-1 border border-indigo-100">
+                            <div>
+                              <span className="font-medium text-gray-800">{cd.containerId}</span>
+                              <span className="text-gray-500 ml-1">({cd.containerSize}ft · {cd.cargoTypeName || 'N/A'})</span>
+                              {cd.grossWeight > 0 && <span className="text-gray-400 ml-1">· {cd.grossWeight}kg</span>}
+                            </div>
+                            <div className="text-right">
+                              <div className="text-gray-500">{Number(cd.dailyRate).toLocaleString('vi-VN')}/ngày</div>
+                              <div className="font-semibold text-indigo-700">{Number(cd.subtotal).toLocaleString('vi-VN')} VND</div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div className="text-xs text-gray-400 pt-1">
+                    Công thức: Giá theo biểu phí × Số ngày × Hệ số thời gian × Hệ số trọng lượng
+                  </div>
+                </div>
+              )}
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setOpenCreate(false)}>Hủy</Button>
-              <Button className="bg-blue-900 hover:bg-blue-800 text-white" onClick={submitCreate}>Tạo đơn</Button>
+              <Button variant="outline" onClick={() => setOpenCreate(false)} disabled={createLoading}>Hủy</Button>
+              {createFeePreview === null ? (
+                <Button className="bg-indigo-700 hover:bg-indigo-800 text-white" onClick={submitCreate} disabled={createLoading}>
+                  {createLoading ? 'Đang tính...' : 'Xem phí & Thanh toán'}
+                </Button>
+              ) : (
+                <Button className="bg-green-700 hover:bg-green-800 text-white" onClick={submitCreate} disabled={createLoading}>
+                  {createLoading ? 'Đang xử lý...' : 'Xác nhận Thanh toán & Tạo đơn'}
+                </Button>
+              )}
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -766,13 +862,13 @@ export default function Orders() {
         {/* Change export date dialog (STORED orders only) */}
         <Dialog open={openExportEdit} onOpenChange={(o) => {
           setOpenExportEdit(o);
-          if (!o) { setExportTarget(null); setExportPreview(null); setExportError(''); }
+          if (!o) { setExportTarget(null); setExportError(''); }
         }}>
           <DialogContent className="max-w-md">
             <DialogHeader>
-              <DialogTitle>Sửa ngày xuất kho — Đơn #{exportTarget?.orderId}</DialogTitle>
+              <DialogTitle>Yêu cầu đổi ngày xuất kho — Đơn #{exportTarget?.orderId}</DialogTitle>
               <DialogDescription>
-                Ngày mới phải lớn hơn hoặc bằng hôm nay và ngày nhập kho.
+                Ngày mới phải lớn hơn hoặc bằng hôm nay và ngày nhập kho. Trạng thái đơn hàng sẽ chuyển thành "Chờ duyệt sửa".
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-3 text-sm">
@@ -787,51 +883,39 @@ export default function Orders() {
                 </div>
               </div>
               <div className="space-y-1">
-                <div className="text-sm font-medium text-gray-700">Ngày xuất mới</div>
+                <div className="text-sm font-medium text-gray-700">Ngày xuất mới mong muốn</div>
                 <Input
                   type="date"
                   value={exportNewDate}
                   min={exportTarget?.importDate && exportTarget.importDate > todayISO ? exportTarget.importDate : todayISO}
-                  onChange={(e) => { setExportNewDate(e.target.value); setExportPreview(null); }}
+                  onChange={(e) => { setExportNewDate(e.target.value); }}
                 />
               </div>
-              {exportError && (
-                <div className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded">{exportError}</div>
-              )}
-              {exportPreview && (
-                <div className="rounded-md border border-indigo-200 bg-indigo-50 p-3 space-y-1">
-                  <div className="flex justify-between">
-                    <span className="text-gray-600">Loại thay đổi:</span>
+              
+              {exportPreview && exportPreview.fee > 0 && (
+                <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 rounded-lg p-3 text-amber-800 dark:text-amber-300">
+                  <div className="flex justify-between items-center mb-1">
                     <span className="font-medium">
-                      {exportPreview.changeType === 'LATE' ? `Xuất trễ ${exportPreview.dayDiff} ngày`
-                        : exportPreview.changeType === 'EARLY' ? `Xuất sớm ${Math.abs(exportPreview.dayDiff)} ngày`
-                        : 'Không thay đổi'}
+                      {exportPreview.changeType === 'LATE' ? 'Phí gia hạn thêm' : 'Phí xuất sớm'}
+                    </span>
+                    <span className="font-bold">
+                      {exportPreview.fee.toLocaleString('vi-VN')} {exportPreview.currency || 'VND'}
                     </span>
                   </div>
-                  <div className="flex justify-between text-base font-semibold text-indigo-800">
-                    <span>Phí phải trả:</span>
-                    <span>{Number(exportPreview.fee).toLocaleString('vi-VN')} {exportPreview.currency}</span>
-                  </div>
-                  {exportPreview.walletBalanceAfter != null && (
-                    <div className="flex justify-between text-xs text-gray-500">
-                      <span>Số dư ví sau giao dịch:</span>
-                      <span>{Number(exportPreview.walletBalanceAfter).toLocaleString('vi-VN')} {exportPreview.currency}</span>
-                    </div>
-                  )}
+                  <p className="text-xs opacity-80">
+                    Phí này sẽ được trừ trực tiếp vào ví của bạn khi gửi yêu cầu. Nếu Admin từ chối, số tiền sẽ được hoàn lại.
+                  </p>
                 </div>
+              )}
+              {exportError && (
+                <div className="text-sm text-red-600 bg-red-50 px-3 py-2 rounded">{exportError}</div>
               )}
             </div>
             <DialogFooter className="flex-col sm:flex-row gap-2">
               <Button variant="outline" onClick={() => setOpenExportEdit(false)} disabled={exportLoading}>Hủy</Button>
-              {!exportPreview ? (
-                <Button className="bg-indigo-700 hover:bg-indigo-800 text-white" onClick={previewExportFee} disabled={exportLoading}>
-                  {exportLoading ? 'Đang tính...' : 'Xem phí'}
-                </Button>
-              ) : (
-                <Button className="bg-green-700 hover:bg-green-800 text-white" onClick={confirmExportChange} disabled={exportLoading}>
-                  {exportLoading ? 'Đang xử lý...' : 'Thanh toán & Cập nhật'}
-                </Button>
-              )}
+              <Button className="bg-indigo-700 hover:bg-indigo-800 text-white" onClick={submitEditRequest} disabled={exportLoading}>
+                {exportLoading ? 'Đang gửi...' : (exportPreview && exportPreview.fee > 0 ? 'Thanh toán & gửi yêu cầu' : 'Gửi yêu cầu đổi ngày')}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

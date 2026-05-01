@@ -40,6 +40,7 @@ export interface DamageReport {
   reportedAt?:     string;
   reportStatus:    'PENDING' | 'RELOCATING' | 'STORED' | 'CANCELLED';
   completedAt?:    string;
+  expectedExitDate?: string;
   repairStatus?:   string;
   repairDate?:     string;
   compensationCost?: number;

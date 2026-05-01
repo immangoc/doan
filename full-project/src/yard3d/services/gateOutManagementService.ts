@@ -21,6 +21,8 @@ export interface GateOutInvoice {
   baseFee: string;
   overduePenalty: string;
   totalAmount: string;
+  orderPaidAmount: string;
+  orderId: number | null;
   isOverdue: boolean;
   overdueDays: number;
 }
@@ -55,16 +57,35 @@ export async function performGateOutForManagement(containerId: string): Promise<
   });
 
   if (!res.ok) {
-    const body = await res.text().catch(() => '');
-    throw new Error(`Gate-out thất bại (HTTP ${res.status})${body ? ': ' + body : ''}`);
+    let message = `Gate-out thất bại (HTTP ${res.status})`;
+    try {
+      const errJson = await res.json();
+      const apiMsg = errJson?.message ?? errJson?.error ?? errJson?.data?.message;
+      if (apiMsg) message = String(apiMsg);
+    } catch {
+      try {
+        const text = await res.text();
+        if (text) message += ': ' + text;
+      } catch { /* ignore */ }
+    }
+    throw new Error(message);
   }
 
-  const json: Rec = await res.json();
+  let json: Rec;
+  try {
+    json = await res.json();
+  } catch {
+    json = {};
+  }
   const data: Rec = json.data ?? json;
   const gateOutId = Number(data.gateOutId ?? data.id ?? 0);
   const relocationMessage = data.relocationMessage ?? undefined;
 
-  await refreshOccupancy();
+  try {
+    await refreshOccupancy();
+  } catch {
+    // DB update already succeeded — don't surface a UI-refresh error to the user.
+  }
   return { gateOutId, relocationMessage };
 }
 
@@ -77,6 +98,12 @@ export async function fetchGateOutInvoice(gateOutId: number): Promise<GateOutInv
 
   const json: Rec = await res.json();
   const d: Rec = json.data ?? json;
+
+  const orderPaid = d.orderPaidAmount != null ? Number(d.orderPaidAmount) : null;
+  const computedTotal = d.totalFee ?? d.totalAmount ?? d.total ?? d.amount;
+  // Use orderPaidAmount as the primary total if available
+  const displayTotal = orderPaid != null && orderPaid > 0 ? orderPaid : computedTotal;
+
   return {
     invoiceId:      Number(d.invoiceId ?? d.id ?? 0),
     containerCode:  String(d.containerCode ?? d.containerId ?? d.code ?? '—'),
@@ -88,7 +115,9 @@ export async function fetchGateOutInvoice(gateOutId: number): Promise<GateOutInv
     feePerDay:      fmtMoney(d.dailyRate ?? d.feePerDay ?? d.rate),
     baseFee:        fmtMoney(d.baseFee),
     overduePenalty: fmtMoney(d.overduePenalty),
-    totalAmount:    fmtMoney(d.totalFee ?? d.totalAmount ?? d.total ?? d.amount),
+    totalAmount:    fmtMoney(displayTotal),
+    orderPaidAmount: fmtMoney(d.orderPaidAmount),
+    orderId:        d.orderId != null ? Number(d.orderId) : null,
     isOverdue:      Boolean(d.isOverdue),
     overdueDays:    Number(d.overdueDays ?? 0),
   };

@@ -10,4 +10,6 @@ import java.util.Optional;
 public interface TariffRepository extends JpaRepository<Tariff, Integer> {
     Optional<Tariff> findByTariffCode(String tariffCode);
     List<Tariff> findByTariffCodeIn(Collection<String> tariffCodes);
+    List<Tariff> findByFeeType(String feeType);
+    List<Tariff> findByFeeTypeAndContainerSize(String feeType, Integer containerSize);
 }

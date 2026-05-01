@@ -31,6 +31,8 @@ type ContainerItem = {
   containerId: string; containerTypeName?: string; statusName?: string;
   cargoTypeName?: string; grossWeight?: number; createdAt?: string;
   declaredValue?: number;
+  compensationCost?: number;
+  repairCost?: number;
 };
 
 /* ─── Constants ─────────────────────────────────────────────── */
@@ -455,14 +457,15 @@ export default function BaoCaoThongKe() {
 
           {/* ── Damaged Container Financial Summary ── */}
           {(() => {
-            const totalDeclared = damagedContainers.reduce((sum, c) => sum + (c.declaredValue ?? 0), 0);
-            const withValue     = damagedContainers.filter((c) => (c.declaredValue ?? 0) > 0);
+            const totalCompensation = damagedContainers.reduce((sum, c) => sum + (c.compensationCost ?? 0), 0);
+            const totalRepair       = damagedContainers.reduce((sum, c) => sum + (c.repairCost ?? 0), 0);
+            const totalDeclared     = damagedContainers.reduce((sum, c) => sum + (c.declaredValue ?? 0), 0);
             return (
               <div style={{ marginBottom: 20 }}>
                 <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 10, color: 'var(--text1)' }}>
                   Thống kê thiệt hại tài chính — Container hỏng
                 </div>
-                <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', marginBottom: 12 }}>
+                <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', marginBottom: 12 }}>
                   <div className="stat-card">
                     <div>
                       <div className="stat-label">Container DAMAGED</div>
@@ -473,17 +476,25 @@ export default function BaoCaoThongKe() {
                   </div>
                   <div className="stat-card">
                     <div>
-                      <div className="stat-label">Tổng giá trị khai báo (VND)</div>
-                      <div className="stat-value" style={{ color: '#f59e0b', fontSize: 18 }}>
-                        {damagedLoading ? '...' : totalDeclared > 0 ? totalDeclared.toLocaleString('vi-VN') : '—'}
+                      <div className="stat-label">Tổng tiền hoàn (VND)</div>
+                      <div className="stat-value" style={{ color: '#3b82f6', fontSize: 18 }}>
+                        {damagedLoading ? '...' : totalCompensation > 0 ? totalCompensation.toLocaleString('vi-VN') : '0'}
                       </div>
                     </div>
                   </div>
                   <div className="stat-card">
                     <div>
-                      <div className="stat-label">Đã khai báo giá trị</div>
+                      <div className="stat-label">Tổng tiền sửa (VND)</div>
+                      <div className="stat-value" style={{ color: '#f59e0b', fontSize: 18 }}>
+                        {damagedLoading ? '...' : totalRepair > 0 ? totalRepair.toLocaleString('vi-VN') : '0'}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="stat-card">
+                    <div>
+                      <div className="stat-label">Tổng khai báo (VND)</div>
                       <div className="stat-value">
-                        {damagedLoading ? '...' : `${withValue.length} / ${damagedContainers.length}`}
+                        {damagedLoading ? '...' : totalDeclared > 0 ? totalDeclared.toLocaleString('vi-VN') : '0'}
                       </div>
                     </div>
                   </div>
@@ -495,7 +506,7 @@ export default function BaoCaoThongKe() {
                       <thead>
                         <tr>
                           <th>Container ID</th><th>Loại container</th><th>Loại hàng</th>
-                          <th>Trọng lượng (kg)</th><th>Giá trị khai báo (VND)</th><th>Ngày tạo</th>
+                          <th>Giá trị khai báo</th><th>Tiền hoàn</th><th>Tiền sửa</th><th>Ngày tạo</th>
                         </tr>
                       </thead>
                       <tbody>
@@ -504,9 +515,14 @@ export default function BaoCaoThongKe() {
                             <td><code>{c.containerId}</code></td>
                             <td>{c.containerTypeName || '—'}</td>
                             <td>{c.cargoTypeName || '—'}</td>
-                            <td>{c.grossWeight != null ? Number(c.grossWeight).toLocaleString() : '—'}</td>
                             <td style={{ fontWeight: (c.declaredValue ?? 0) > 0 ? 600 : undefined, color: (c.declaredValue ?? 0) > 0 ? '#ef4444' : undefined }}>
                               {(c.declaredValue ?? 0) > 0 ? Number(c.declaredValue).toLocaleString('vi-VN') : '—'}
+                            </td>
+                            <td style={{ fontWeight: (c.compensationCost ?? 0) > 0 ? 600 : undefined, color: (c.compensationCost ?? 0) > 0 ? '#3b82f6' : undefined }}>
+                              {(c.compensationCost ?? 0) > 0 ? Number(c.compensationCost).toLocaleString('vi-VN') : '—'}
+                            </td>
+                            <td style={{ fontWeight: (c.repairCost ?? 0) > 0 ? 600 : undefined, color: (c.repairCost ?? 0) > 0 ? '#f59e0b' : undefined }}>
+                              {(c.repairCost ?? 0) > 0 ? Number(c.repairCost).toLocaleString('vi-VN') : '—'}
                             </td>
                             <td>{c.createdAt ? new Date(c.createdAt).toLocaleDateString('vi-VN') : '—'}</td>
                           </tr>

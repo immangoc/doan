@@ -44,9 +44,13 @@ public class ContainerResponse {
      * order.
      */
     private boolean inActiveOrder;
+    
+    /** The ID of the active order containing this container, if any. */
+    private Integer activeOrderId;
 
     // Damage tracking fields (from V18 migration)
     private String repairStatus;
     private LocalDateTime repairDate;
     private BigDecimal compensationCost;
+    private BigDecimal repairCost;
 }

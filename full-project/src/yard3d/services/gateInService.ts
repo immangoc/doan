@@ -218,48 +218,50 @@ export async function confirmGateIn(params: GateInParams): Promise<void> {
     throw new Error('Không xác định được kho đích — vui lòng thử lại');
   }
 
-  // ── Step 1: Ensure container exists (skip when coming from waiting list) ──────
+  // ── Step 1: Ensure container exists ──────────────────────────────────────────
   let skipGateIn = false;
   let confirmedContainerId = containerCode;
 
-  if (!params.skipContainerCheck) {
-    const checkRes = await apiFetch(`/admin/containers/${encodeURIComponent(containerCode)}`);
-    if (checkRes.status === 404) {
-      // Container not registered yet — create it
-      // Map frontend string to IDs
-      let cargoTypeId = 1; // Hàng Khô
-      const ctLower = (params.cargoType ?? '').toLowerCase();
-      if (ctLower.includes('lạnh')) cargoTypeId = 2;
-      else if (ctLower.includes('vỡ') || ctLower.includes('dễ')) cargoTypeId = 3;
-      else if (ctLower.includes('khác')) cargoTypeId = 4;
-      
-      const containerTypeId = params.sizeType === '40ft' ? 2 : 1;
-
-      const createRes = await apiFetch('/admin/containers', {
-        method: 'POST',
-        body: JSON.stringify({
-          containerId: containerCode,
-          grossWeight: parseFloat(params.weight) || 0,
-          cargoTypeId,
-          containerTypeId,
-        }),
-      });
-      if (!createRes.ok) {
-        const body = await createRes.text().catch(() => '');
-        throw new Error(`Tạo container thất bại (HTTP ${createRes.status})${body ? ': ' + body : ''}`);
-      }
-    } else if (checkRes.ok) {
-      const cJson = await checkRes.json().catch(() => ({})) as Rec;
-      const cData = (cJson.data ?? cJson) as Rec;
-      const status = String(cData.statusName ?? cData.status ?? '').toUpperCase();
-      confirmedContainerId = String(cData.containerId ?? containerCode);
-      if (status === 'GATE_IN' || status === 'IN_YARD') {
-        skipGateIn = true;
-      }
-    } else {
-      const body = await checkRes.text().catch(() => '');
-      throw new Error(`Kiểm tra container thất bại (HTTP ${checkRes.status})${body ? ': ' + body : ''}`);
+  // Always check container status first (even from waiting list)
+  const checkRes = await apiFetch(`/admin/containers/${encodeURIComponent(containerCode)}`);
+  if (checkRes.status === 404) {
+    if (params.skipContainerCheck) {
+      // Container from waiting list doesn't exist yet — this shouldn't happen,
+      // but we can create it
     }
+    // Container not registered yet — create it
+    let cargoTypeId = 1; // Hàng Khô
+    const ctLower = (params.cargoType ?? '').toLowerCase();
+    if (ctLower.includes('lạnh')) cargoTypeId = 2;
+    else if (ctLower.includes('vỡ') || ctLower.includes('dễ')) cargoTypeId = 3;
+    else if (ctLower.includes('khác')) cargoTypeId = 4;
+    
+    const containerTypeId = params.sizeType === '40ft' ? 2 : 1;
+
+    const createRes = await apiFetch('/admin/containers', {
+      method: 'POST',
+      body: JSON.stringify({
+        containerId: containerCode,
+        grossWeight: parseFloat(params.weight) || 0,
+        cargoTypeId,
+        containerTypeId,
+      }),
+    });
+    if (!createRes.ok) {
+      const body = await createRes.text().catch(() => '');
+      throw new Error(`Tạo container thất bại (HTTP ${createRes.status})${body ? ': ' + body : ''}`);
+    }
+  } else if (checkRes.ok) {
+    const cJson = await checkRes.json().catch(() => ({})) as Rec;
+    const cData = (cJson.data ?? cJson) as Rec;
+    const status = String(cData.statusName ?? cData.status ?? '').toUpperCase();
+    confirmedContainerId = String(cData.containerId ?? containerCode);
+    if (status === 'GATE_IN' || status === 'IN_YARD') {
+      skipGateIn = true;
+    }
+  } else if (!params.skipContainerCheck) {
+    const body = await checkRes.text().catch(() => '');
+    throw new Error(`Kiểm tra container thất bại (HTTP ${checkRes.status})${body ? ': ' + body : ''}`);
   }
 
   // ── Step 2: Gate-in ───────────────────────────────────────────────────────────
@@ -273,14 +275,13 @@ export async function confirmGateIn(params: GateInParams): Promise<void> {
     });
     if (!gateInRes.ok) {
       const body = await gateInRes.text().catch(() => '');
-      // If backend explicitly says it's already gated-in despite our check, just continue
-      if (gateInRes.status === 400 && body.includes('BOOKING_ALREADY_PROCESSED')) {
+      // If backend says container already has a gate-in record, just continue
+      if (gateInRes.status === 400 && (body.includes('already has a gate-in') || body.includes('BOOKING_ALREADY_PROCESSED'))) {
         skipGateIn = true;
       } else {
         throw new Error(`Gate-in thất bại (HTTP ${gateInRes.status})${body ? ': ' + body : ''}`);
       }
     } else {
-      // Read the server-confirmed containerId from the gate-in receipt response.
       const gateInJson = await gateInRes.json().catch(() => ({})) as Rec;
       const gateInData = (gateInJson.data ?? gateInJson) as Rec;
       confirmedContainerId = String(gateInData.containerId ?? confirmedContainerId);
@@ -302,4 +303,32 @@ export async function confirmGateIn(params: GateInParams): Promise<void> {
 
   // ── Step 4: Refresh 3D grid ───────────────────────────────────────────────────
   await refreshOccupancy();
+
+  // ── Step 5: Update the order status to IMPORTED (Đã nhập kho) ───────────────
+  // If this container was picked from the waiting list (skipContainerCheck = true),
+  // find the associated order and move it to IMPORTED status.
+  if (params.skipContainerCheck) {
+    try {
+      // Find orders by container code to locate the order ID
+      const ordersRes = await apiFetch(`/admin/orders?keyword=${encodeURIComponent(containerCode)}&size=10`);
+      if (ordersRes.ok) {
+        const ordersJson = await ordersRes.json().catch(() => ({})) as Rec;
+        const ordersData = ordersJson.data ?? ordersJson;
+        const orders = Array.isArray(ordersData) ? ordersData : (ordersData.content ?? []);
+        for (const order of orders as Rec[]) {
+          const status = String(order.statusName ?? '').toUpperCase();
+          const containers = Array.isArray(order.containerIds) ? order.containerIds : [];
+          if (['WAITING_CHECKIN', 'LATE_CHECKIN', 'READY_FOR_IMPORT', 'APPROVED'].includes(status)
+              && containers.some((c: string) => c === containerCode)) {
+            await apiFetch(`/admin/orders/${order.orderId}/status`, {
+              method: 'PUT',
+              body: JSON.stringify({ statusName: 'IMPORTED' }),
+            }).catch(() => {}); // non-critical
+          }
+        }
+      }
+    } catch {
+      // Order status update is best-effort — gate-in already succeeded
+    }
+  }
 }

@@ -20,6 +20,10 @@ public class MoveToDamagedYardRequest {
     @DecimalMin("0.0")
     private BigDecimal compensationCost;
 
+    @Schema(description = "Chi phí sửa chữa container (VND).", example = "1000000")
+    @DecimalMin("0.0")
+    private BigDecimal repairCost;
+
     @Schema(description = "Ghi chú thêm khi chuyển vào kho hỏng.", example = "Đã liên hệ chủ hàng, đồng ý hoàn 5tr.")
     private String repairNote;
 }

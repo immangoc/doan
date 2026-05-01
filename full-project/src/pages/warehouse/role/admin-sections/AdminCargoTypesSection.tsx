@@ -29,6 +29,8 @@ export default function AdminCargoTypesSection() {
   const [openCreate, setOpenCreate] = useState(false);
   const [openEdit, setOpenEdit] = useState(false);
   const [editing, setEditing] = useState<TypeItem | null>(null);
+  const [openDelete, setOpenDelete] = useState(false);
+  const [deleting, setDeleting] = useState<TypeItem | null>(null);
 
   const [formName, setFormName] = useState('');
   const [tempId, setTempId] = useState<string>('');
@@ -102,13 +104,19 @@ export default function AdminCargoTypesSection() {
     }
   };
 
-  const submitDelete = async (id: string) => {
-    const ok = confirm('Bạn có chắc chắn muốn xóa loại hàng này không?');
-    if (!ok) return;
+  const openDeleteDialog = (it: TypeItem) => {
+    setDeleting(it);
+    setOpenDelete(true);
+  };
+
+  const submitDelete = async () => {
+    if (!deleting) return;
     try {
-      const res = await fetch(`${apiUrl}/admin/cargo-types/${id}`, { method: 'DELETE', headers });
+      const res = await fetch(`${apiUrl}/admin/cargo-types/${deleting.id}`, { method: 'DELETE', headers });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Lỗi xóa');
+      setOpenDelete(false);
+      setDeleting(null);
       await fetchItems();
     } catch (e: any) {
       alert(e.message || 'Lỗi không xác định');
@@ -243,7 +251,7 @@ export default function AdminCargoTypesSection() {
                           <Button variant="ghost" size="sm" className="text-blue-700 hover:text-blue-800 hover:bg-blue-50" onClick={() => openEditDialog(it)}>
                             <Pencil className="w-4 h-4" />
                           </Button>
-                          <Button variant="ghost" size="sm" className="text-red-700 hover:text-red-800 hover:bg-red-50" onClick={() => submitDelete(it.id)}>
+                          <Button variant="ghost" size="sm" className="text-red-700 hover:text-red-800 hover:bg-red-50" onClick={() => openDeleteDialog(it)}>
                             <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>
@@ -290,6 +298,25 @@ export default function AdminCargoTypesSection() {
               </Button>
               <Button onClick={submitEdit} className="bg-blue-900 hover:bg-blue-800 text-white">
                 Lưu
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={openDelete} onOpenChange={(o) => (setOpenDelete(o), !o && setDeleting(null))}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Xác nhận xóa</DialogTitle>
+              <DialogDescription>
+                Bạn có chắc chắn muốn xóa loại hàng <b>{deleting?.name}</b> không? Thao tác này không thể hoàn tác.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="mt-4">
+              <Button variant="outline" onClick={() => setOpenDelete(false)}>
+                Hủy
+              </Button>
+              <Button variant="destructive" onClick={submitDelete}>
+                Xóa
               </Button>
             </DialogFooter>
           </DialogContent>

@@ -17,6 +17,7 @@ type Rec = Record<string, any>;
 export interface InYardContainer {
   containerId: string;  // the string container code sent to gate-out API
   containerCode: string;
+  orderId?: number;
   cargoType: string;
   containerType: string;
   zone: string;
@@ -101,7 +102,7 @@ async function containerStatus(containerCode: string): Promise<string | null> {
  */
 export async function searchInYardContainers(keyword: string): Promise<InYardContainer[]> {
   const params = new URLSearchParams({ statusName: 'IN_YARD', size: '50' });
-  if (keyword.trim()) params.set('keyword', keyword.trim());
+  if (keyword.trim()) params.set('keyword', keyword.trim().replace('#', ''));
 
   const res = await apiFetch(`/admin/containers?${params.toString()}`);
   if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -137,6 +138,7 @@ export async function searchInYardContainers(keyword: string): Promise<InYardCon
       bayNo:         c.bayNo != null ? Number(c.bayNo) : null,
       tier:          c.tier  != null ? Number(c.tier)  : null,
       inActiveOrder: Boolean(c.inActiveOrder),
+      orderId:       c.activeOrderId != null ? Number(c.activeOrderId) : undefined,
       expectedExitDate: (() => {
         const raw = c.expectedExitDate;
         if (!raw) return '';
@@ -238,6 +240,29 @@ export async function performGateOut(containerId: string, note?: string): Promis
     // DB update already succeeded — don't surface a UI-refresh error to the user.
   }
 
+  // Update associated order status to EXPORTED (Đã xuất)
+  try {
+    const ordersRes = await apiFetch(`/admin/orders?keyword=${encodeURIComponent(containerId)}&size=10`);
+    if (ordersRes.ok) {
+      const ordersJson: Rec = await ordersRes.json().catch(() => ({}));
+      const ordersData = ordersJson.data ?? ordersJson;
+      const orders = Array.isArray(ordersData) ? ordersData : (ordersData.content ?? []);
+      for (const order of orders as Rec[]) {
+        const status = String(order.statusName ?? '').toUpperCase();
+        const containers = Array.isArray(order.containerIds) ? order.containerIds : [];
+        if (['STORED', 'IMPORTED'].includes(status)
+            && containers.some((c: string) => c === containerId)) {
+          await apiFetch(`/admin/orders/${order.orderId}/status`, {
+            method: 'PUT',
+            body: JSON.stringify({ statusName: 'EXPORTED' }),
+          }).catch(() => {});
+        }
+      }
+    }
+  } catch {
+    // Order status update is best-effort
+  }
+
   return result;
 }
 
@@ -257,9 +282,10 @@ export async function performGateOut(containerId: string, note?: string): Promis
  * Containers already processed (GATE_IN or IN_YARD) are filtered out.
  */
 export async function fetchWaitingContainers(): Promise<WaitingItem[]> {
-  // Include IMPORTED and STORED so multi-container orders remain visible
-  // after the first container is gate-in'd.
-  const validStatuses = ['WAITING_CHECKIN', 'LATE_CHECKIN', 'READY_FOR_IMPORT', 'IMPORTED', 'STORED'];
+  // Show orders whose containers may still be pending gate-in.
+  // IMPORTED/STORED are included so multi-container orders keep showing
+  // their un-imported containers after the first one is gate-in'd.
+  const validStatuses = ['READY_FOR_IMPORT', 'WAITING_CHECKIN', 'LATE_CHECKIN', 'IMPORTED', 'STORED'];
 
   const responses = await Promise.all(
     validStatuses.map((s) =>
@@ -277,7 +303,7 @@ export async function fetchWaitingContainers(): Promise<WaitingItem[]> {
       const customerName = String(o.customerName ?? o.customerFullName ?? o.fullName ?? '');
       const cargoType = String(o.cargoTypeName ?? o.cargoType ?? '');
       const containerType = String(o.containerTypeName ?? o.containerType ?? '');
-      const weight = String(o.totalWeight ?? o.grossWeight ?? o.weight ?? '');
+      const weight = String(o.totalGrossWeight ?? o.totalWeight ?? o.grossWeight ?? o.weight ?? '');
       const orderDate = formatDate(String(o.createdAt ?? o.orderDate ?? ''));
       const note = String(o.note ?? '');
       const importDate = String(o.importDate ?? '');
@@ -324,7 +350,9 @@ export async function fetchWaitingContainers(): Promise<WaitingItem[]> {
     }
   }
 
-  // Drop containers already placed in yard so the waiting list only shows ones pending check-in.
+  // Drop containers already placed in yard so the waiting list only shows
+  // ones still pending gate-in. This keeps un-imported containers of
+  // multi-container orders visible after the first container is gate-in'd.
   const checked = await Promise.all(rawItems.map(async (item) => {
     if (!item.containerCode) return { item, status: 'NOT_FOUND' };
     const status = await containerStatus(item.containerCode);
@@ -332,6 +360,6 @@ export async function fetchWaitingContainers(): Promise<WaitingItem[]> {
   }));
 
   return checked
-    .filter(({ status }) => status !== 'IN_YARD' && status !== 'GATE_IN')
+    .filter(({ status }) => status !== 'IN_YARD' && status !== 'GATE_IN' && status !== 'EXPORTED')
     .map(({ item }) => item);
 }

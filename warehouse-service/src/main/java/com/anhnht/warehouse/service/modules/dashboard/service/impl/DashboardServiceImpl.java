@@ -90,6 +90,13 @@ public class DashboardServiceImpl implements DashboardService {
                 })
                 .collect(Collectors.toList());
 
+        // Financials
+        java.math.BigDecimal totalRepair = containerRepository.sumRepairCost();
+        if (totalRepair == null) totalRepair = java.math.BigDecimal.ZERO;
+        
+        java.math.BigDecimal totalComp = containerRepository.sumCompensationCost();
+        if (totalComp == null) totalComp = java.math.BigDecimal.ZERO;
+
         return AdminDashboardResponse.builder()
                 .gateInToday(gateInToday)
                 .gateOutToday(gateOutToday)
@@ -100,6 +107,8 @@ public class DashboardServiceImpl implements DashboardService {
                 .totalOrders(totalOrders)
                 .openAlerts(openAlerts)
                 .criticalAlerts(criticalAlerts)
+                .totalRepairCost(totalRepair)
+                .totalCompensationCost(totalComp)
                 .containersByStatus(containersByStatus)
                 .zoneOccupancy(zoneOccupancy)
                 .build();

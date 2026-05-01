@@ -12,6 +12,7 @@ import com.anhnht.warehouse.service.modules.container.repository.*;
 import com.anhnht.warehouse.service.modules.container.service.ContainerService;
 import com.anhnht.warehouse.service.modules.alert.service.NotificationService;
 import com.anhnht.warehouse.service.modules.gatein.repository.ContainerPositionRepository;
+import com.anhnht.warehouse.service.modules.gatein.repository.YardStorageRepository;
 import com.anhnht.warehouse.service.modules.user.repository.UserRepository;
 import com.anhnht.warehouse.service.modules.vessel.entity.Manifest;
 import com.anhnht.warehouse.service.modules.vessel.repository.ManifestRepository;
@@ -48,7 +49,9 @@ public class ContainerServiceImpl implements ContainerService {
     private final UserRepository userRepository;
     private final OrderRepository orderRepository;
     private final ContainerPositionRepository containerPositionRepository;
+    private final YardStorageRepository yardStorageRepository;
     private final WalletService walletService;
+    private final com.anhnht.warehouse.service.modules.damage.repository.DamageReportRepository damageReportRepository;
 
     @Override
     public Page<Container> findAll(String keyword, String statusName, String yardName, Pageable pageable) {
@@ -255,66 +258,46 @@ public class ContainerServiceImpl implements ContainerService {
         }
         if (request.getRepairDate() != null) {
             container.setRepairDate(request.getRepairDate());
+            
+            // Sync with orders: if new repairDate is later than order's exportDate, update order
+            List<com.anhnht.warehouse.service.modules.booking.entity.Order> orders = orderRepository.findOrdersByContainerId(containerId);
+            java.time.LocalDate newExportDate = request.getRepairDate().toLocalDate();
+            for (com.anhnht.warehouse.service.modules.booking.entity.Order o : orders) {
+                if (!TERMINAL_STATUSES.contains(o.getStatus().getStatusName())) {
+                    if (o.getExportDate() == null || o.getExportDate().isBefore(newExportDate)) {
+                        o.setExportDate(newExportDate);
+                        orderRepository.save(o);
+                    }
+                }
+            }
+            
+            // Sync with YardStorage for 3D warehouse: update storageEndDate
+            yardStorageRepository.findActiveByContainerId(containerId).ifPresent(storage -> {
+                if (storage.getStorageEndDate() == null || storage.getStorageEndDate().isBefore(newExportDate)) {
+                    storage.setStorageEndDate(newExportDate);
+                    yardStorageRepository.save(storage);
+                }
+            });
         }
         if (request.getCompensationCost() != null) {
             container.setCompensationCost(request.getCompensationCost());
         }
-
-        // Auto-refund compensation to owner's wallet on first transition to REPAIRED.
-        boolean transitioningToRepaired =
-                "REPAIRED".equalsIgnoreCase(container.getRepairStatus())
-                        && !"REPAIRED".equalsIgnoreCase(oldRepairStatus);
-        if (transitioningToRepaired) {
-            refundCompensation(container);
+        if (request.getRepairCost() != null) {
+            container.setRepairCost(request.getRepairCost());
         }
+
+        // Sync with active DamageReport
+        damageReportRepository.findFirstByContainerContainerIdAndReportStatusIn(
+                containerId, List.of("PENDING", "RELOCATING", "STORED"))
+            .ifPresent(report -> {
+                if (request.getRepairStatus() != null) report.setRepairStatus(request.getRepairStatus());
+                if (request.getRepairDate() != null) report.setRepairDate(request.getRepairDate());
+                if (request.getCompensationCost() != null) report.setCompensationCost(request.getCompensationCost());
+                if (request.getRepairCost() != null) report.setRepairCost(request.getRepairCost());
+                damageReportRepository.save(report);
+            });
 
         return containerRepository.save(container);
-    }
-
-    /**
-     * Hoàn compensation_cost vào ví của chủ container khi container hỏng được sửa xong.
-     * Idempotent: chỉ chạy 1 lần, có flag compensation_refunded chống double-credit.
-     */
-    private void refundCompensation(Container container) {
-        if (Boolean.TRUE.equals(container.getCompensationRefunded())) {
-            log.info("[Damage] container={} compensation already refunded, skip.",
-                    container.getContainerId());
-            return;
-        }
-        BigDecimal amount = container.getCompensationCost();
-        if (amount == null || amount.compareTo(BigDecimal.ZERO) <= 0) {
-            log.info("[Damage] container={} no compensation amount set, skip refund.",
-                    container.getContainerId());
-            return;
-        }
-        if (container.getOwner() == null || container.getOwner().getUserId() == null) {
-            log.warn("[Damage] container={} has no owner, cannot refund compensation.",
-                    container.getContainerId());
-            return;
-        }
-
-        Integer ownerId = container.getOwner().getUserId();
-        String note = String.format("Hoàn tiền đền bù container hỏng %s đã sửa xong",
-                container.getContainerId());
-        walletService.creditWalletForRefund(ownerId, amount, note);
-        container.setCompensationRefunded(true);
-        container.setCompensationRefundedAt(LocalDateTime.now());
-
-        // Notify owner
-        try {
-            notificationService.notify(
-                    "Đã hoàn tiền đền bù container hỏng",
-                    String.format("Container %s đã được sửa xong. Số tiền %s VND đã được hoàn vào ví của bạn.",
-                            container.getContainerId(),
-                            amount.stripTrailingZeros().toPlainString()),
-                    ownerId);
-        } catch (Exception e) {
-            log.warn("[Damage] container={} notify owner failed: {}",
-                    container.getContainerId(), e.getMessage());
-        }
-
-        log.info("[Damage] container={} refunded {} VND to owner userId={}",
-                container.getContainerId(), amount, ownerId);
     }
 
     private void recordHistory(Container container, ContainerStatus status, String description) {

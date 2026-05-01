@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
-import { Search, ChevronLeft, ChevronRight, X, Wrench, FileEdit, CheckCircle, Eye, ArrowRight, ArrowLeft, Trash2, Sparkles } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
+import { Search, ChevronLeft, ChevronRight, X, Wrench, FileEdit, CheckCircle, Eye, ArrowRight, ArrowLeft, Trash2, Sparkles, AlertTriangle } from 'lucide-react';
 import { DashboardLayout } from '../components/layout/DashboardLayout';
 import { fetchStatusHistory, updateDamageDetails } from '../services/containerService';
 import type { StatusHistoryEntry, DamageDetailsPayload } from '../services/containerService';
@@ -8,6 +9,7 @@ import {
   type DamageReport, type RelocationPlan, type MoveToDamagedYardPayload, type ReturnPreview,
 } from '../services/damageService';
 import { clearPendingOptimistic } from '../store/damageStore';
+import { apiFetch } from '../services/apiClient';
 import './management.css';
 
 const TYPE_OPTIONS = ['', '20ft', '40ft'];
@@ -47,8 +49,9 @@ function formatCurrency(val: string): string {
 }
 
 // ─── Damage Details Modal ──────────────────────────────────────────────────────
-function DamageDetailsModal({ report, onClose, onSaved }: {
+function DamageDetailsModal({ report, tariffs, onClose, onSaved }: {
   report: DamageReport;
+  tariffs: any[];
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -57,15 +60,56 @@ function DamageDetailsModal({ report, onClose, onSaved }: {
     if (!report.repairDate) return '';
     const d = new Date(report.repairDate);
     if (isNaN(d.getTime())) return '';
-    return d.toISOString().slice(0, 16);
+    return d.toISOString().slice(0, 10);
   });
   const [compensationCost, setCompensationCost] = useState(
     report.compensationCost && Number(report.compensationCost) > 0
       ? String(Number(report.compensationCost))
       : ''
   );
+  const [repairCost, setRepairCost] = useState(report.repairCost ? String(report.repairCost) : '');
+  const [dateToConfirm, setDateToConfirm] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Auto calculate compensation based on expected exit date
+  function calculateCompensation(dStr: string) {
+    if (!report.expectedExitDate || !dStr) {
+      setCompensationCost('');
+      return;
+    }
+    
+    const repairD = new Date(dStr).setHours(0,0,0,0);
+    const exitD = new Date(report.expectedExitDate).setHours(0,0,0,0);
+    
+    if (repairD <= exitD) {
+      setCompensationCost('0');
+      return;
+    }
+    
+    // late days
+    const daysLate = Math.ceil((repairD - exitD) / (1000 * 60 * 60 * 24));
+    let lateFeePerDay = 0;
+    
+    if (daysLate >= 1 && daysLate <= 2) {
+      lateFeePerDay = tariffs.find(t => t.tariffCode === 'LATE_FEE_1_2')?.unitPrice || 0;
+    } else if (daysLate >= 3 && daysLate <= 5) {
+      lateFeePerDay = tariffs.find(t => t.tariffCode === 'LATE_FEE_3_5')?.unitPrice || 0;
+    } else if (daysLate > 5) {
+      lateFeePerDay = tariffs.find(t => t.tariffCode === 'LATE_FEE_GT_5')?.unitPrice || 0;
+    }
+    
+    const penalty = lateFeePerDay * daysLate;
+    setCompensationCost(penalty > 0 ? String(penalty) : '0');
+  }
+
+  function handleConfirmDate() {
+    if (dateToConfirm) {
+      setRepairDate(dateToConfirm);
+      calculateCompensation(dateToConfirm);
+    }
+    setDateToConfirm(null);
+  }
 
   async function handleSave() {
     setSaving(true);
@@ -75,6 +119,7 @@ function DamageDetailsModal({ report, onClose, onSaved }: {
       if (repairStatus) payload.repairStatus = repairStatus;
       if (repairDate) payload.repairDate = new Date(repairDate).toISOString();
       if (compensationCost) payload.compensationCost = Number(compensationCost);
+      if (repairCost) payload.repairCost = Number(repairCost);
       await updateDamageDetails(report.containerCode, payload);
       onSaved();
     } catch (e) {
@@ -115,29 +160,42 @@ function DamageDetailsModal({ report, onClose, onSaved }: {
 
           <div>
             <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 4 }}>
-              Ngày sửa chữa
+              Ngày xuất mới (sau sửa)
             </label>
             <input
-              type="datetime-local"
+              type="date"
               className="mgmt-select"
               style={{ width: '100%' }}
               value={repairDate}
-              onChange={(e) => setRepairDate(e.target.value)}
+              onChange={(e) => setDateToConfirm(e.target.value)}
             />
           </div>
 
           <div>
             <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 4 }}>
-              Chi phí bồi thường (VND)
+              Tiền hoàn cho khách (VND) - Tự tính
+            </label>
+            <input
+              type="text"
+              readOnly
+              value={compensationCost ? Number(compensationCost).toLocaleString('vi-VN') : (report.expectedExitDate ? '0' : 'Không có ngày xuất (0đ)')}
+              style={{ width: '100%', padding: '0.5rem 0.6rem', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.88rem', backgroundColor: '#f3f4f6', color: '#111827', fontWeight: 600 }}
+            />
+          </div>
+
+          <div>
+            <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: '#374151', marginBottom: 4 }}>
+              Chi phí sửa chữa container (VND)
             </label>
             <input
               type="number"
               className="mgmt-select"
               style={{ width: '100%' }}
               placeholder="Nhập số tiền..."
-              value={compensationCost}
-              onChange={(e) => setCompensationCost(e.target.value)}
+              value={repairCost}
+              onChange={(e) => setRepairCost(e.target.value)}
               min={0}
+              step="1000"
             />
           </div>
 
@@ -163,6 +221,32 @@ function DamageDetailsModal({ report, onClose, onSaved }: {
           </button>
         </div>
       </div>
+      {/* Date Confirm Popup */}
+      {dateToConfirm && createPortal(
+        <div style={{ position: 'fixed', inset: 0, zIndex: 2147483647, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', backdropFilter: 'blur(2px)' }} onClick={() => setDateToConfirm(null)}>
+          <div style={{ background: '#fff', padding: 24, borderRadius: 16, width: 340, boxShadow: '0 20px 60px rgba(0,0,0,0.5)' }} onClick={e => e.stopPropagation()}>
+            <h4 style={{ margin: '0 0 12px 0', fontSize: '1.05rem', color: '#1e3a8a', fontWeight: 700 }}>Xác nhận tính phí</h4>
+            <p style={{ fontSize: '0.85rem', color: '#4b5563', marginBottom: 20, lineHeight: 1.5 }}>
+              Bạn có chắc chắn lấy ngày <strong>{new Date(dateToConfirm).toLocaleDateString('vi-VN')}</strong> làm ngày dự kiến sửa xong để hệ thống đối chiếu tính phí lưu trễ không?
+            </p>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button 
+                onClick={() => setDateToConfirm(null)}
+                style={{ padding: '8px 16px', borderRadius: 8, border: '1px solid #d1d5db', background: '#fff', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 500 }}
+              >
+                Hủy
+              </button>
+              <button 
+                onClick={handleConfirmDate}
+                style={{ padding: '8px 16px', borderRadius: 8, border: 'none', background: '#2563eb', color: '#fff', cursor: 'pointer', fontSize: '0.85rem', fontWeight: 600 }}
+              >
+                Xác nhận
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
     </div>
   );
 }
@@ -215,26 +299,60 @@ function HistoryPanel({ containerCode, onClose }: {
 }
 
 // ─── Move-to-damaged-yard Modal ─────────────────────────────────────────────
-function MoveToDamagedYardModal({ report, busy, onClose, onSubmit }: {
+function MoveToDamagedYardModal({ report, busy, tariffs, onClose, onSubmit }: {
   report: DamageReport;
   busy: boolean;
+  tariffs: any[];
   onClose: () => void;
   onSubmit: (payload: MoveToDamagedYardPayload) => void;
 }) {
-  const [repairDate, setRepairDate] = useState(() => {
-    const d = new Date();
-    d.setDate(d.getDate() + 14);
-    return d.toISOString().slice(0, 10); // yyyy-MM-dd
-  });
+  const [repairDate, setRepairDate] = useState('');
+  const [dateToConfirm, setDateToConfirm] = useState<string | null>(null);
   const [compensation, setCompensation] = useState<string>('');
+  const [repairCost, setRepairCost] = useState<string>('');
   const [note, setNote] = useState('');
 
+  // Auto calculate compensation based on expected exit date
+  function calculateCompensation(dStr: string) {
+    if (!report.expectedExitDate || !dStr) {
+      setCompensation('');
+      return;
+    }
+    
+    const repairD = new Date(dStr).setHours(0,0,0,0);
+    const exitD = new Date(report.expectedExitDate).setHours(0,0,0,0);
+    
+    if (repairD <= exitD) {
+      setCompensation('0');
+      return;
+    }
+    
+    // late days
+    const daysLate = Math.ceil((repairD - exitD) / (1000 * 60 * 60 * 24));
+    let lateFeePerDay = 0;
+    
+    if (daysLate >= 1 && daysLate <= 2) {
+      lateFeePerDay = tariffs.find(t => t.tariffCode === 'LATE_FEE_1_2')?.unitPrice || 0;
+    } else if (daysLate >= 3 && daysLate <= 5) {
+      lateFeePerDay = tariffs.find(t => t.tariffCode === 'LATE_FEE_3_5')?.unitPrice || 0;
+    } else if (daysLate > 5) {
+      lateFeePerDay = tariffs.find(t => t.tariffCode === 'LATE_FEE_GT_5')?.unitPrice || 0;
+    }
+    
+    const penalty = lateFeePerDay * daysLate;
+    setCompensation(penalty > 0 ? String(penalty) : '0');
+  }
+
+  function handleConfirmDate() {
+    if (dateToConfirm) {
+      setRepairDate(dateToConfirm);
+      calculateCompensation(dateToConfirm);
+    }
+    setDateToConfirm(null);
+  }
+
   function submit() {
-    onSubmit({
-      expectedRepairDate: repairDate || undefined,
-      compensationCost:   compensation ? Number(compensation) : undefined,
-      repairNote:         note.trim() || undefined,
-    });
+    onSubmit({});
   }
 
   return (
@@ -244,7 +362,7 @@ function MoveToDamagedYardModal({ report, busy, onClose, onSubmit }: {
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        style={{ background: '#fff', borderRadius: 12, padding: 24, minWidth: 360, maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
+        style={{ background: '#fff', borderRadius: 12, padding: 24, minWidth: 380, maxWidth: 480, boxShadow: '0 20px 60px rgba(0,0,0,0.3)' }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
           <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 700, color: '#1e3a8a' }}>Chuyển vào kho hỏng</h3>
@@ -254,49 +372,21 @@ function MoveToDamagedYardModal({ report, busy, onClose, onSubmit }: {
         </div>
 
         <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: 14 }}>
-          Container <strong>{report.containerCode}</strong> sẽ được đảo ra khỏi vị trí hiện tại và chuyển vào kho hỏng.
-          Vui lòng nhập thời gian sửa chữa dự kiến và tiền hoàn cho khách (nếu có).
+          Container <strong>{report.containerCode}</strong> sẽ được chuyển vào kho hỏng.
+          {report.expectedExitDate ? (
+            <span style={{ display: 'block', marginTop: 4, color: '#059669', fontWeight: 500 }}>
+              Ngày xuất dự kiến theo đơn: {new Date(report.expectedExitDate).toLocaleDateString('vi-VN')}
+            </span>
+          ) : (
+            <span style={{ display: 'block', marginTop: 4, color: '#dc2626', fontWeight: 500 }}>
+              * Container chưa có đơn hàng / ngày xuất dự kiến.
+            </span>
+          )}
         </p>
 
-        <div style={{ marginBottom: 12 }}>
-          <label style={{ display: 'block', fontSize: '0.82rem', color: '#374151', fontWeight: 500, marginBottom: 4 }}>
-            Ngày dự kiến sửa xong
-          </label>
-          <input
-            type="date"
-            value={repairDate}
-            onChange={(e) => setRepairDate(e.target.value)}
-            style={{ width: '100%', padding: '0.5rem 0.6rem', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.88rem' }}
-          />
-        </div>
-
-        <div style={{ marginBottom: 12 }}>
-          <label style={{ display: 'block', fontSize: '0.82rem', color: '#374151', fontWeight: 500, marginBottom: 4 }}>
-            Tiền hoàn cho khách (VND)
-          </label>
-          <input
-            type="number"
-            min="0"
-            step="100000"
-            value={compensation}
-            onChange={(e) => setCompensation(e.target.value)}
-            placeholder="VD: 5000000"
-            style={{ width: '100%', padding: '0.5rem 0.6rem', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.88rem' }}
-          />
-        </div>
-
-        <div style={{ marginBottom: 16 }}>
-          <label style={{ display: 'block', fontSize: '0.82rem', color: '#374151', fontWeight: 500, marginBottom: 4 }}>
-            Ghi chú (tùy chọn)
-          </label>
-          <textarea
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="VD: Đã liên hệ chủ hàng, đồng ý hoàn 5tr."
-            rows={2}
-            style={{ width: '100%', padding: '0.5rem 0.6rem', borderRadius: 6, border: '1px solid #d1d5db', fontSize: '0.88rem', fontFamily: 'inherit', resize: 'vertical' }}
-          />
-        </div>
+        <p style={{ fontSize: '0.85rem', color: '#64748b', marginBottom: 14 }}>
+          Bạn có chắc chắn muốn duyệt và chuyển container này vào kho hỏng không?
+        </p>
 
         <div style={{ display: 'flex', gap: 8 }}>
           <button
@@ -431,6 +521,8 @@ export function Kho() {
   const [error, setError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
 
+  const [tariffs, setTariffs] = useState<any[]>([]);
+
   const [keyword, setKeyword] = useState('');
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('ALL');
 
@@ -453,6 +545,13 @@ export function Kho() {
       .then((list) => { if (!cancelled) setReports(list); })
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : 'Lỗi tải dữ liệu'); })
       .finally(() => { if (!cancelled) setLoading(false); });
+      
+    // Fetch tariffs
+    apiFetch('/admin/tariffs')
+      .then(res => res.json())
+      .then(json => { if (!cancelled) setTariffs(json.data || []); })
+      .catch(() => {});
+      
     return () => { cancelled = true; };
   }, [reloadKey]);
 
@@ -488,16 +587,25 @@ export function Kho() {
     } finally { setBusyCode(null); }
   }
 
-  async function handleCancel(code: string) {
-    if (!confirm(`Huỷ báo hỏng ${code}?`)) return;
-    setBusyCode(code); setBannerError(null);
+  const [cancelTargetCode, setCancelTargetCode] = useState<string | null>(null);
+
+  async function confirmCancel() {
+    if (!cancelTargetCode) return;
+    setBusyCode(cancelTargetCode); setBannerError(null);
     try {
-      await cancelDamage(code);
-      clearPendingOptimistic(code);
+      await cancelDamage(cancelTargetCode);
+      clearPendingOptimistic(cancelTargetCode);
       reload();
     } catch (e) {
       setBannerError(e instanceof Error ? e.message : 'Huỷ thất bại');
-    } finally { setBusyCode(null); }
+    } finally { 
+      setBusyCode(null); 
+      setCancelTargetCode(null);
+    }
+  }
+
+  function handleCancel(code: string) {
+    setCancelTargetCode(code);
   }
 
   async function openReturnPreview(report: DamageReport) {
@@ -597,7 +705,8 @@ export function Kho() {
                   <th>Lý do</th>
                   <th>Trạng thái</th>
                   <th>TT sửa chữa</th>
-                  <th>Ngày sửa</th>
+                  <th>Ngày xuất</th>
+                  <th>Tiền sửa</th>
                   <th>Tiền hoàn</th>
                   <th>Người báo</th>
                   <th>Ngày báo</th>
@@ -626,8 +735,8 @@ export function Kho() {
                     ? `${r.currentYard ?? '—'} · ${r.currentZone}${r.currentTier ? ` · T${r.currentTier}` : ''}${r.currentSlot ? ` · ${r.currentSlot}` : ''}`
                     : '—';
                   return (
-                    <>
-                    <tr key={r.reportId}>
+                    <React.Fragment key={r.reportId}>
+                    <tr>
                       <td><strong>{r.containerCode}</strong></td>
                       <td>{r.cargoTypeName || '—'}</td>
                       <td>
@@ -646,6 +755,7 @@ export function Kho() {
                         )}
                       </td>
                       <td>{formatDate(r.repairDate ?? '')}</td>
+                      <td>{r.repairCost != null ? formatCurrency(String(r.repairCost)) : '—'}</td>
                       <td>
                         {r.compensationCost != null ? (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -756,7 +866,7 @@ export function Kho() {
                         </td>
                       </tr>
                     )}
-                    </>
+                    </React.Fragment>
                   );
                 })}
               </tbody>
@@ -774,6 +884,7 @@ export function Kho() {
         {editingReport && (
           <DamageDetailsModal
             report={editingReport}
+            tariffs={tariffs}
             onClose={() => setEditingReport(null)}
             onSaved={() => { setEditingReport(null); reload(); }}
           />
@@ -783,6 +894,7 @@ export function Kho() {
           <MoveToDamagedYardModal
             report={moveTarget}
             busy={busyCode === moveTarget.containerCode}
+            tariffs={tariffs}
             onClose={() => setMoveTarget(null)}
             onSubmit={(payload) => confirmMove(moveTarget.containerCode, payload)}
           />
@@ -796,6 +908,40 @@ export function Kho() {
             onClose={() => setReturnTarget(null)}
             onConfirm={() => confirmReturn(returnTarget.report.containerCode)}
           />
+        )}
+        
+        {cancelTargetCode && (
+          <div className="mgmt-modal-overlay" onClick={() => setCancelTargetCode(null)}>
+            <div className="mgmt-modal" style={{ maxWidth: '400px' }} onClick={e => e.stopPropagation()}>
+              <div className="mgmt-modal-header">
+                <div className="mgmt-modal-title">
+                  <AlertTriangle size={18} color="#ef4444" />
+                  Xác nhận huỷ báo hỏng?
+                </div>
+                <button className="mgmt-modal-close" onClick={() => setCancelTargetCode(null)}>&times;</button>
+              </div>
+              <div style={{ padding: '0 1.25rem 1.25rem', fontSize: '0.85rem', color: '#4b5563' }}>
+                Bạn có chắc chắn muốn huỷ báo hỏng cho container <strong>{cancelTargetCode}</strong> không? Hành động này không thể hoàn tác.
+              </div>
+              <div className="mgmt-modal-actions">
+                <button 
+                  onClick={() => setCancelTargetCode(null)}
+                  disabled={busyCode === cancelTargetCode}
+                  className="mgmt-action-btn mgmt-action-btn-secondary"
+                >
+                  Đóng
+                </button>
+                <button 
+                  onClick={confirmCancel}
+                  disabled={busyCode === cancelTargetCode}
+                  className="mgmt-action-btn mgmt-action-btn-primary"
+                  style={{ backgroundColor: '#ef4444', color: '#fff', borderColor: '#ef4444' }}
+                >
+                  {busyCode === cancelTargetCode ? 'Đang huỷ...' : 'Xác nhận huỷ'}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </DashboardLayout>

@@ -64,6 +64,9 @@ public class Container extends BaseEntity {
     @Column(name = "repair_date")
     private LocalDateTime repairDate;
 
+    @Column(name = "repair_cost", precision = 15, scale = 2)
+    private BigDecimal repairCost;
+
     @Column(name = "compensation_cost", precision = 15, scale = 2)
     private BigDecimal compensationCost;
 

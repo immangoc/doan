@@ -1,0 +1,1 @@
+ALTER TABLE container ADD COLUMN IF NOT EXISTS repair_cost NUMERIC(15, 2);

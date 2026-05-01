@@ -13,6 +13,7 @@ type OrderItem = {
   createdAt?: string;
   importDate?: string;
   exportDate?: string;
+  requestedExportDate?: string;
   totalGrossWeight?: number;
   containerIds?: string[];
 };
@@ -31,25 +32,33 @@ const STATUS_BADGE: Record<string, string> = {
   CANCEL_REQUESTED: 'badge-warning',
   ACTIVE:           'badge-success',
   COMPLETED:        'badge-success',
+  EDIT_REQUESTED:   'badge-warning',
+  EDIT_APPROVED:    'badge-success',
+  EDIT_REJECTED:    'badge-danger',
 };
 
 const STATUS_LABEL: Record<string, string> = {
   PENDING:          'Chờ duyệt',
-  APPROVED:         'Chờ checkin',
-  WAITING_CHECKIN:  'Chờ nhập kho',
-  LATE_CHECKIN:     'Trễ checkin',
+  APPROVED:         'Chờ check-in',
+  WAITING_CHECKIN:  'Chờ check-in',
+  LATE_CHECKIN:     'Trễ check-in',
   READY_FOR_IMPORT: 'Chờ nhập kho',
-  IMPORTED:         'Đã nhập kho',
-  STORED:           'Đã nhập kho',
+  IMPORTED:         'Đang lưu kho',
+  STORED:           'Đang lưu kho',
   EXPORTED:         'Đã xuất',
   REJECTED:         'Từ chối',
   CANCELLED:        'Đã hủy',
-  CANCEL_REQUESTED: 'Duyệt sửa',
+  CANCEL_REQUESTED: 'Yêu cầu hủy',
   ACTIVE:           'Hoạt động',
   COMPLETED:        'Hoàn tất',
+  EDIT_REQUESTED:   'Chờ duyệt sửa',
+  EDIT_APPROVED:    'Đã duyệt sửa',
+  EDIT_REJECTED:    'Không duyệt sửa',
+  DAMAGED:          'Đang hỏng',
+  REPAIRED:         'Đã sửa',
 };
 
-const CHECKIN_TRANSITIONS = ['WAITING_CHECKIN', 'LATE_CHECKIN'] as const;
+const CHECKIN_TRANSITIONS = ['WAITING_CHECKIN', 'LATE_CHECKIN', 'READY_FOR_IMPORT'] as const;
 
 export default function DonHang() {
   const { accessToken } = useWarehouseAuth();
@@ -70,6 +79,12 @@ export default function DonHang() {
   const [detailOrder, setDetailOrder] = useState<OrderItem | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
   const [actionMsg, setActionMsg] = useState('');
+
+  // Confirmation popup
+  const [confirmPopup, setConfirmPopup] = useState<{
+    title: string; message: string; icon: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   const fetchOrders = async (pg = 0, kw = search, st = statusFilter) => {
     setLoading(true);
@@ -115,66 +130,107 @@ export default function DonHang() {
   };
 
   const handleApprove = async (orderId: number) => {
-    try {
-      const res = await fetch(`${API_BASE}/admin/orders/${orderId}/approve`, { method: 'PUT', headers });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Lỗi duyệt đơn');
-      setActionMsg('Đã duyệt đơn hàng.');
-      fetchOrders(page);
-      setDetailOrder(null);
-      window.dispatchEvent(new CustomEvent('wms:notification-refresh'));
-    } catch (e: any) {
-      setActionMsg(e.message || 'Lỗi');
-    }
+    setConfirmPopup({
+      title: 'Duyệt đơn hàng',
+      message: `Bạn có chắc chắn muốn duyệt đơn hàng #${orderId}?\nĐơn hàng sẽ chuyển sang trạng thái "Chờ check-in".`,
+      icon: '✅',
+      onConfirm: async () => {
+        setConfirmPopup(null);
+        try {
+          const res = await fetch(`${API_BASE}/admin/orders/${orderId}/approve`, { method: 'PUT', headers });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.message || 'Lỗi duyệt đơn');
+          setActionMsg('✅ Đã duyệt đơn hàng thành công.');
+          await fetchOrders(page);
+          const detailRes = await fetch(`${API_BASE}/admin/orders/${orderId}`, { headers });
+          const detailData = await detailRes.json();
+          if (detailRes.ok && detailData.data) setDetailOrder(detailData.data);
+          window.dispatchEvent(new CustomEvent('wms:notification-refresh'));
+        } catch (e: any) {
+          setActionMsg(`❌ ${e.message || 'Lỗi'}`);
+        }
+      },
+    });
   };
 
   const handleReject = async (orderId: number) => {
-    if (!window.confirm('Xác nhận từ chối đơn hàng này?')) return;
-    try {
-      const res = await fetch(`${API_BASE}/admin/orders/${orderId}/reject`, { method: 'PUT', headers });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Lỗi từ chối đơn');
-      setActionMsg('Đã từ chối đơn hàng.');
-      fetchOrders(page);
-      setDetailOrder(null);
-      window.dispatchEvent(new CustomEvent('wms:notification-refresh'));
-    } catch (e: any) {
-      setActionMsg(e.message || 'Lỗi');
-    }
+    setConfirmPopup({
+      title: 'Từ chối đơn hàng',
+      message: `Bạn có chắc chắn muốn từ chối đơn hàng #${orderId}?`,
+      icon: '❌',
+      onConfirm: async () => {
+        setConfirmPopup(null);
+        try {
+          const res = await fetch(`${API_BASE}/admin/orders/${orderId}/reject`, { method: 'PUT', headers });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.message || 'Lỗi từ chối đơn');
+          setActionMsg('✅ Đã từ chối đơn hàng.');
+          await fetchOrders(page);
+          setDetailOrder(null);
+          window.dispatchEvent(new CustomEvent('wms:notification-refresh'));
+        } catch (e: any) {
+          setActionMsg(`❌ ${e.message || 'Lỗi'}`);
+        }
+      },
+    });
   };
 
   const handleApproveCancellation = async (orderId: number) => {
-    if (!window.confirm('Xác nhận chấp nhận yêu cầu hủy đơn hàng này?')) return;
-    try {
-      const res = await fetch(`${API_BASE}/admin/orders/${orderId}/approve-cancel`, { method: 'PUT', headers });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Lỗi chấp nhận hủy');
-      setActionMsg('Đã chấp nhận yêu cầu hủy.');
-      fetchOrders(page);
-      setDetailOrder(null);
-      window.dispatchEvent(new CustomEvent('wms:notification-refresh'));
-    } catch (e: any) {
-      setActionMsg(e.message || 'Lỗi');
-    }
+    setConfirmPopup({
+      title: 'Chấp nhận hủy đơn',
+      message: `Bạn có chắc chắn muốn chấp nhận yêu cầu hủy đơn hàng #${orderId}?`,
+      icon: '🗑️',
+      onConfirm: async () => {
+        setConfirmPopup(null);
+        try {
+          const res = await fetch(`${API_BASE}/admin/orders/${orderId}/approve-cancel`, { method: 'PUT', headers });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.message || 'Lỗi chấp nhận hủy');
+          setActionMsg('✅ Đã chấp nhận yêu cầu hủy.');
+          await fetchOrders(page);
+          setDetailOrder(null);
+          window.dispatchEvent(new CustomEvent('wms:notification-refresh'));
+        } catch (e: any) {
+          setActionMsg(`❌ ${e.message || 'Lỗi'}`);
+        }
+      },
+    });
   };
 
   const handleChangeStatus = async (orderId: number, statusName: string) => {
-    if (!window.confirm(`Chuyển đơn sang trạng thái "${STATUS_LABEL[statusName] || statusName}"?`)) return;
-    try {
-      const res = await fetch(`${API_BASE}/admin/orders/${orderId}/status`, {
-        method: 'PUT', headers,
-        body: JSON.stringify({ statusName }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.message || 'Lỗi cập nhật trạng thái');
-      setActionMsg(`Đã chuyển trạng thái sang ${STATUS_LABEL[statusName] || statusName}.`);
-      fetchOrders(page);
-      // Reload detail to reflect new status
-      setDetailOrder((prev) => prev ? { ...prev, statusName } : prev);
-      window.dispatchEvent(new CustomEvent('wms:notification-refresh'));
-    } catch (e: any) {
-      setActionMsg(e.message || 'Lỗi');
-    }
+    const label = STATUS_LABEL[statusName] || statusName;
+    const descriptions: Record<string, string> = {
+      WAITING_CHECKIN: 'Container sẽ chuyển sang trạng thái chờ check-in.',
+      LATE_CHECKIN: 'Container sẽ được đánh dấu trễ check-in.\nKhách hàng sẽ nhận được thông báo cảnh báo.',
+      READY_FOR_IMPORT: 'Container sẽ được chuyển vào danh sách chờ nhập kho.\nSau khi nhập thành công sẽ chuyển sang \"Đã nhập kho\".\nKhách hàng sẽ nhận được thông báo.',
+    };
+    setConfirmPopup({
+      title: `Chuyển trạng thái đơn #${orderId}`,
+      message: `Bạn có chắc chắn muốn chuyển đơn hàng sang trạng thái "${label}"?\n\n${descriptions[statusName] || ''}`,
+      icon: statusName === 'LATE_CHECKIN' ? '⚠️' : statusName === 'READY_FOR_IMPORT' ? '📦' : '🔔',
+      onConfirm: async () => {
+        setConfirmPopup(null);
+        try {
+          setDetailLoading(true);
+          const res = await fetch(`${API_BASE}/admin/orders/${orderId}/status`, {
+            method: 'PUT', headers,
+            body: JSON.stringify({ statusName }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.message || 'Lỗi cập nhật trạng thái');
+          setActionMsg(`✅ Đã chuyển trạng thái sang "${label}" thành công.`);
+          await fetchOrders(page);
+          const detailRes = await fetch(`${API_BASE}/admin/orders/${orderId}`, { headers });
+          const detailData = await detailRes.json();
+          if (detailRes.ok && detailData.data) setDetailOrder(detailData.data);
+          window.dispatchEvent(new CustomEvent('wms:notification-refresh'));
+        } catch (e: any) {
+          setActionMsg(`❌ ${e.message || 'Lỗi'}`);
+        } finally {
+          setDetailLoading(false);
+        }
+      },
+    });
   };
 
   const handleAdminCancel = async (orderId: number) => {
@@ -197,6 +253,54 @@ export default function DonHang() {
     }
   };
 
+  const handleApproveEdit = async (orderId: number) => {
+    setConfirmPopup({
+      title: 'Duyệt yêu cầu sửa',
+      message: `Bạn có chắc chắn muốn duyệt yêu cầu sửa đơn hàng #${orderId}?\nNgày xuất kho sẽ được cập nhật theo yêu cầu của khách hàng.`,
+      icon: '✅',
+      onConfirm: async () => {
+        setConfirmPopup(null);
+        try {
+          const res = await fetch(`${API_BASE}/admin/orders/${orderId}/approve-edit`, { method: 'PUT', headers });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.message || 'Lỗi duyệt sửa');
+          setActionMsg('✅ Đã duyệt yêu cầu sửa thành công.');
+          await fetchOrders(page);
+          const detailRes = await fetch(`${API_BASE}/admin/orders/${orderId}`, { headers });
+          const detailData = await detailRes.json();
+          if (detailRes.ok && detailData.data) setDetailOrder(detailData.data);
+          window.dispatchEvent(new CustomEvent('wms:notification-refresh'));
+        } catch (e: any) {
+          setActionMsg(`❌ ${e.message || 'Lỗi'}`);
+        }
+      },
+    });
+  };
+
+  const handleRejectEdit = async (orderId: number) => {
+    setConfirmPopup({
+      title: 'Từ chối yêu cầu sửa',
+      message: `Bạn có chắc chắn muốn từ chối yêu cầu sửa đơn hàng #${orderId}?`,
+      icon: '❌',
+      onConfirm: async () => {
+        setConfirmPopup(null);
+        try {
+          const res = await fetch(`${API_BASE}/admin/orders/${orderId}/reject-edit`, { method: 'PUT', headers });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.message || 'Lỗi từ chối sửa');
+          setActionMsg('✅ Đã từ chối yêu cầu sửa.');
+          await fetchOrders(page);
+          const detailRes = await fetch(`${API_BASE}/admin/orders/${orderId}`, { headers });
+          const detailData = await detailRes.json();
+          if (detailRes.ok && detailData.data) setDetailOrder(detailData.data);
+          window.dispatchEvent(new CustomEvent('wms:notification-refresh'));
+        } catch (e: any) {
+          setActionMsg(`❌ ${e.message || 'Lỗi'}`);
+        }
+      },
+    });
+  };
+
   const pending = orders.filter((o) => o.statusName === 'PENDING').length;
   const approved = orders.filter((o) => o.statusName === 'APPROVED').length;
   const cancelled = orders.filter((o) => o.statusName === 'CANCELLED' || o.statusName === 'REJECTED').length;
@@ -211,7 +315,7 @@ export default function DonHang() {
       <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', marginBottom: 16 }}>
         <div className="stat-card"><div><div className="stat-label">Tổng đơn hàng</div><div className="stat-value">{total}</div></div></div>
         <div className="stat-card"><div><div className="stat-label">Chờ duyệt</div><div className="stat-value">{pending}</div></div></div>
-        <div className="stat-card"><div><div className="stat-label">Chờ checkin</div><div className="stat-value">{approved}</div></div></div>
+        <div className="stat-card"><div><div className="stat-label">Chờ check-in</div><div className="stat-value">{approved}</div></div></div>
         <div className="stat-card"><div><div className="stat-label">Đã hủy/Duyệt sửa</div><div className="stat-value">{cancelled}</div></div></div>
       </div>
 
@@ -238,11 +342,12 @@ export default function DonHang() {
           <select className="filter-select" value={statusFilter} onChange={(e) => { setStatusFilter(e.target.value); fetchOrders(0, search, e.target.value); }}>
             <option value="">Tất cả</option>
             <option value="PENDING">Chờ duyệt</option>
-            <option value="APPROVED">Chờ checkin</option>
-            <option value="WAITING_CHECKIN">Chờ nhập kho</option>
-            <option value="LATE_CHECKIN">Trễ checkin</option>
-            <option value="IMPORTED">Đã nhập kho</option>
-            <option value="STORED">Đã nhập kho</option>
+            <option value="APPROVED">Chờ check-in</option>
+            <option value="WAITING_CHECKIN">Chờ check-in</option>
+            <option value="LATE_CHECKIN">Trễ check-in</option>
+            <option value="READY_FOR_IMPORT">Chờ nhập kho</option>
+            <option value="IMPORTED">Đang lưu kho</option>
+            <option value="STORED">Đang lưu kho</option>
             <option value="EXPORTED">Đã xuất</option>
             <option value="CANCEL_REQUESTED">Duyệt sửa</option>
             <option value="REJECTED">Từ chối</option>
@@ -258,7 +363,7 @@ export default function DonHang() {
             <table>
               <thead>
                 <tr>
-                  <th>Mã đơn</th><th>Khách hàng</th><th>Ngày đặt</th>
+                  <th>Mã đơn</th><th>Khách hàng</th><th>Mã container</th><th>Ngày đặt</th>
                   <th>Ngày nhập</th><th>Ngày xuất</th>
                   <th>Tổng KL (kg)</th><th>Số container</th>
                   <th>Trạng thái</th><th>Thao tác</th>
@@ -266,12 +371,15 @@ export default function DonHang() {
               </thead>
               <tbody>
                 {orders.length === 0 ? (
-                  <tr><td colSpan={9} style={{ color: 'var(--text2)' }}>Không có đơn hàng nào.</td></tr>
+                  <tr><td colSpan={10} style={{ color: 'var(--text2)' }}>Không có đơn hàng nào.</td></tr>
                 ) : (
                   orders.map((order) => (
                     <tr key={order.orderId}>
                       <td>#{order.orderId}</td>
                       <td>{order.customerName || '—'}</td>
+                      <td style={{ maxWidth: 150, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }} title={order.containerIds?.join(', ')}>
+                        {order.containerIds?.join(', ') || '—'}
+                      </td>
                       <td>{order.createdAt ? new Date(order.createdAt).toLocaleDateString('vi-VN') : '—'}</td>
                       <td>{order.importDate || '—'}</td>
                       <td>{order.exportDate || '—'}</td>
@@ -296,7 +404,7 @@ export default function DonHang() {
         )}
 
         {totalPages > 1 && (
-          <div style={{ display: 'flex', gap: 8, padding: '12px 0', paddingRight: 140, justifyContent: 'flex-start' }}>
+          <div style={{ display: 'flex', gap: 8, padding: '12px 0', paddingBottom: 80, justifyContent: 'center' }}>
             <button className="btn btn-secondary btn-sm" disabled={page === 0} onClick={() => fetchOrders(page - 1)}>←</button>
             <span style={{ lineHeight: '28px', fontSize: 13 }}>{page + 1} / {totalPages}</span>
             <button className="btn btn-secondary btn-sm" disabled={page >= totalPages - 1} onClick={() => fetchOrders(page + 1)}>→</button>
@@ -332,6 +440,12 @@ export default function DonHang() {
                   <div><div style={{ color: 'var(--text2)' }}>Email</div><div style={{ fontWeight: 500 }}>{detailOrder.email || '—'}</div></div>
                   <div><div style={{ color: 'var(--text2)' }}>Ngày nhập kho</div><div style={{ fontWeight: 500 }}>{detailOrder.importDate || '—'}</div></div>
                   <div><div style={{ color: 'var(--text2)' }}>Ngày xuất kho</div><div style={{ fontWeight: 500 }}>{detailOrder.exportDate || '—'}</div></div>
+                  {detailOrder.requestedExportDate && (
+                    <div style={{ background: 'var(--bg2)', padding: '4px 8px', borderRadius: 4, gridColumn: '1 / -1' }}>
+                      <div style={{ color: 'var(--danger)' }}>Ngày xuất yêu cầu:</div>
+                      <div style={{ fontWeight: 600, color: 'var(--danger)' }}>{detailOrder.requestedExportDate}</div>
+                    </div>
+                  )}
                   {detailOrder.totalGrossWeight != null && (
                     <div><div style={{ color: 'var(--text2)' }}>Tổng trọng lượng</div><div style={{ fontWeight: 500 }}>{Number(detailOrder.totalGrossWeight).toLocaleString()} kg</div></div>
                   )}
@@ -358,15 +472,13 @@ export default function DonHang() {
                     </div>
                   )}
                 </div>
-                {/* Status transitions for orders past approval, before gate-in.
-                    READY_FOR_IMPORT is treated as an alias of WAITING_CHECKIN ("Chờ nhập kho"). */}
-                {(['WAITING_CHECKIN', 'LATE_CHECKIN', 'READY_FOR_IMPORT'] as const).includes(detailOrder.statusName as never) && (
+                {/* Status transitions for orders past approval, before gate-in. */}
+                {(['APPROVED', 'WAITING_CHECKIN', 'LATE_CHECKIN', 'READY_FOR_IMPORT'] as const).includes(detailOrder.statusName as never) && (
                   <div style={{ marginBottom: 12, padding: 12, borderRadius: 8, background: 'var(--bg2)' }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8 }}>Chuyển trạng thái check-in</div>
+                    <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 8, color: 'var(--primary)' }}>Chuyển trạng thái</div>
                     <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                       {CHECKIN_TRANSITIONS.map((s) => {
-                        const isCurrent = detailOrder.statusName === s
-                          || (s === 'WAITING_CHECKIN' && detailOrder.statusName === 'READY_FOR_IMPORT');
+                        const isCurrent = detailOrder.statusName === s;
                         return (
                           <button
                             key={s}
@@ -374,14 +486,15 @@ export default function DonHang() {
                             className={`btn btn-sm ${isCurrent ? 'btn-primary' : 'btn-secondary'}`}
                             disabled={isCurrent}
                             onClick={() => handleChangeStatus(detailOrder.orderId, s)}
+                            style={s === 'READY_FOR_IMPORT' && !isCurrent ? { background: '#059669', color: '#fff', border: 'none' } : undefined}
                           >
-                            {STATUS_LABEL[s]}
+                            {s === 'READY_FOR_IMPORT' ? '📦 Chờ nhập kho' : STATUS_LABEL[s]}
                           </button>
                         );
                       })}
                     </div>
-                    <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8 }}>
-                      Đơn ở trạng thái <strong>Chờ nhập kho</strong> sẽ xuất hiện trong danh sách container chờ nhập trên sơ đồ 3D.
+                    <div style={{ fontSize: 12, color: 'var(--text2)', marginTop: 8, padding: '6px 8px', background: 'var(--bg3, #f3f4f6)', borderRadius: 6 }}>
+                      💡 Chuyển sang <strong>"Chờ nhập kho"</strong> → container sẽ xuất hiện trong danh sách chờ nhập trên sơ đồ 3D.
                     </div>
                   </div>
                 )}
@@ -391,6 +504,12 @@ export default function DonHang() {
                     <>
                       <button type="button" className="btn btn-primary" onClick={() => handleApprove(detailOrder.orderId)}>✓ Duyệt</button>
                       <button type="button" className="btn btn-danger btn-sm" onClick={() => handleReject(detailOrder.orderId)}>✕ Từ chối</button>
+                    </>
+                  )}
+                  {detailOrder.statusName === 'EDIT_REQUESTED' && (
+                    <>
+                      <button type="button" className="btn btn-primary" onClick={() => handleApproveEdit(detailOrder.orderId)}>✓ Duyệt sửa</button>
+                      <button type="button" className="btn btn-danger btn-sm" onClick={() => handleRejectEdit(detailOrder.orderId)}>✕ Không duyệt sửa</button>
                     </>
                   )}
                   {detailOrder.statusName === 'CANCEL_REQUESTED' && (
@@ -406,6 +525,21 @@ export default function DonHang() {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* ── Confirmation popup modal ── */}
+      {confirmPopup && (
+        <div className="modal-overlay open" style={{ zIndex: 1100 }} onClick={(e) => { if (e.target === e.currentTarget) setConfirmPopup(null); }}>
+          <div className="modal" style={{ maxWidth: 420, textAlign: 'center', padding: '32px 24px' }}>
+            <div style={{ fontSize: 48, marginBottom: 12 }}>{confirmPopup.icon}</div>
+            <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 12, color: 'var(--text1)' }}>{confirmPopup.title}</div>
+            <div style={{ fontSize: 14, color: 'var(--text2)', marginBottom: 24, whiteSpace: 'pre-line', lineHeight: 1.6 }}>{confirmPopup.message}</div>
+            <div style={{ display: 'flex', gap: 12, justifyContent: 'center' }}>
+              <button type="button" className="btn btn-secondary" style={{ minWidth: 100 }} onClick={() => setConfirmPopup(null)}>Hủy bỏ</button>
+              <button type="button" className="btn btn-primary" style={{ minWidth: 100 }} onClick={confirmPopup.onConfirm}>Xác nhận</button>
+            </div>
           </div>
         </div>
       )}

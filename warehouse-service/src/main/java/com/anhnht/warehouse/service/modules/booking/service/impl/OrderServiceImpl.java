@@ -4,7 +4,10 @@ import com.anhnht.warehouse.service.common.constant.ErrorCode;
 import com.anhnht.warehouse.service.common.exception.BusinessException;
 import com.anhnht.warehouse.service.common.exception.ResourceNotFoundException;
 import com.anhnht.warehouse.service.modules.billing.entity.FeeConfig;
+import com.anhnht.warehouse.service.modules.billing.entity.Tariff;
 import com.anhnht.warehouse.service.modules.billing.repository.FeeConfigRepository;
+import com.anhnht.warehouse.service.modules.billing.repository.TariffRepository;
+import com.anhnht.warehouse.service.modules.booking.dto.response.FeePreviewResponse;
 import com.anhnht.warehouse.service.modules.booking.dto.request.OrderCancelRequest;
 import com.anhnht.warehouse.service.modules.booking.dto.request.OrderExportDateUpdateRequest;
 import com.anhnht.warehouse.service.modules.booking.dto.request.OrderRequest;
@@ -66,6 +69,7 @@ public class OrderServiceImpl implements OrderService {
     private final UserRepository             userRepository;
     private final NotificationService        notificationService;
     private final FeeConfigRepository        feeConfigRepository;
+    private final TariffRepository           tariffRepository;
     private final WalletService              walletService;
 
     @Override
@@ -84,6 +88,152 @@ public class OrderServiceImpl implements OrderService {
         return orderRepository.findByIdWithDetails(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorCode.BOOKING_NOT_FOUND,
                         "Order not found: " + orderId));
+    }
+
+    @Override
+    public FeePreviewResponse previewFee(OrderRequest request) {
+        if (request.getImportDate() == null || request.getExportDate() == null) {
+            return FeePreviewResponse.builder()
+                    .totalFee(BigDecimal.ZERO).storageDays(0)
+                    .timeMultiplier(BigDecimal.ONE).weightMultiplier(BigDecimal.ONE)
+                    .containerDetails(List.of()).build();
+        }
+        long days = ChronoUnit.DAYS.between(request.getImportDate(), request.getExportDate());
+        if (days <= 0) days = 1;
+
+        // Load all tariffs from DB
+        List<Tariff> allTariffs = tariffRepository.findAll();
+
+        // Resolve time multiplier from tariffs
+        BigDecimal timeMult = resolveTimeMultiplier(allTariffs, days);
+
+        // Build per-container detail
+        List<FeePreviewResponse.ContainerFeeDetail> details = new java.util.ArrayList<>();
+        BigDecimal grandTotal = BigDecimal.ZERO;
+        BigDecimal maxWeightMult = BigDecimal.ONE;
+
+        if (request.getContainerIds() != null && !request.getContainerIds().isEmpty()) {
+            for (String cid : request.getContainerIds()) {
+                Container container = containerRepository.findById(cid).orElse(null);
+                if (container == null) continue;
+
+                int size = 20; // default
+                String containerTypeName = "";
+                if (container.getContainerType() != null) {
+                    containerTypeName = container.getContainerType().getContainerTypeName();
+                    if (containerTypeName.contains("40")) size = 40;
+                }
+
+                String cargoTypeName = "";
+                Integer cargoTypeId = null;
+                if (container.getCargoType() != null) {
+                    cargoTypeName = container.getCargoType().getCargoTypeName();
+                    cargoTypeId = container.getCargoType().getCargoTypeId();
+                }
+
+                BigDecimal weight = container.getGrossWeight() != null ? container.getGrossWeight() : BigDecimal.ZERO;
+                BigDecimal weightMult = resolveWeightMultiplier(allTariffs, weight);
+                if (weightMult.compareTo(maxWeightMult) > 0) maxWeightMult = weightMult;
+
+                // Find matching STORAGE tariff
+                BigDecimal dailyRate = resolveStorageTariff(allTariffs, size, cargoTypeId);
+
+                BigDecimal subtotal = dailyRate
+                        .multiply(BigDecimal.valueOf(days))
+                        .multiply(timeMult)
+                        .multiply(weightMult)
+                        .setScale(0, RoundingMode.HALF_UP);
+
+                details.add(FeePreviewResponse.ContainerFeeDetail.builder()
+                        .containerId(cid)
+                        .containerTypeName(containerTypeName)
+                        .cargoTypeName(cargoTypeName)
+                        .containerSize(size)
+                        .grossWeight(weight)
+                        .dailyRate(dailyRate)
+                        .subtotal(subtotal)
+                        .build());
+
+                grandTotal = grandTotal.add(subtotal);
+            }
+        } else {
+            // No containers selected yet — use default 20ft dry rate
+            BigDecimal dailyRate = resolveStorageTariff(allTariffs, 20, null);
+            BigDecimal subtotal = dailyRate
+                    .multiply(BigDecimal.valueOf(days))
+                    .multiply(timeMult)
+                    .setScale(0, RoundingMode.HALF_UP);
+
+            details.add(FeePreviewResponse.ContainerFeeDetail.builder()
+                    .containerId("(mặc định)")
+                    .containerTypeName("20ft")
+                    .cargoTypeName("Hàng Khô")
+                    .containerSize(20)
+                    .grossWeight(BigDecimal.ZERO)
+                    .dailyRate(dailyRate)
+                    .subtotal(subtotal)
+                    .build());
+
+            grandTotal = subtotal;
+        }
+
+        return FeePreviewResponse.builder()
+                .totalFee(grandTotal)
+                .storageDays(days)
+                .timeMultiplier(timeMult)
+                .weightMultiplier(maxWeightMult)
+                .containerDetails(details)
+                .build();
+    }
+
+    /** Find the STORAGE tariff rate matching container size + cargo type. */
+    private BigDecimal resolveStorageTariff(List<Tariff> tariffs, int containerSize, Integer cargoTypeId) {
+        // Try exact match: size + cargoType
+        if (cargoTypeId != null) {
+            for (Tariff t : tariffs) {
+                if ("STORAGE".equals(t.getFeeType())
+                        && t.getContainerSize() != null && t.getContainerSize() == containerSize
+                        && t.getCargoType() != null && cargoTypeId.equals(t.getCargoType().getCargoTypeId())) {
+                    return t.getUnitPrice();
+                }
+            }
+        }
+        // Fallback: first STORAGE tariff matching size (usually DRY)
+        for (Tariff t : tariffs) {
+            if ("STORAGE".equals(t.getFeeType())
+                    && t.getContainerSize() != null && t.getContainerSize() == containerSize) {
+                return t.getUnitPrice();
+            }
+        }
+        return BigDecimal.valueOf(150000); // absolute fallback
+    }
+
+    /** Resolve TIME_MULTIPLIER from tariffs based on storage days. */
+    private BigDecimal resolveTimeMultiplier(List<Tariff> tariffs, long days) {
+        // Tariff codes: TIME_MULTIPLIER_LE_5 (≤5), TIME_MULTIPLIER_6_10 (6-10), TIME_MULTIPLIER_GT_10 (>10)
+        BigDecimal result = BigDecimal.ONE;
+        for (Tariff t : tariffs) {
+            if (!"TIME_MULTIPLIER".equals(t.getFeeType())) continue;
+            String code = t.getTariffCode();
+            if ("TIME_MULTIPLIER_LE_5".equals(code) && days <= 5) return t.getUnitPrice();
+            if ("TIME_MULTIPLIER_6_10".equals(code) && days >= 6 && days <= 10) return t.getUnitPrice();
+            if ("TIME_MULTIPLIER_GT_10".equals(code) && days > 10) return t.getUnitPrice();
+        }
+        return result;
+    }
+
+    /** Resolve WEIGHT_MULTIPLIER from tariffs based on gross weight in tons. */
+    private BigDecimal resolveWeightMultiplier(List<Tariff> tariffs, BigDecimal weightKg) {
+        // Convert to tons (weight in DB is typically in kg or tons — tariffs say <10t, 10-20t, >20t)
+        double tons = weightKg != null ? weightKg.doubleValue() / 1000.0 : 0;
+        for (Tariff t : tariffs) {
+            if (!"WEIGHT_MULTIPLIER".equals(t.getFeeType())) continue;
+            String code = t.getTariffCode();
+            if ("WEIGHT_MULTIPLIER_LT_10".equals(code) && tons < 10) return t.getUnitPrice();
+            if ("WEIGHT_MULTIPLIER_10_20".equals(code) && tons >= 10 && tons <= 20) return t.getUnitPrice();
+            if ("WEIGHT_MULTIPLIER_GT_20".equals(code) && tons > 20) return t.getUnitPrice();
+        }
+        return BigDecimal.ONE;
     }
 
     @Override
@@ -130,6 +280,17 @@ public class OrderServiceImpl implements OrderService {
         }
 
         Order saved = orderRepository.save(order);
+
+        // Deduct payment if confirmed
+        if (Boolean.TRUE.equals(request.getConfirmPayment()) && customerId != null) {
+            BigDecimal feeAmount = previewFee(request).getTotalFee();
+            if (feeAmount.compareTo(BigDecimal.ZERO) > 0) {
+                walletService.debitWalletForInvoice(customerId, feeAmount, 
+                    "Thanh toán phí lưu kho đơn hàng #" + saved.getOrderId());
+                saved.setPaidAmount(feeAmount);
+                orderRepository.save(saved);
+            }
+        }
 
         // Notify ADMIN and OPERATOR users about new order
         List<Integer> staffIds = userRepository.findUserIdsByRoleNames(List.of("ADMIN", "OPERATOR"));
@@ -184,7 +345,33 @@ public class OrderServiceImpl implements OrderService {
         Order order = findById(orderId);
         OrderStatus newStatus = resolveStatus(request.getStatusName());
         order.setStatus(newStatus);
-        return orderRepository.save(order);
+        Order saved = orderRepository.save(order);
+
+        // Send notifications for specific status changes
+        String newStatusName = request.getStatusName();
+        if (order.getCustomer() != null) {
+            Integer customerId = order.getCustomer().getUserId();
+            if (STATUS_LATE_CHECKIN.equalsIgnoreCase(newStatusName)) {
+                notificationService.notify(
+                        "⚠️ Trễ check-in — Đơn #" + orderId,
+                        "Container của đơn hàng #" + orderId + " đã quá hạn check-in. Vui lòng liên hệ quản lý kho để xử lý.",
+                        customerId);
+                log.info("[Notification] Late check-in notification sent for order #{} to userId={}", orderId, customerId);
+            } else if (STATUS_READY_FOR_IMPORT.equalsIgnoreCase(newStatusName)) {
+                notificationService.notify(
+                        "📦 Chờ nhập kho — Đơn #" + orderId,
+                        "Đơn hàng #" + orderId + " đã sẵn sàng nhập kho. Container sẽ được xử lý nhập kho.",
+                        customerId);
+                log.info("[Notification] Ready-for-import notification sent for order #{} to userId={}", orderId, customerId);
+            } else if (STATUS_WAITING_CHECKIN.equalsIgnoreCase(newStatusName)) {
+                notificationService.notify(
+                        "🔔 Chờ check-in — Đơn #" + orderId,
+                        "Đơn hàng #" + orderId + " đang chờ check-in. Vui lòng chuẩn bị container.",
+                        customerId);
+            }
+        }
+
+        return saved;
     }
 
     @Override
@@ -284,7 +471,7 @@ public class OrderServiceImpl implements OrderService {
     public void markImported(String containerId) {
         Order order = orderRepository.findActiveOrderByContainerId(containerId,
                 List.of(STATUS_READY_FOR_IMPORT, STATUS_WAITING_CHECKIN, STATUS_LATE_CHECKIN, STATUS_APPROVED,
-                        STATUS_IMPORTED, STATUS_STORED))
+                        STATUS_IMPORTED, STATUS_STORED, "DAMAGED", "REPAIRED"))
                 .orElseThrow(() -> new BusinessException(ErrorCode.BOOKING_NOT_FOUND,
                         "Không tìm thấy đơn hàng hợp lệ cho container: " + containerId));
         // Only advance to IMPORTED if the order hasn't already reached IMPORTED or STORED
@@ -306,7 +493,7 @@ public class OrderServiceImpl implements OrderService {
     @Override
     @Transactional
     public void markStored(String containerId) {
-        orderRepository.findActiveOrderByContainerId(containerId, List.of(STATUS_IMPORTED, STATUS_STORED))
+        orderRepository.findActiveOrderByContainerId(containerId, List.of(STATUS_IMPORTED, STATUS_STORED, "DAMAGED", "REPAIRED"))
                 .ifPresent(order -> {
                     // Only advance to STORED if not already there
                     if (!STATUS_STORED.equalsIgnoreCase(order.getStatus().getStatusName())) {
@@ -323,12 +510,12 @@ public class OrderServiceImpl implements OrderService {
                 });
     }
 
-    /** Called by gate-out service when a container leaves the yard. */
     @Override
     @Transactional
     public void markExported(String containerId) {
         orderRepository.findActiveOrderByContainerId(containerId,
-                List.of(STATUS_STORED, STATUS_IMPORTED, STATUS_WAITING_CHECKIN))
+                List.of(STATUS_STORED, STATUS_IMPORTED, STATUS_WAITING_CHECKIN, 
+                        "EDIT_REQUESTED", "EDIT_APPROVED", "EDIT_REJECTED", "DAMAGED", "REPAIRED"))
                 .ifPresent(order -> {
                     order.setStatus(resolveStatus(STATUS_EXPORTED));
                     orderRepository.save(order);
@@ -399,6 +586,124 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     @Transactional
+    public Order requestEditExportDate(Integer orderId, Integer customerId, LocalDate newExportDate) {
+        Order order = findById(orderId);
+
+        if (customerId != null && order.getCustomer() != null
+                && !customerId.equals(order.getCustomer().getUserId())) {
+            throw new BusinessException(ErrorCode.FORBIDDEN, "Bạn không có quyền sửa đơn hàng này");
+        }
+
+        String current = order.getStatus().getStatusName();
+        if (!STATUS_STORED.equalsIgnoreCase(current) && !STATUS_IMPORTED.equalsIgnoreCase(current)
+                && !"EDIT_APPROVED".equalsIgnoreCase(current) && !"EDIT_REJECTED".equalsIgnoreCase(current)
+                && !"DAMAGED".equalsIgnoreCase(current) && !"REPAIRED".equalsIgnoreCase(current)) {
+            throw new BusinessException(ErrorCode.BOOKING_ALREADY_PROCESSED,
+                    "Chỉ đơn ở trạng thái Đang lưu kho, hỏng hóc hoặc Đã duyệt/Không duyệt sửa mới được gửi lại yêu cầu.");
+        }
+
+        if (newExportDate == null) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "Ngày xuất mới không được trống");
+        }
+        if (newExportDate.isBefore(LocalDate.now())) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "Ngày xuất mới không được sớm hơn hôm nay");
+        }
+        if (order.getImportDate() != null && newExportDate.isBefore(order.getImportDate())) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "Ngày xuất mới không được sớm hơn ngày nhập kho");
+        }
+
+        BigDecimal feeAmount = calculateEditExportFee(order, newExportDate);
+        if (feeAmount.compareTo(BigDecimal.ZERO) > 0 && order.getCustomer() != null) {
+            walletService.debitWalletForInvoice(
+                    order.getCustomer().getUserId(),
+                    feeAmount,
+                    "Thanh toán phí yêu cầu đổi ngày xuất kho — Đơn #" + orderId);
+        }
+
+        order.setRequestedExportDate(newExportDate);
+        order.setStatus(resolveStatus("EDIT_REQUESTED"));
+        orderRepository.save(order);
+
+        List<Integer> staffIds = userRepository.findUserIdsByRoleNames(List.of("ADMIN", "OPERATOR"));
+        if (!staffIds.isEmpty()) {
+            notificationService.notify("Yêu cầu sửa đơn #" + orderId, 
+                "Khách hàng yêu cầu đổi ngày xuất kho.", staffIds.toArray(new Integer[0]));
+        }
+        return order;
+    }
+
+    @Override
+    @Transactional
+    public Order approveEditRequest(Integer orderId) {
+        Order order = findById(orderId);
+        if (!"EDIT_REQUESTED".equalsIgnoreCase(order.getStatus().getStatusName())) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "Đơn hàng không có yêu cầu sửa");
+        }
+
+        LocalDate newDate = order.getRequestedExportDate();
+        if (newDate != null) {
+            order.setExportDate(newDate);
+        }
+
+        order.setStatus(resolveStatus("EDIT_APPROVED"));
+        orderRepository.save(order);
+        if (order.getCustomer() != null) {
+            notificationService.notify("Yêu cầu sửa được duyệt", 
+                "Yêu cầu sửa ngày xuất đơn #" + orderId + " đã được duyệt.", 
+                order.getCustomer().getUserId());
+        }
+        return order;
+    }
+
+    @Override
+    @Transactional
+    public Order rejectEditRequest(Integer orderId) {
+        Order order = findById(orderId);
+        if (!"EDIT_REQUESTED".equalsIgnoreCase(order.getStatus().getStatusName())) {
+            throw new BusinessException(ErrorCode.BAD_REQUEST, "Đơn hàng không có yêu cầu sửa");
+        }
+
+        BigDecimal feeAmount = calculateEditExportFee(order, order.getRequestedExportDate());
+        if (feeAmount.compareTo(BigDecimal.ZERO) > 0 && order.getCustomer() != null) {
+            walletService.creditWalletForRefund(
+                    order.getCustomer().getUserId(),
+                    feeAmount,
+                    "Hoàn tiền phí yêu cầu đổi ngày xuất kho bị từ chối — Đơn #" + orderId);
+        }
+
+        order.setStatus(resolveStatus("EDIT_REJECTED"));
+        orderRepository.save(order);
+        if (order.getCustomer() != null) {
+            notificationService.notify("Yêu cầu sửa bị từ chối", 
+                "Yêu cầu sửa ngày xuất đơn #" + orderId + " bị từ chối."
+                + (feeAmount.compareTo(BigDecimal.ZERO) > 0 ? " Số tiền " + feeAmount + " VND đã được hoàn lại vào ví." : ""), 
+                order.getCustomer().getUserId());
+        }
+        return order;
+    }
+
+    private BigDecimal calculateEditExportFee(Order order, LocalDate newExportDate) {
+        LocalDate originalExport = order.getExportDate();
+        if (originalExport == null || newExportDate == null) return BigDecimal.ZERO;
+
+        long dayDiff = ChronoUnit.DAYS.between(originalExport, newExportDate);
+        String changeType = dayDiff > 0 ? "LATE" : (dayDiff < 0 ? "EARLY" : "SAME");
+
+        List<Tariff> tariffs = tariffRepository.findAll();
+        int containerCount = Math.max(1, order.getContainers().size());
+
+        BigDecimal feeAmount = BigDecimal.ZERO;
+        if (changeType.equals("LATE")) {
+            feeAmount = resolveLateFee(tariffs, dayDiff).multiply(BigDecimal.valueOf(dayDiff)).multiply(BigDecimal.valueOf(containerCount));
+        } else if (changeType.equals("EARLY")) {
+            long earlyDays = Math.abs(dayDiff);
+            feeAmount = resolveEarlyFee(tariffs, earlyDays).multiply(BigDecimal.valueOf(containerCount));
+        }
+        return feeAmount.setScale(2, RoundingMode.HALF_UP);
+    }
+
+    @Override
+    @Transactional
     public Order adminCancel(Integer orderId, String reason) {
         Order order = findById(orderId);
         String current = order.getStatus().getStatusName();
@@ -422,12 +727,34 @@ public class OrderServiceImpl implements OrderService {
         return order;
     }
 
+    private BigDecimal resolveLateFee(List<Tariff> tariffs, long overdueDays) {
+        for (Tariff t : tariffs) {
+            if (!"LATE_FEE".equals(t.getFeeType())) continue;
+            String code = t.getTariffCode();
+            if ("LATE_FEE_1_2".equals(code) && overdueDays >= 1 && overdueDays <= 2) return t.getUnitPrice();
+            if ("LATE_FEE_3_5".equals(code) && overdueDays >= 3 && overdueDays <= 5) return t.getUnitPrice();
+            if ("LATE_FEE_GT_5".equals(code) && overdueDays > 5) return t.getUnitPrice();
+        }
+        return BigDecimal.ZERO;
+    }
+
+    private BigDecimal resolveEarlyFee(List<Tariff> tariffs, long earlyDays) {
+        for (Tariff t : tariffs) {
+            if (!"EARLY_FEE".equals(t.getFeeType())) continue;
+            String code = t.getTariffCode();
+            if ("EARLY_FEE_1".equals(code) && earlyDays == 1) return t.getUnitPrice();
+            if ("EARLY_FEE_2_3".equals(code) && earlyDays >= 2 && earlyDays <= 3) return t.getUnitPrice();
+            if ("EARLY_FEE_GT_3".equals(code) && earlyDays > 3) return t.getUnitPrice();
+        }
+        return BigDecimal.ZERO;
+    }
+
     @Override
     public Order findOrderByContainerId(String containerId) {
         List<String> activeStatuses = List.of(
                 STATUS_PENDING, STATUS_APPROVED, STATUS_CANCEL_REQUESTED,
                 STATUS_WAITING_CHECKIN, STATUS_LATE_CHECKIN, STATUS_READY_FOR_IMPORT,
-                STATUS_IMPORTED, STATUS_STORED);
+                STATUS_IMPORTED, STATUS_STORED, "EDIT_REQUESTED", "EDIT_APPROVED", "EDIT_REJECTED", "DAMAGED", "REPAIRED");
         return orderRepository.findActiveOrderByContainerId(containerId, activeStatuses)
                 .map(Order::getOrderId)
                 .flatMap(orderRepository::findByIdWithDetails)
@@ -448,9 +775,11 @@ public class OrderServiceImpl implements OrderService {
         }
 
         String current = order.getStatus().getStatusName();
-        if (!STATUS_STORED.equalsIgnoreCase(current) && !STATUS_IMPORTED.equalsIgnoreCase(current)) {
+        if (!STATUS_STORED.equalsIgnoreCase(current) && !STATUS_IMPORTED.equalsIgnoreCase(current)
+                && !"EDIT_APPROVED".equalsIgnoreCase(current) && !"EDIT_REJECTED".equalsIgnoreCase(current)
+                && !"DAMAGED".equalsIgnoreCase(current) && !"REPAIRED".equalsIgnoreCase(current)) {
             throw new BusinessException(ErrorCode.BOOKING_ALREADY_PROCESSED,
-                    "Chỉ đơn ở trạng thái Đang lưu kho mới được sửa ngày xuất. Trạng thái hiện tại: " + current);
+                    "Chỉ đơn ở trạng thái Đang lưu kho, hỏng hóc hoặc đã duyệt sửa mới được sửa ngày xuất. Trạng thái hiện tại: " + current);
         }
 
         LocalDate today = LocalDate.now();
@@ -473,36 +802,15 @@ public class OrderServiceImpl implements OrderService {
                 : 0L;
         String changeType = dayDiff > 0 ? "LATE" : (dayDiff < 0 ? "EARLY" : "SAME");
 
-        FeeConfig fee = feeConfigRepository.findAll().stream().findFirst()
-                .orElse(new FeeConfig());
+        List<Tariff> tariffs = tariffRepository.findAll();
+        int containerCount = Math.max(1, order.getContainers().size());
 
-        // Per-day daily storage rate (used as the late fee per day): 20ft rate × storageMultiplier.
-        // Falls back to ratePerKgDefault when 20ft rate is not configured.
-        BigDecimal dailyRate = fee.getContainerRate20ft() != null
-                && fee.getContainerRate20ft().compareTo(BigDecimal.ZERO) > 0
-                ? fee.getContainerRate20ft()
-                : (fee.getRatePerKgDefault() != null ? fee.getRatePerKgDefault() : BigDecimal.ZERO);
-        if (fee.getStorageMultiplier() != null) {
-            dailyRate = dailyRate.multiply(fee.getStorageMultiplier());
-        }
-        // Multiply by overdue penalty rate when picking up later than originally promised.
-        BigDecimal lateFeePerDay = dailyRate;
-        if (fee.getOverduePenaltyRate() != null
-                && fee.getOverduePenaltyRate().compareTo(BigDecimal.ZERO) > 0) {
-            lateFeePerDay = dailyRate.multiply(BigDecimal.ONE.add(fee.getOverduePenaltyRate()));
-        }
-
-        BigDecimal feeAmount;
+        BigDecimal feeAmount = BigDecimal.ZERO;
         if (changeType.equals("LATE")) {
-            feeAmount = lateFeePerDay.multiply(BigDecimal.valueOf(dayDiff));
+            feeAmount = resolveLateFee(tariffs, dayDiff).multiply(BigDecimal.valueOf(dayDiff)).multiply(BigDecimal.valueOf(containerCount));
         } else if (changeType.equals("EARLY")) {
-            BigDecimal early = fee.getEarlyPickupFee() != null
-                    ? fee.getEarlyPickupFee()
-                    : BigDecimal.ZERO;
-            // Charge a one-time early-pickup fee, regardless of how many days early.
-            feeAmount = early;
-        } else {
-            feeAmount = BigDecimal.ZERO;
+            long earlyDays = Math.abs(dayDiff);
+            feeAmount = resolveEarlyFee(tariffs, earlyDays).multiply(BigDecimal.valueOf(containerCount));
         }
         feeAmount = feeAmount.setScale(2, RoundingMode.HALF_UP);
 
@@ -532,7 +840,7 @@ public class OrderServiceImpl implements OrderService {
                         "Đã đổi ngày xuất — Đơn #" + orderId,
                         "Ngày xuất mới: " + newDate
                                 + (feeAmount.compareTo(BigDecimal.ZERO) > 0
-                                    ? ". Phí: " + feeAmount + " " + fee.getCurrency() : ""),
+                                    ? ". Phí: " + feeAmount + " VND" : ""),
                         order.getCustomer().getUserId());
             }
         }
@@ -544,10 +852,10 @@ public class OrderServiceImpl implements OrderService {
                 .dayDiff(dayDiff)
                 .changeType(changeType)
                 .fee(feeAmount)
-                .freeStorageDays(fee.getFreeStorageDays())
+                .freeStorageDays(0)
                 .walletBalanceAfter(balanceAfter)
                 .charged(confirm)
-                .currency(fee.getCurrency() != null ? fee.getCurrency() : "VND")
+                .currency("VND")
                 .build();
     }
 
