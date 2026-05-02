@@ -47,7 +47,7 @@ public class MailServiceImpl implements MailService {
             if (fromEmail != null && !fromEmail.trim().isEmpty()) {
                 message.setFrom(fromEmail);
             } else {
-                message.setFrom("no-reply@htportlogistics.com");
+                message.setFrom("naludragfia@gmail.com");
             }
             message.setTo(to);
             message.setSubject(subject);
