@@ -46,6 +46,11 @@ export default function WarehouseRegister() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || 'Không thể gửi OTP');
+      
+      console.log('=============== MÃ OTP XÁC MINH CỦA BẠN LÀ: ===============');
+      console.log(data.data); // data.data contains the OTP string returned from the updated API
+      console.log('===========================================================');
+      
       setStep('otp');
     } catch (err: any) {
       setError(err.message || 'Gửi OTP thất bại. Vui lòng thử lại.');

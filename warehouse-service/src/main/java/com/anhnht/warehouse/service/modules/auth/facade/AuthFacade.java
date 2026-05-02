@@ -73,8 +73,8 @@ public class AuthFacade {
         systemLogService.log(userId, "CHANGE_PASSWORD", "Password changed");
     }
 
-    public void sendRegistrationOtp(String email) {
-        authService.sendRegistrationOtp(email);
+    public String sendRegistrationOtp(String email) {
+        return authService.sendRegistrationOtp(email);
     }
 
     public void verifyRegistrationOtp(String email, String otp) {

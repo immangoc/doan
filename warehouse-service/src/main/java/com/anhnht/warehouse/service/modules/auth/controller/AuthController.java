@@ -61,10 +61,10 @@ public class AuthController {
     }
 
     @PostMapping("/send-registration-otp")
-    public ResponseEntity<ApiResponse<Void>> sendRegistrationOtp(
+    public ResponseEntity<ApiResponse<String>> sendRegistrationOtp(
             @Valid @RequestBody SendOtpRequest request) {
-        authFacade.sendRegistrationOtp(request.getEmail());
-        return ResponseEntity.ok(ApiResponse.noContent("OTP sent to email"));
+        String otp = authFacade.sendRegistrationOtp(request.getEmail());
+        return ResponseEntity.ok(ApiResponse.success("OTP sent to email. Code: " + otp, otp));
     }
 
     @PostMapping("/verify-registration-otp")

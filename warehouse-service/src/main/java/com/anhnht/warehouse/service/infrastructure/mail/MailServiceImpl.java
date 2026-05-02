@@ -44,7 +44,11 @@ public class MailServiceImpl implements MailService {
     private void send(String to, String subject, String text) {
         try {
             SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom(fromEmail);
+            if (fromEmail != null && !fromEmail.trim().isEmpty()) {
+                message.setFrom(fromEmail);
+            } else {
+                message.setFrom("no-reply@htportlogistics.com");
+            }
             message.setTo(to);
             message.setSubject(subject);
             message.setText(text);

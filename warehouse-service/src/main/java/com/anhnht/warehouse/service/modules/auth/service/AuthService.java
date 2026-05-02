@@ -17,7 +17,7 @@ public interface AuthService {
     void changePassword(Integer userId, String oldPassword, String newPassword);
 
     /** Generates and stores a registration OTP for the given email, then sends it via email. */
-    void sendRegistrationOtp(String email);
+    String sendRegistrationOtp(String email);
 
     /** Validates the registration OTP for the given email. Throws on failure. */
     void verifyRegistrationOtp(String email, String otp);

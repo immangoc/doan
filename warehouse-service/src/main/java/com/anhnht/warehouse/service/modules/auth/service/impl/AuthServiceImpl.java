@@ -84,10 +84,11 @@ public class AuthServiceImpl implements AuthService {
     private static final String REG_OTP_PREFIX = "reg_otp:";
 
     @Override
-    public void sendRegistrationOtp(String email) {
+    public String sendRegistrationOtp(String email) {
         String otp = generateOtp();
         redisCache.saveOtp(REG_OTP_PREFIX + email, otp, AppConstant.OTP_TTL_SECONDS);
         mailService.sendOtp(email, otp);
+        return otp;
     }
 
     @Override
